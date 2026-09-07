@@ -131,6 +131,7 @@ jobs:
           $src = Join-Path $env:WORK_ROOT 'src'
           ./scripts/apply-engine-branding.ps1 -SourceRoot $src
           ./scripts/verify-engine-fork.ps1 -SourceRoot $src
+          ./scripts/verify-engine-windows-executable.ps1 -SourceRoot $src
 
       - name: Configure deterministic Windows x64 build
         shell: pwsh
@@ -267,5 +268,5 @@ jobs:
             artifacts/SHA256SUMS.txt \
             --target "$GITHUB_SHA" \
             --title "Ghosium Browser $GHOSIUM_VERSION" \
-            --notes $'Verified Ghosium Browser Windows x64 release built from the pinned source revision.\n\nRelease gate: pinned source checkout, Ghosium fork application, source verification, full compile, runtime smoke test, installer install/uninstall smoke test, SHA-256 manifest, and provenance must all succeed before this release job runs.\n\nTechnical upstream GN/Ninja target names may remain inside the build system where a safe rename has not yet been proven, but they are not treated as public Ghosium product identity.' \
+            --notes $'Verified Ghosium Browser Windows x64 release built from the pinned source revision.\n\nRelease gate: pinned source checkout, Ghosium fork application, source verification, Windows executable identity verification, full compile, runtime smoke test, installer install/uninstall smoke test, SHA-256 manifest, and provenance must all succeed before this release job runs.\n\nTechnical upstream GN/Ninja target names and internal DLL/archive names may remain where a safe coordinated rename has not yet been proven, but they are not treated as public Ghosium product identity.' \
             --repo "$GITHUB_REPOSITORY"
