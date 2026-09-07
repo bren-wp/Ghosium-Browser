@@ -12,7 +12,10 @@ param(
   [string]$StageDir,
 
   [Parameter(Mandatory = $false)]
-  [string]$ReportPath
+  [string]$ReportPath,
+
+  [Parameter(Mandatory = $false)]
+  [switch]$RequireSigning
 )
 
 $ErrorActionPreference = 'Stop'
@@ -52,6 +55,139 @@ if ($LASTEXITCODE -ne 0) {
   throw 'Ghosium source release stage assembly failed.'
 }
 
+$browserPath = Join-Path $stagePath 'Ghosium-Browser.exe'
+$proxyPath = Join-Path $stagePath 'Ghosium-Proxy.exe'
+foreach ($required in @($browserPath, $proxyPath)) {
+  if (!(Test-Path $required -PathType Leaf)) {
+    throw "Canonical Ghosium source stage is missing a public executable: $required"
+  }
+}
+
+$signing = [ordered]@{
+  required = [bool]$RequireSigning
+  applied = $false
+  certificateThumbprint = ''
+  publisherSubject = ''
+  timestampUrl = ''
+  browserStatus = [string](Get-AuthenticodeSignature $browserPath).Status
+  proxyStatus = [string](Get-AuthenticodeSignature $proxyPath).Status
+  setupStatus = 'NotBuilt'
+}
+
+$signtool = $null
+$certificate = $null
+$certificateStoreMachine = $false
+$timestampUrl = ''
+
+function Resolve-GhosiumSigningIdentity {
+  if ([string]::IsNullOrWhiteSpace($env:GHOSIUM_SIGN_CERT_THUMBPRINT)) {
+    throw 'Production Ghosium release signing requires GHOSIUM_SIGN_CERT_THUMBPRINT.'
+  }
+  $thumbprint = ($env:GHOSIUM_SIGN_CERT_THUMBPRINT -replace '[^0-9A-Fa-f]', '').ToUpperInvariant()
+  if ($thumbprint -notmatch '^[0-9A-F]{40}$') {
+    throw 'GHOSIUM_SIGN_CERT_THUMBPRINT must be a 40-character SHA-1 certificate thumbprint.'
+  }
+  if ([string]::IsNullOrWhiteSpace($env:GHOSIUM_TIMESTAMP_URL)) {
+    throw 'Production Ghosium release signing requires GHOSIUM_TIMESTAMP_URL for RFC3161 timestamping.'
+  }
+  $timestampUri = $null
+  if (![Uri]::TryCreate($env:GHOSIUM_TIMESTAMP_URL, [UriKind]::Absolute, [ref]$timestampUri) -or
+      $timestampUri.Scheme -notin @('http', 'https')) {
+    throw 'GHOSIUM_TIMESTAMP_URL must be an absolute HTTP(S) RFC3161 timestamp URL.'
+  }
+
+  $currentUserCert = Get-ChildItem Cert:\CurrentUser\My -ErrorAction SilentlyContinue |
+    Where-Object { $_.Thumbprint -eq $thumbprint } | Select-Object -First 1
+  $machineCert = Get-ChildItem Cert:\LocalMachine\My -ErrorAction SilentlyContinue |
+    Where-Object { $_.Thumbprint -eq $thumbprint } | Select-Object -First 1
+  $cert = if ($currentUserCert) { $currentUserCert } else { $machineCert }
+  if (!$cert) {
+    throw "Ghosium signing certificate $thumbprint was not found in CurrentUser/My or LocalMachine/My."
+  }
+  if (!$cert.HasPrivateKey) {
+    throw "Ghosium signing certificate $thumbprint does not expose a private key to the builder account."
+  }
+  if ($cert.NotBefore.ToUniversalTime() -gt [DateTime]::UtcNow -or
+      $cert.NotAfter.ToUniversalTime() -le [DateTime]::UtcNow) {
+    throw "Ghosium signing certificate is outside its validity period: $($cert.NotBefore) - $($cert.NotAfter)"
+  }
+
+  $kitsRoot = (Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows Kits\Installed Roots' -Name KitsRoot10 -ErrorAction Stop).KitsRoot10
+  $sdkVersion = '10.0.28000.2270'
+  $tool = Join-Path $kitsRoot "bin\$sdkVersion\x64\signtool.exe"
+  if (!(Test-Path $tool -PathType Leaf)) {
+    throw "Required Windows SDK signtool.exe is missing: $tool"
+  }
+
+  return [ordered]@{
+    Thumbprint = $thumbprint
+    Certificate = $cert
+    StoreMachine = [bool](!$currentUserCert -and $machineCert)
+    TimestampUrl = $timestampUri.AbsoluteUri
+    SignTool = (Resolve-Path $tool).Path
+  }
+}
+
+function Sign-GhosiumFile {
+  param(
+    [Parameter(Mandatory = $true)][string]$Path,
+    [Parameter(Mandatory = $true)][string]$Description
+  )
+
+  if (!(Test-Path $Path -PathType Leaf)) {
+    throw "Signing target is missing: $Path"
+  }
+  $args = @('sign')
+  if ($certificateStoreMachine) {
+    $args += '/sm'
+  }
+  $args += @(
+    '/sha1', $certificate.Thumbprint,
+    '/fd', 'SHA256',
+    '/tr', $timestampUrl,
+    '/td', 'SHA256',
+    '/d', $Description,
+    $Path
+  )
+  & $signtool @args | Out-Host
+  if ($LASTEXITCODE -ne 0) {
+    throw "Authenticode signing failed for $Path with exit code $LASTEXITCODE"
+  }
+  & $signtool verify /pa /all /v $Path | Out-Host
+  if ($LASTEXITCODE -ne 0) {
+    throw "Authenticode verification failed after signing: $Path"
+  }
+  $signature = Get-AuthenticodeSignature $Path
+  if ($signature.Status -ne [System.Management.Automation.SignatureStatus]::Valid -or !$signature.SignerCertificate) {
+    throw "PowerShell Authenticode validation is not Valid after signing: $Path / $($signature.Status)"
+  }
+  if ($signature.SignerCertificate.Thumbprint -ne $certificate.Thumbprint) {
+    throw "Signing target was not signed by the configured Ghosium certificate: $Path"
+  }
+  return $signature
+}
+
+if ($RequireSigning) {
+  $identity = Resolve-GhosiumSigningIdentity
+  $signtool = [string]$identity.SignTool
+  $certificate = $identity.Certificate
+  $certificateStoreMachine = [bool]$identity.StoreMachine
+  $timestampUrl = [string]$identity.TimestampUrl
+
+  $browserSignature = Sign-GhosiumFile -Path $browserPath -Description 'Ghosium Browser'
+  $proxySignature = Sign-GhosiumFile -Path $proxyPath -Description 'Ghosium Browser Proxy'
+  if ($browserSignature.SignerCertificate.Subject -ne $proxySignature.SignerCertificate.Subject) {
+    throw 'Ghosium Browser and Ghosium Proxy were not signed by the same publisher subject.'
+  }
+
+  $signing.applied = $true
+  $signing.certificateThumbprint = $certificate.Thumbprint
+  $signing.publisherSubject = $browserSignature.SignerCertificate.Subject
+  $signing.timestampUrl = $timestampUrl
+  $signing.browserStatus = [string]$browserSignature.Status
+  $signing.proxyStatus = [string]$proxySignature.Status
+}
+
 $makensisOutput = @(& (Join-Path $repoRoot 'scripts/resolve-nsis.ps1'))
 $makensis = ($makensisOutput | Where-Object { $_ -is [string] -and (Test-Path $_ -PathType Leaf) } | Select-Object -Last 1)
 if (!$makensis) {
@@ -61,7 +197,7 @@ $makensis = (Resolve-Path $makensis).Path
 
 $nsi = Join-Path $repoRoot 'installer/ghosium.nsi'
 $icon = Join-Path $repoRoot 'ghosium.ico'
-foreach ($required in @($nsi, $icon, (Join-Path $stagePath 'LICENSE'), (Join-Path $stagePath 'Ghosium-Browser.exe'))) {
+foreach ($required in @($nsi, $icon, (Join-Path $stagePath 'LICENSE'), $browserPath)) {
   if (!(Test-Path $required -PathType Leaf)) {
     throw "Canonical Setup packaging input is missing: $required"
   }
@@ -98,6 +234,17 @@ if ([string]$setupInfo.ProductVersion -notlike "$version*") {
   throw "Canonical Setup ProductVersion mismatch: '$($setupInfo.ProductVersion)' expected '$version'"
 }
 
+if ($RequireSigning) {
+  $setupSignature = Sign-GhosiumFile -Path $setupPath -Description 'Ghosium Browser Setup'
+  $browserSignature = Get-AuthenticodeSignature $browserPath
+  if ($setupSignature.SignerCertificate.Subject -ne $browserSignature.SignerCertificate.Subject) {
+    throw 'Ghosium Setup publisher subject does not match the signed Ghosium Browser publisher subject.'
+  }
+  $signing.setupStatus = [string]$setupSignature.Status
+} else {
+  $signing.setupStatus = [string](Get-AuthenticodeSignature $setupPath).Status
+}
+
 $outPath = if ([IO.Path]::IsPathRooted($OutDir)) {
   [IO.Path]::GetFullPath($OutDir)
 } else {
@@ -127,7 +274,7 @@ foreach ($requiredContract in @(
 
 $stage = Get-Content $stageReport -Raw | ConvertFrom-Json
 $report = [ordered]@{
-  schemaVersion = 2
+  schemaVersion = 3
   product = 'Ghosium Browser'
   productVersion = $version
   package = 'Ghosium-Browser-Setup.exe'
@@ -139,12 +286,15 @@ $report = [ordered]@{
     fileVersion = [string]$setupInfo.FileVersion
     productVersion = [string]$setupInfo.ProductVersion
   }
+  signing = $signing
   sourceRuntime = [ordered]@{
     engineSourceRevision = [string]$stage.engineSourceRevision
     engineVersionDirectory = [string]$stage.engineVersionDirectory
     browserSha256BeforeSigning = [string]$stage.browserSha256
-    fileCount = [int]$stage.fileCount
-    totalBytes = [int64]$stage.totalBytes
+    browserSha256Packaged = (Get-FileHash $browserPath -Algorithm SHA256).Hash.ToLowerInvariant()
+    proxySha256Packaged = (Get-FileHash $proxyPath -Algorithm SHA256).Hash.ToLowerInvariant()
+    fileCountBeforeSigning = [int]$stage.fileCount
+    totalBytesBeforeSigning = [int64]$stage.totalBytes
   }
   maintenance = [ordered]@{
     sameSetupExecutable = $true
@@ -156,6 +306,10 @@ $report = [ordered]@{
     standaloneUninstallerExecutable = $false
   }
   publicSetupIsChromiumMiniInstallerRename = $false
+}
+
+if ($RequireSigning -and (!$report.signing.applied -or $report.signing.setupStatus -ne 'Valid')) {
+  throw 'Production same-Setup package did not satisfy the mandatory Authenticode signing contract.'
 }
 
 $reportDirectory = Split-Path -Parent $reportFullPath
@@ -170,4 +324,7 @@ if ($reportDirectory -and !(Test-Path $reportDirectory -PathType Container)) {
 
 Write-Host "Canonical Ghosium same-Setup package built: $setupPath"
 Write-Host "SHA-256: $($report.packageSha256)"
+if ($RequireSigning) {
+  Write-Host "Authenticode publisher: $($report.signing.publisherSubject)"
+}
 Write-Output $setupPath
