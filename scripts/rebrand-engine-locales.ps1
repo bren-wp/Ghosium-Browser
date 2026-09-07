@@ -14,6 +14,7 @@ $legalChromiumIds = @(
   '4365115785552740256',
   '7681937895330411637'
 )
+$settingsPeopleTranslationId = '3721119614952978349'
 $chromiumWord = [regex]::new('\bChromium\b')
 $chromiumProductStem = [regex]::new('\bChromium(?=\p{Ll}|\b)')
 $chromeProductStem = [regex]::new('\bChrome(?=\p{Ll}|\b)')
@@ -36,23 +37,25 @@ function Replace-ProductBrandingInBody {
     [Parameter(Mandatory = $true)][bool]$PreserveChromiumProject
   )
 
+  if ($TranslationId -eq $settingsPeopleTranslationId) {
+    return 'Ghosium'
+  }
+
   $updated = $Body
   $updated = $updated.Replace('Chrome Web Store', 'Ghosium Store')
+  $updated = $updated.Replace('Chrome Colors', 'Ghosium Colors')
+  $updated = $updated.Replace('AI in Chrome', 'AI in Ghosium')
+  $updated = $updated.Replace('Gemini in Chromium', 'Gemini in Ghosium')
+  $updated = $updated.Replace('Gemini in Chrome', 'Gemini in Ghosium')
   $updated = $updated.Replace('Google Chrome for Testing', 'Ghosium Browser')
   $updated = $updated.Replace('Chrome for Testing', 'Ghosium Browser')
   $updated = $updated.Replace('Google Chrome', 'Ghosium Browser')
 
   if ($PreserveChromiumProject -and $legalChromiumIds -contains $TranslationId) {
-    # These two translated messages are third-party legal attribution. On the
-    # first pass replace only the product token. On later normalization passes,
-    # keep the remaining upstream-project attribution intact.
     if (!$updated.Contains('Ghosium Browser')) {
       $updated = $chromiumWord.Replace($updated, 'Ghosium Browser', 1)
     }
   } else {
-    # Several locales inflect browser brand names. Match lowercase grammatical
-    # suffixes such as Chromiuma/Chromiumu/Chromeovih while deliberately not
-    # consuming uppercase compounds such as ChromiumOS or ChromeOS.
     $updated = $chromiumProductStem.Replace($updated, 'Ghosium Browser')
     $updated = $chromeProductStem.Replace($updated, 'Ghosium Browser')
   }
@@ -102,13 +105,10 @@ function Update-XtbBundle {
     }
   }
 
-  Write-Host "Updated $updatedFiles localized bundle(s) under $Directory"
+  Write-Host "Updated $updatedFiles localized bundle(s) under $Directory/$Prefix"
 }
 
 function Normalize-RewrittenLocalizedResources {
-  # Product-link routing can touch additional translated bundles outside the
-  # three core product-string families. Normalize only files already changed by
-  # the reviewed branding pipeline so unrelated source stays byte-for-byte.
   $changed = @(& git -C $sourceRootResolved diff --name-only --diff-filter=ACMRT)
   if ($LASTEXITCODE -ne 0) {
     throw 'Unable to enumerate source files changed by Ghosium branding.'
@@ -162,8 +162,6 @@ function Normalize-RewrittenLocalizedResources {
       )
     }
 
-    # Any file already rewritten by the branding pipeline can inherit trailing
-    # spaces from an upstream translated line. Normalize them before diff-check.
     $updated = [regex]::Replace($updated, '[ \t]+(?=\r?\n)', '')
 
     if ($updated -ne $text) {
@@ -175,7 +173,31 @@ function Normalize-RewrittenLocalizedResources {
   Write-Host "Normalized $normalizedFiles additional rewritten localization resource(s)."
 }
 
+$publicSurfaceRequired = @(
+  'chrome/app/settings_strings.grdp',
+  'chrome/app/shared_settings_strings.grdp',
+  'chrome/app/glic_strings.grdp',
+  'chrome/browser/extensions/extension_ui_util.cc'
+)
+$completePublicSurfaceSource = $true
+foreach ($relative in $publicSurfaceRequired) {
+  if (!(Test-Path (Join-Path $sourceRootResolved $relative) -PathType Leaf)) {
+    $completePublicSurfaceSource = $false
+    break
+  }
+}
+
+if ($completePublicSurfaceSource) {
+  & (Join-Path $PSScriptRoot 'rewrite-engine-public-surfaces.ps1') -SourceRoot $sourceRootResolved
+  if ($LASTEXITCODE -ne 0) {
+    throw 'Ghosium Settings/About/New Tab public-surface branding failed.'
+  }
+} else {
+  Write-Host 'Narrow sparse engine audit detected; complete public-surface source transform is delegated to Ghosium Public Surface Contract.'
+}
+
 Update-XtbBundle -Directory 'chrome/app/resources' -Prefix 'chromium_strings_' -PreserveChromiumProject $false
+Update-XtbBundle -Directory 'chrome/app/resources' -Prefix 'generated_resources_' -PreserveChromiumProject $false
 Update-XtbBundle -Directory 'components/strings' -Prefix 'components_chromium_strings_' -PreserveChromiumProject $true
 Update-XtbBundle -Directory 'extensions/strings' -Prefix 'extensions_strings_' -PreserveChromiumProject $false
 Normalize-RewrittenLocalizedResources
@@ -193,4 +215,11 @@ if ($LASTEXITCODE -ne 0) {
   throw 'Ghosium supported locale verification failed.'
 }
 
-Write-Host 'Ghosium supported locale branding applied and verified.'
+if ($completePublicSurfaceSource) {
+  & (Join-Path $PSScriptRoot 'verify-engine-public-surfaces.ps1') -SourceRoot $sourceRootResolved
+  if ($LASTEXITCODE -ne 0) {
+    throw 'Ghosium public-surface verification failed after locale branding.'
+  }
+}
+
+Write-Host 'Ghosium supported locale branding verified; complete public surfaces are independently verified whenever their source set is present.'
