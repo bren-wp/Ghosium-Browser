@@ -34,9 +34,10 @@ if (!(Test-Path $outPath -PathType Container)) {
   throw "Ghosium build output directory does not exist: $outPath"
 }
 
+$expectedBrowserExecutable = 'Ghosium-Browser.exe'
 $requiredFiles = @(
   'args.gn',
-  'chrome.exe',
+  $expectedBrowserExecutable,
   'chrome.dll',
   'chrome_elf.dll',
   'locales/en-US.pak',
@@ -52,6 +53,9 @@ foreach ($relative in $requiredFiles) {
   if ((Get-Item $path).Length -le 0) {
     throw "Full-source build artifact is empty: $relative"
   }
+}
+if (Test-Path (Join-Path $outPath 'chrome.exe') -PathType Leaf) {
+  throw 'Legacy public chrome.exe remains in the final Ghosium build output. The primary executable must be Ghosium-Browser.exe.'
 }
 
 # Uninstall is deliberately implemented by the installed setup.exe invoked with
@@ -96,12 +100,15 @@ if (!$utilConstantsText.Contains('kSetupExe[] = L"setup.exe"') -or
     !$utilConstantsText.Contains('kUninstallArgumentsField[] = L"UninstallArguments"')) {
   throw 'Windows uninstall registry/setup constants changed unexpectedly.'
 }
+if (!$utilConstantsText.Contains('kChromeExe[] = L"Ghosium-Browser.exe"')) {
+  throw 'Windows installer constants do not point to the Ghosium primary executable.'
+}
 if (!$installWorkerText.Contains('installer::kUninstallStringField') -or
     !$installWorkerText.Contains('installer::kUninstallArgumentsField')) {
   throw 'Installer no longer registers the setup-based uninstall command.'
 }
 
-$engineBinary = Get-Item (Join-Path $outPath 'chrome.exe')
+$engineBinary = Get-Item (Join-Path $outPath $expectedBrowserExecutable)
 $engineInfo = $engineBinary.VersionInfo
 if ([string]$engineInfo.ProductName -ne 'Ghosium Browser') {
   throw "Engine ProductName is not Ghosium Browser: '$($engineInfo.ProductName)'"
@@ -257,10 +264,11 @@ if ($RunRuntimeSmoke) {
   }
 }
 
-# Public provenance uses Ghosium-facing labels even while the pinned build tree
-# retains upstream technical target filenames required by the installer toolchain.
+# Public provenance names the primary Ghosium executable exactly. Internal DLL
+# and archive filenames remain upstream technical dependencies until their own
+# coordinated rename has been compile/runtime verified.
 $filesToHash = [ordered]@{
-  'Ghosium-Engine.exe' = 'chrome.exe'
+  'Ghosium-Browser.exe' = 'Ghosium-Browser.exe'
   'Ghosium-Engine.dll' = 'chrome.dll'
   'Ghosium-Engine-ELF.dll' = 'chrome_elf.dll'
   'setup.exe' = 'setup.exe'
@@ -280,11 +288,13 @@ if (!$ProvenancePath) {
 }
 
 $provenance = [ordered]@{
-  schemaVersion = 3
+  schemaVersion = 4
   product = 'Ghosium Browser'
   ghosiumVersion = $ghosiumVersion
   architecture = 'windows-x64'
   engineSourceRevision = $expectedRevision
+  browserExecutableName = $expectedBrowserExecutable
+  publicExecutableIdentityComplete = $true
   engineProductVersion = [string]$engineInfo.ProductVersion
   publisher = [string]$engineInfo.CompanyName
   engineProductName = [string]$engineInfo.ProductName
@@ -315,7 +325,8 @@ $provenance = [ordered]@{
 $provenance | ConvertTo-Json -Depth 7 | Set-Content $ProvenancePath -Encoding utf8
 
 Write-Host 'Ghosium full-source Windows binary verification: OK'
-Write-Host "Engine version: $($engineInfo.ProductVersion)"
+Write-Host "Primary executable: $expectedBrowserExecutable"
+Write-Host "Engine file version: $($engineInfo.ProductVersion)"
 if ($RunRuntimeSmoke) {
   Write-Host "Runtime smoke: data URL plus all eight ghost:// routes passed without disabling the browser sandbox."
 }
