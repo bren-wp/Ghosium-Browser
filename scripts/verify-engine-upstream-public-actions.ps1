@@ -33,6 +33,10 @@ $requiredHiddenBlocks = @(
   [pscustomobject]@{
     Name = 'Google Glic/Gemini side panel'
     Pattern = '(?s)SidePanelAction\(\s*SidePanelEntryId::kGlic,.*?kActionSidePanelShowGlic,\s*bwi,\s*false\)\s*\.SetVisible\(false\)\s*\.Build\(\)'
+  },
+  [pscustomobject]@{
+    Name = 'Google AI overlay toolbar action'
+    Pattern = '(?s)if\s*\(glic::GlicEnabling::IsProfileEligible\(profile\)\s*&&\s*base::FeatureList::IsEnabled\(features::kAiOverlayDialog\)\)\s*\{.*?kActionShowAiOverlayDialog.*?item->SetVisible\(false\);.*?root_action_item_->AddChild\(std::move\(item\)\);'
   }
 )
 
@@ -61,4 +65,4 @@ if ($thirdPartyChanges) {
   throw 'Upstream public-action audit detected third_party modifications.'
 }
 
-Write-Host 'Ghosium upstream public-action audit: Customize Chromium, GEIC and Glic/Gemini are registered only as hidden internal actions.'
+Write-Host 'Ghosium upstream public-action audit: Customize Chromium, GEIC, Glic/Gemini and AI overlay are registered only as hidden internal actions.'
