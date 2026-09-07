@@ -14,6 +14,7 @@ $legalChromiumIds = @(
   '4365115785552740256',
   '7681937895330411637'
 )
+$settingsPeopleTranslationId = '3721119614952978349'
 
 function Get-TranslationLocaleCode {
   param([Parameter(Mandatory = $true)][string]$Locale)
@@ -31,9 +32,8 @@ function Test-LegacyBrowserBrand {
 
   # Detect standalone names and grammatical lowercase suffixes such as
   # Chromiuma/Chromiumu while avoiding unrelated uppercase compounds such as
-  # ChromiumOS/ChromeOS, which are separate upstream platform names. PowerShell
-  # -match is case-insensitive by default, so use -cmatch here; only the Google
-  # Chrome phrase gets an explicit scoped case-insensitive modifier.
+  # ChromiumOS/ChromeOS/ChromeVox, which are separate upstream platform or
+  # accessibility names. Google Chrome is always a forbidden browser identity.
   return $Text -cmatch '(?i:\bGoogle Chrome\b)|\bChromium(?=\p{Ll}|\b)|\bChrome(?=\p{Ll}|\b)'
 }
 
@@ -41,7 +41,8 @@ function Assert-XtbBundleBranding {
   param(
     [Parameter(Mandatory = $true)][string]$Directory,
     [Parameter(Mandatory = $true)][string]$Prefix,
-    [Parameter(Mandatory = $true)][bool]$AllowLegalChromiumProject
+    [Parameter(Mandatory = $true)][bool]$AllowLegalChromiumProject,
+    [Parameter(Mandatory = $false)][bool]$RequireSettingsRoot = $false
   )
 
   $checked = 0
@@ -58,9 +59,18 @@ function Assert-XtbBundleBranding {
 
     $text = [IO.File]::ReadAllText($path)
     $translations = [regex]::Matches($text, '(?s)<translation\s+id="([0-9]+)"[^>]*>(.*?)</translation>')
+    $settingsRootFound = $false
     foreach ($translation in $translations) {
       $id = $translation.Groups[1].Value
       $body = [System.Net.WebUtility]::HtmlDecode($translation.Groups[2].Value)
+
+      if ($RequireSettingsRoot -and $id -eq $settingsPeopleTranslationId) {
+        $settingsRootFound = $true
+        if ($body.Trim() -ne 'Ghosium') {
+          throw "Settings root is not Ghosium-branded in locale ${locale}: translation $id = '$($body.Trim())'"
+        }
+        continue
+      }
 
       if ($AllowLegalChromiumProject -and $legalChromiumIds -contains $id) {
         if (!$body.Contains('Ghosium Browser') -or !$body.Contains('Chromium')) {
@@ -74,16 +84,21 @@ function Assert-XtbBundleBranding {
       }
     }
 
+    if ($RequireSettingsRoot -and !$settingsRootFound) {
+      throw "Settings root translation $settingsPeopleTranslationId is missing in locale ${locale}: $path"
+    }
+
     $checked++
   }
 
   if ($checked -ne 29) {
-    throw "Expected 29 translated bundles plus en-US source; checked $checked under $Directory"
+    throw "Expected 29 translated bundles plus en-US source; checked $checked under $Directory/$Prefix"
   }
-  Write-Host "Verified $checked localized bundle(s) under $Directory"
+  Write-Host "Verified $checked localized bundle(s) under $Directory/$Prefix"
 }
 
 Assert-XtbBundleBranding -Directory 'chrome/app/resources' -Prefix 'chromium_strings_' -AllowLegalChromiumProject $false
+Assert-XtbBundleBranding -Directory 'chrome/app/resources' -Prefix 'generated_resources_' -AllowLegalChromiumProject $false -RequireSettingsRoot $true
 Assert-XtbBundleBranding -Directory 'components/strings' -Prefix 'components_chromium_strings_' -AllowLegalChromiumProject $true
 Assert-XtbBundleBranding -Directory 'extensions/strings' -Prefix 'extensions_strings_' -AllowLegalChromiumProject $false
 
@@ -95,4 +110,4 @@ if ($thirdPartyChanges) {
   throw 'Locale audit detected third_party modifications.'
 }
 
-Write-Host 'Ghosium 30-locale branding audit: OK'
+Write-Host 'Ghosium 30-locale browser + complete Settings branding audit: OK'
