@@ -345,7 +345,7 @@ try {
   if (Test-Path $defaultUserDataRoot) {
     throw "Default Ghosium user-data directory remains after --delete-profile uninstall: $defaultUserDataRoot"
   }
-  if (Test-Path $installedLicensePath -PathType Leaf -or Test-Path $installedNoticesPath -PathType Leaf) {
+  if ((Test-Path $installedLicensePath -PathType Leaf) -or (Test-Path $installedNoticesPath -PathType Leaf)) {
     throw 'Installed Ghosium legal payload remains after application uninstall.'
   }
 
