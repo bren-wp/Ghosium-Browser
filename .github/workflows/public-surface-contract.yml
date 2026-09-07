@@ -9,6 +9,8 @@ on:
       - 'engine/branding/**'
       - 'scripts/rewrite-engine-public-surfaces.ps1'
       - 'scripts/verify-engine-public-surfaces.ps1'
+      - 'scripts/rewrite-engine-upstream-public-actions.ps1'
+      - 'scripts/verify-engine-upstream-public-actions.ps1'
       - 'scripts/rebrand-engine-locales.ps1'
       - 'scripts/verify-engine-locales.ps1'
       - 'scripts/generate-engine-brand-assets.py'
@@ -21,6 +23,8 @@ on:
       - 'engine/branding/**'
       - 'scripts/rewrite-engine-public-surfaces.ps1'
       - 'scripts/verify-engine-public-surfaces.ps1'
+      - 'scripts/rewrite-engine-upstream-public-actions.ps1'
+      - 'scripts/verify-engine-upstream-public-actions.ps1'
       - 'scripts/rebrand-engine-locales.ps1'
       - 'scripts/verify-engine-locales.ps1'
       - 'scripts/generate-engine-brand-assets.py'
@@ -50,6 +54,8 @@ jobs:
           foreach ($path in @(
             'scripts/rewrite-engine-public-surfaces.ps1',
             'scripts/verify-engine-public-surfaces.ps1',
+            'scripts/rewrite-engine-upstream-public-actions.ps1',
+            'scripts/verify-engine-upstream-public-actions.ps1',
             'scripts/rebrand-engine-locales.ps1',
             'scripts/verify-engine-locales.ps1'
           )) {
@@ -97,6 +103,7 @@ jobs:
           /chrome/browser/ui/webui/settings/settings_ui.cc
           /chrome/browser/resources/new_tab_page/app.html
           /chrome/browser/ui/webui/new_tab_footer/footer_context_menu.cc
+          /chrome/browser/ui/browser_actions.cc
           /components/strings/
           /extensions/strings/
           EOF
@@ -136,6 +143,7 @@ jobs:
           }
 
           ./scripts/verify-engine-public-surfaces.ps1 -SourceRoot $env:PUBLIC_ENGINE_SRC
+          ./scripts/verify-engine-upstream-public-actions.ps1 -SourceRoot $env:PUBLIC_ENGINE_SRC
           ./scripts/verify-engine-locales.ps1 -SourceRoot $env:PUBLIC_ENGINE_SRC
 
       - name: Verify screenshot regression contract
@@ -177,10 +185,17 @@ jobs:
             exit 1
           fi
 
+          # Three upstream action registrations are intentionally retained for
+          # Chromium-internal compatibility, but the independent PowerShell
+          # verifier above requires every one of them to be permanently hidden.
+          grep -F 'SidePanelEntryId::kCustomizeChrome' "$src/chrome/browser/ui/browser_actions.cc"
+          grep -F 'SidePanelEntryId::kGeic' "$src/chrome/browser/ui/browser_actions.cc"
+          grep -F 'SidePanelEntryId::kGlic' "$src/chrome/browser/ui/browser_actions.cc"
+
           git -C "$src" diff --check
           if git -C "$src" status --porcelain=v1 -- third_party | grep -q .; then
             echo 'Public-surface branding must never modify third_party source.' >&2
             exit 1
           fi
 
-          echo 'Pinned Ghosium public surface contract: Ghosium identity only; Chromium customization and Google-owned public surfaces removed.'
+          echo 'Pinned Ghosium public surface contract: Ghosium identity only; Chromium customization and Google-owned public surfaces removed or permanently hidden.'
