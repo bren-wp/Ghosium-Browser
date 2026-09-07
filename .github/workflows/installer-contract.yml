@@ -72,7 +72,8 @@ jobs:
           foreach ($path in @(
             'scripts/build-native-launcher.ps1',
             'scripts/resolve-nsis.ps1',
-            'scripts/smoke-test-windows-installer.ps1'
+            'scripts/smoke-test-windows-installer.ps1',
+            'scripts/smoke-test-source-windows-installer.ps1'
           )) {
             $tokens = $null
             $errors = $null
@@ -87,26 +88,24 @@ jobs:
             }
           }
 
-      - name: Verify pinned NSIS bootstrap contract
+      - name: Verify pinned legacy NSIS bootstrap contract
         shell: bash
         run: |
           set -euo pipefail
           resolver='scripts/resolve-nsis.ps1'
-          workflow='.github/workflows/windows-build.yml'
 
           grep -Fq "https://downloads.sourceforge.net/project/nsis/NSIS%203/3.12/nsis-3.12.zip" "$resolver"
           grep -Fq "56581f90db321581c5381193d796fffcf2d24b2f8fed2160a6c6a3baa67f2c4f" "$resolver"
           grep -Fq 'Get-FileHash $archive -Algorithm SHA256' "$resolver"
           grep -Fq '& $Path /VERSION' "$resolver"
           grep -Fq "'v3.12'" "$resolver"
-          grep -Fq './scripts/resolve-nsis.ps1' "$workflow"
 
-          if grep -Fqi 'choco install nsis' "$workflow"; then
-            echo 'Windows release workflow must not depend on the Chocolatey NSIS feed.' >&2
-            exit 1
-          fi
           if grep -Fqi 'Algorithm SHA1' "$resolver"; then
             echo 'NSIS bootstrap must use SHA-256 rather than SHA-1.' >&2
+            exit 1
+          fi
+          if grep -RInFi 'choco install nsis' .github/workflows scripts installer; then
+            echo 'Ghosium installer tooling must not depend on the mutable Chocolatey NSIS feed.' >&2
             exit 1
           fi
 
@@ -207,17 +206,23 @@ jobs:
               raise SystemExit('Silent cleanup switches are in the unsafe NSIS order; /S must precede /CLEANUP')
           PY
 
-      - name: Verify Windows release performs real installer smoke test
+      - name: Verify source-built release performs real installer smoke test
         shell: bash
         run: |
           set -euo pipefail
-          workflow='.github/workflows/windows-build.yml'
-          grep -Fq './scripts/build-native-launcher.ps1' "$workflow"
-          grep -Fq './scripts/resolve-nsis.ps1' "$workflow"
-          grep -Fq './scripts/smoke-test-windows-installer.ps1' "$workflow"
-          grep -Fq 'Ghosium-Browser-Setup.exe' scripts/smoke-test-windows-installer.ps1
-          grep -Fq "@('/S', '/UNINSTALL')" scripts/smoke-test-windows-installer.ps1
-          grep -Fq 'UninstallString' scripts/smoke-test-windows-installer.ps1
+          workflow='.github/workflows/full-source-windows-build.yml'
+          smoke='scripts/smoke-test-source-windows-installer.ps1'
+
+          grep -Fq 'autoninja -C out/Ghosium chrome mini_installer' "$workflow"
+          grep -Fq './scripts/smoke-test-source-windows-installer.ps1' "$workflow"
+          grep -Fq 'GHOSIUM-SOURCE-INSTALLER-SMOKE.json' "$workflow"
+          grep -Fq 'Ghosium-Browser-Setup.exe' "$workflow"
+          grep -Fq "'--uninstall'" "$smoke"
+          grep -Fq "'--force-uninstall'" "$smoke"
+          grep -Fq "'--delete-profile'" "$smoke"
+          grep -Fq 'UninstallString' "$smoke"
+          grep -Fq 'registrationRemoved' "$smoke"
+          grep -Fq 'applicationDirectoryRemoved' "$smoke"
 
       - name: Verify full-source uninstall contract
         shell: bash
