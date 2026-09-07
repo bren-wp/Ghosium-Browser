@@ -187,6 +187,9 @@ $publicSurfaceRequired = @(
   'chrome/browser/resources/new_tab_page/app.html',
   'chrome/browser/ui/webui/new_tab_footer/footer_context_menu.cc',
   'chrome/browser/ui/browser_actions.cc',
+  'chrome/browser/ui/browser_command_controller.cc',
+  'chrome/browser/ui/views/toolbar/app_menu.cc',
+  'chrome/browser/ui/toolbar/app_menu_model.cc',
   'chrome/browser/signin/account_consistency_mode_manager.cc',
   'chrome/browser/ui/webui/intro/intro_ui.cc',
   'chrome/browser/resources/intro/sign_in_promo.html.ts',
@@ -236,6 +239,11 @@ if ($completePublicSurfaceSource) {
   & (Join-Path $PSScriptRoot 'rewrite-engine-profile-picker-local-only.ps1') -SourceRoot $sourceRootResolved
   if ($LASTEXITCODE -ne 0) {
     throw 'Ghosium local-only Profile Picker rewrite failed.'
+  }
+
+  & (Join-Path $PSScriptRoot 'rewrite-engine-app-menu-account-surfaces.ps1') -SourceRoot $sourceRootResolved
+  if ($LASTEXITCODE -ne 0) {
+    throw 'Ghosium local-only App Menu account rewrite failed.'
   }
 } else {
   Write-Host 'Narrow sparse engine audit detected; complete public-surface source transform is delegated to Ghosium Public Surface Contract.'
@@ -290,6 +298,11 @@ if ($completePublicSurfaceSource) {
   if ($LASTEXITCODE -ne 0) {
     throw 'Ghosium local-only Profile Picker verification failed.'
   }
+
+  & (Join-Path $PSScriptRoot 'verify-engine-app-menu-account-surfaces.ps1') -SourceRoot $sourceRootResolved
+  if ($LASTEXITCODE -ne 0) {
+    throw 'Ghosium local-only App Menu account verification failed.'
+  }
 }
 
-Write-Host 'Ghosium supported locale branding verified; public surfaces and profile creation stay Ghosium-owned/local-only while upstream account, AI, mobile and cloud profile promotions are removed or hidden.'
+Write-Host 'Ghosium supported locale branding verified; public surfaces, profile creation and App Menu stay Ghosium-owned/local-only while upstream account, Sync, AI, mobile and cloud profile promotions are removed, hidden or disabled.'
