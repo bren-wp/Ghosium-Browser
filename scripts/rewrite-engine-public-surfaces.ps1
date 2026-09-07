@@ -143,9 +143,13 @@ $forbiddenVisible = @(
 )
 foreach ($path in $publicStringFiles) {
   $text = [IO.File]::ReadAllText($path)
-  foreach ($legacy in $forbiddenVisible) {
-    if ($text.Contains($legacy)) {
-      throw "Legacy public browser branding remains in ${path}: $legacy"
+  $messages = [regex]::Matches($text, '(?s)<message\b[^>]*>(.*?)</message>')
+  foreach ($message in $messages) {
+    $visible = [System.Net.WebUtility]::HtmlDecode([regex]::Replace($message.Groups[1].Value, '<[^>]+>', ''))
+    foreach ($legacy in $forbiddenVisible) {
+      if ($visible.Contains($legacy)) {
+        throw "Legacy public browser branding remains visible in ${path}: $legacy"
+      }
     }
   }
 }
