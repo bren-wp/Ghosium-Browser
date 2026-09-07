@@ -19,6 +19,9 @@ if ($LASTEXITCODE -ne 0 -or $actualCommit -ne $expectedCommit) {
 if ([string]$config.internalUi.scheme -ne 'ghost') {
   throw 'engine/branding/product.json must define internalUi.scheme as ghost.'
 }
+if ([string]$config.internalUi.untrustedScheme -ne 'ghost-untrusted') {
+  throw 'engine/branding/product.json must define internalUi.untrustedScheme as ghost-untrusted.'
+}
 
 function Replace-RequiredLiteral {
   param(
@@ -41,6 +44,14 @@ function Replace-RequiredLiteral {
   }
 }
 
+function Get-RelativeSourcePath {
+  param([Parameter(Mandatory = $true)][string]$FullName)
+
+  $relative = $FullName.Substring($sourceRootResolved.Length)
+  $relative = $relative.TrimStart([char[]]@('\', '/'))
+  return ($relative -replace '\\', '/')
+}
+
 $contentUrlConstants = Join-Path $sourceRootResolved 'content/public/common/url_constants.h'
 $webUiConstants = Join-Path $sourceRootResolved 'chrome/common/webui_url_constants.h'
 $aboutHandler = Join-Path $sourceRootResolved 'chrome/browser/browser_about_handler.cc'
@@ -56,15 +67,15 @@ foreach ($required in @($contentUrlConstants, $webUiConstants, $aboutHandler)) {
 # user-facing product branding.
 Replace-RequiredLiteral `
   -Path $contentUrlConstants `
-  -OldValue 'inline constexpr char kChromeUIScheme[] = "chrome"; // Used for WebUIs.' `
-  -NewValue 'inline constexpr char kChromeUIScheme[] = "ghost"; // Used for Ghosium WebUIs.'
+  -OldValue 'inline constexpr char kChromeUIScheme[] = "chrome";' `
+  -NewValue 'inline constexpr char kChromeUIScheme[] = "ghost";'
 Replace-RequiredLiteral `
   -Path $contentUrlConstants `
   -OldValue 'inline constexpr char kChromeUIUntrustedScheme[] = "chrome-untrusted";' `
   -NewValue 'inline constexpr char kChromeUIUntrustedScheme[] = "ghost-untrusted";'
 
 # Rewrite literal WebUI URLs used by production browser resources. This must be
-# broad enough that ghost:// pages do not depend on stale chrome://resource URLs
+# broad enough that ghost:// pages do not depend on stale legacy resource URLs
 # after the canonical scheme changes. Tests, tooling and third_party are not
 # production runtime inputs and are deliberately excluded.
 $runtimeRoots = @('chrome', 'components', 'content', 'extensions', 'ui')
@@ -81,7 +92,7 @@ foreach ($root in $runtimeRoots) {
   }
 
   foreach ($file in Get-ChildItem -Path $absoluteRoot -Recurse -File -ErrorAction Stop) {
-    $relative = $file.FullName.Substring($sourceRootResolved.Length).TrimStart('\', '/') -replace '\\', '/'
+    $relative = Get-RelativeSourcePath -FullName $file.FullName
     if ($relative -match '(^|/)(test|tests|testing|tools|third_party)(/|$)') {
       continue
     }
@@ -156,7 +167,7 @@ foreach ($route in $requiredNativeRoutes) {
 foreach ($root in $runtimeRoots) {
   $absoluteRoot = Join-Path $sourceRootResolved $root
   foreach ($file in Get-ChildItem -Path $absoluteRoot -Recurse -File -ErrorAction Stop) {
-    $relative = $file.FullName.Substring($sourceRootResolved.Length).TrimStart('\', '/') -replace '\\', '/'
+    $relative = Get-RelativeSourcePath -FullName $file.FullName
     if ($relative -match '(^|/)(test|tests|testing|tools|third_party)(/|$)') {
       continue
     }
