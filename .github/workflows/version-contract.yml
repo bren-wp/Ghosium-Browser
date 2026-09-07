@@ -1,0 +1,154 @@
+name: Ghosium Version and Release Contract
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  version-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Verify product version synchronization and progression
+        shell: python
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          import json
+          import os
+          import re
+          import subprocess
+          from pathlib import Path
+
+          version = Path('VERSION').read_text(encoding='utf-8').strip()
+          if not re.fullmatch(r'0\.[1-9]\d*\.\d+', version):
+              raise SystemExit(f'Invalid Ghosium product VERSION: {version!r}')
+
+          for path in (Path('extension/manifest.json'), Path('search-provider/manifest.json')):
+              data = json.loads(path.read_text(encoding='utf-8'))
+              if data.get('version') != version:
+                  raise SystemExit(f'{path}: {data.get("version")!r} != VERSION {version}')
+              if data.get('manifest_version') != 3:
+                  raise SystemExit(f'{path}: bundled browser components must remain Manifest V3')
+
+          catalog = json.loads(Path('store-web/storage/data/extensions.json').read_text(encoding='utf-8'))
+          for item in catalog.get('extensions', []):
+              if item.get('status') == 'built_in' and item.get('version') != version:
+                  raise SystemExit(
+                      f'Store metadata mismatch for {item.get("id")}: '
+                      f'{item.get("version")!r} != {version}'
+                  )
+
+          if os.environ.get('EVENT_NAME') == 'pull_request':
+              base_ref = os.environ.get('BASE_REF') or 'main'
+              base_version = subprocess.check_output(
+                  ['git', 'show', f'origin/{base_ref}:VERSION'],
+                  text=True,
+              ).strip()
+
+              if version == base_version:
+                  raise SystemExit(
+                      'Every merged production change requires a new Ghosium VERSION; '
+                      f'PR still uses base version {version}.'
+                  )
+
+              # One intentional reset is allowed when migrating from the old v0.8.0
+              # development line to the new ghosium-v0.1.0 product namespace.
+              migration_reset = base_version == '0.8.0' and version == '0.1.0'
+              if not migration_reset:
+                  current = tuple(map(int, version.split('.')))
+                  previous = tuple(map(int, base_version.split('.')))
+                  if current <= previous:
+                      raise SystemExit(
+                          f'Ghosium VERSION must advance from {base_version}; got {version}.'
+                      )
+
+          print(f'Ghosium product version contract OK: {version}')
+
+      - name: Verify source-built-only release architecture
+        shell: python
+        run: |
+          from pathlib import Path
+
+          workflows = Path('.github/workflows')
+          legacy = workflows / 'windows-build.yml'
+          if legacy.exists():
+              raise SystemExit('Legacy snapshot-based stable release workflow must not return.')
+
+          forbidden = (
+              'storage.googleapis.com/chromium-browser-snapshots',
+              'chrome-win.zip',
+          )
+          for path in sorted(workflows.glob('*.y*ml')):
+              text = path.read_text(encoding='utf-8')
+              for value in forbidden:
+                  if value in text:
+                      raise SystemExit(
+                          f'Production workflow {path} references precompiled snapshot input: {value}'
+                      )
+
+          release_workflow = workflows / 'full-source-windows-build.yml'
+          text = release_workflow.read_text(encoding='utf-8')
+          required = (
+              'ghosium-v',
+              'GHOSIUM-SOURCE-BUILD.json',
+              'GHOSIUM-SOURCE-INSTALLER-SMOKE.json',
+              'SHA256SUMS.txt',
+              'Release $GHOSIUM_TAG already exists',
+              'refusing to overwrite it',
+              'autoninja -C out/Ghosium chrome mini_installer',
+              '-RunRuntimeSmoke',
+          )
+          for value in required:
+              if value not in text:
+                  raise SystemExit(f'Full-source release invariant missing: {value}')
+
+          legacy_tag_fragments = (
+              'tag="v$GHOSIUM_VERSION"',
+              'tag="v$version"',
+              'gh release create "v$',
+          )
+          for path in sorted(workflows.glob('*.y*ml')):
+              text = path.read_text(encoding='utf-8')
+              for value in legacy_tag_fragments:
+                  if value in text:
+                      raise SystemExit(
+                          f'Legacy v0.x.y release namespace returned in {path}: {value}'
+                      )
+
+          print('Ghosium source-built release architecture: OK')
+
+      - name: Verify immutable action references
+        shell: python
+        run: |
+          import re
+          from pathlib import Path
+
+          action = re.compile(r'^\s*uses:\s*([^\s#]+)', re.MULTILINE)
+          immutable = re.compile(r'^[^@]+@[0-9a-f]{40}$')
+
+          for path in sorted(Path('.github/workflows').glob('*.y*ml')):
+              text = path.read_text(encoding='utf-8')
+              for match in action.finditer(text):
+                  reference = match.group(1)
+                  if reference.startswith('./'):
+                      continue
+                  if not immutable.fullmatch(reference):
+                      raise SystemExit(f'Mutable GitHub Action reference in {path}: {reference}')
+
+          print('Immutable GitHub Action references: OK')
