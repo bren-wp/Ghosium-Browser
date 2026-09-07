@@ -105,9 +105,4 @@ if ($thirdPartyChanges) {
   throw 'Windows identity rewrite modified third_party sources; refusing to continue.'
 }
 
-& (Join-Path $PSScriptRoot 'rewrite-engine-internal-scheme.ps1') -SourceRoot $sourceRootResolved
-if ($LASTEXITCODE -ne 0) {
-  throw 'Ghosium ghost:// internal UI routing failed.'
-}
-
-Write-Host 'Ghosium Windows install identity and ghost:// internal UI routing: OK'
+Write-Host 'Ghosium Windows install identity: OK'
