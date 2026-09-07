@@ -6,7 +6,10 @@ param(
   [string]$Version,
 
   [Parameter(Mandatory = $false)]
-  [string]$OutputPath
+  [string]$OutputPath,
+
+  [Parameter(Mandatory = $false)]
+  [switch]$RequireAuthenticode
 )
 
 $ErrorActionPreference = 'Stop'
@@ -33,6 +36,33 @@ if ($setupItem.Name -ne 'Ghosium-Browser-Setup.exe') {
 }
 if ($setupItem.Length -le 0 -or $setupItem.Length -gt 536870912) {
   throw "Update package size is outside the allowed range: $($setupItem.Length) bytes."
+}
+
+$versionInfo = $setupItem.VersionInfo
+if ([string]$versionInfo.ProductName -ne 'Ghosium Browser') {
+  throw "Update Setup ProductName must be Ghosium Browser; found '$($versionInfo.ProductName)'."
+}
+if ([string]$versionInfo.CompanyName -ne 'Brendigo') {
+  throw "Update Setup CompanyName must be Brendigo; found '$($versionInfo.CompanyName)'."
+}
+if ([string]$versionInfo.ProductVersion -notlike "$Version*") {
+  throw "Update Setup ProductVersion '$($versionInfo.ProductVersion)' does not match release version '$Version'."
+}
+
+$signature = Get-AuthenticodeSignature $resolvedSetup
+$signerSubject = if ($signature.SignerCertificate) {
+  [string]$signature.SignerCertificate.Subject
+} else {
+  ''
+}
+if ($RequireAuthenticode) {
+  if ($signature.Status -ne [System.Management.Automation.SignatureStatus]::Valid -or
+      !$signature.SignerCertificate) {
+    throw "Production update manifest requires a Valid Authenticode Ghosium Setup signature; status='$($signature.Status)'."
+  }
+  if ([string]::IsNullOrWhiteSpace($signerSubject)) {
+    throw 'Production update manifest requires a non-empty Authenticode publisher subject.'
+  }
 }
 
 $sha256 = (Get-FileHash $resolvedSetup -Algorithm SHA256).Hash.ToLowerInvariant()
@@ -73,3 +103,6 @@ if ($verify.schema -ne 1 -or !$verify.enabled -or
 }
 
 Write-Host "Generated stable Ghosium update manifest for $Version ($($setupItem.Length) bytes, SHA-256 $sha256)."
+if ($RequireAuthenticode) {
+  Write-Host "Verified update publisher: $signerSubject"
+}
