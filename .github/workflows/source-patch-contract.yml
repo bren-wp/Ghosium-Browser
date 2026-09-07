@@ -170,8 +170,8 @@ jobs:
           pwsh -NoLogo -NoProfile -File ./scripts/rewrite-engine-legal-payload.ps1 -SourceRoot "$src"
 
           git -C "$src" diff --check
-          test "$(grep -Fc '"'"'$root_out_dir/GHOSIUM-LICENSE.txt'"'"',' "$src/chrome/installer/mini_installer/BUILD.gn")" -eq 1
-          test "$(grep -Fc '"'"'$root_out_dir/THIRD_PARTY_NOTICES.md'"'"',' "$src/chrome/installer/mini_installer/BUILD.gn")" -eq 1
+          test "$(grep -Fc '$root_out_dir/GHOSIUM-LICENSE.txt' "$src/chrome/installer/mini_installer/BUILD.gn")" -eq 1
+          test "$(grep -Fc '$root_out_dir/THIRD_PARTY_NOTICES.md' "$src/chrome/installer/mini_installer/BUILD.gn")" -eq 1
           test "$(grep -Fc 'GHOSIUM-LICENSE.txt: %(ChromeDir)s\' "$src/chrome/installer/mini_installer/chrome.release")" -eq 1
           test "$(grep -Fc 'THIRD_PARTY_NOTICES.md: %(ChromeDir)s\' "$src/chrome/installer/mini_installer/chrome.release")" -eq 1
 
