@@ -204,6 +204,13 @@ if ($LASTEXITCODE -ne 0) {
   throw 'Ghosium Windows install identity integration failed.'
 }
 
+# Keep the public Ghosium product version independent from the pinned engine
+# compatibility version. About/Version surfaces use the repository VERSION.
+& (Join-Path $PSScriptRoot 'rewrite-engine-product-version.ps1') -SourceRoot $sourceRootResolved
+if ($LASTEXITCODE -ne 0) {
+  throw 'Ghosium product-version integration failed.'
+}
+
 # Replace product logos used by current-channel-logo, Windows resources, shared
 # dark-mode WebUI, tiles, app shortcuts and vector icon consumers.
 $brandSvg = Join-Path $repoRoot 'engine/branding/ghosium-mark.svg'
@@ -261,4 +268,4 @@ if ($LASTEXITCODE -ne 0) {
   throw 'Ghosium full-source verification failed after branding.'
 }
 
-Write-Host 'Source-level Ghosium branding, Search, Windows identity, first-party links, locales, product icons and ghost:// internal UI routing applied and verified successfully.'
+Write-Host 'Source-level Ghosium branding, product version, Search, Windows identity, first-party links, locales, product icons and ghost:// internal UI routing applied and verified successfully.'

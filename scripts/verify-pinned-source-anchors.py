@@ -84,6 +84,54 @@ FILE_ANCHORS: dict[str, tuple[str, ...]] = {
         '.pdf_prog_id_prefix = L"ChromiumPDF",',
         'L"Chromium PDF Document",',
     ),
+    "chrome/BUILD.gn": (
+        '$root_out_dir/initialexe/chrome.exe',
+        '$root_out_dir/initialexe/chrome.exe.pdb',
+        '$root_out_dir/chrome.exe',
+        '$root_out_dir/chrome.exe.pdb',
+        '_chrome_output_name = "initialexe/chrome"',
+    ),
+    "build/win/reorder-imports.py": (
+        "os.path.join(input_dir, 'chrome.exe')",
+        "os.path.join(output_dir, 'chrome.exe')",
+        "os.path.join(input_dir, 'chrome.exe.*')",
+    ),
+    "chrome/app/chrome_exe.ver": (
+        "INTERNAL_NAME=chrome_exe",
+        "ORIGINAL_FILENAME=chrome.exe",
+    ),
+    "chrome/installer/mini_installer/BUILD.gn": (
+        '"$root_out_dir/chrome.exe",',
+        'release_file = "chrome.release"',
+    ),
+    "chrome/installer/mini_installer/chrome.release": (
+        "chrome.exe: %(ChromeDir)s\\",
+        "chrome_proxy.exe: %(ChromeDir)s\\",
+    ),
+    "chrome/installer/setup/setup_constants.cc": (
+        'kVisualElementsManifest[] = L"chrome.VisualElementsManifest.xml"',
+    ),
+    "chrome/installer/launcher_support/chrome_launcher_support.cc": (
+        'kInstallationRegKey[] = L"Software\\\\Chromium"',
+        'kChromeExe[] = L"chrome.exe"',
+    ),
+    "chrome/chrome_proxy/BUILD.gn": (
+        'executable("chrome_proxy") {',
+    ),
+    "chrome/chrome_proxy/chrome_proxy.ver": (
+        "INTERNAL_NAME=chrome_proxy",
+        "ORIGINAL_FILENAME=chrome_proxy.exe",
+    ),
+    "chrome/chrome_proxy/chrome_proxy_main_win.cc": (
+        'FILE_PATH_LITERAL("chrome.exe")',
+        'FILE_PATH_LITERAL("chrome_proxy.exe")',
+    ),
+    "chrome/browser/ui/webui/version/version_ui.cc": (
+        '#include "chrome/common/url_constants.h"',
+        'html_source->AddString(version_ui::kVersion,',
+        'version_info::GetVersionNumber());',
+        'base::UTF8ToUTF16(version_info::GetVersionNumber()),',
+    ),
     "chrome/browser/ui/webui/side_panel/customize_chrome/customize_chrome_page_handler.cc": (
         'GURL("https://chromewebstore.google.com/category/themes")',
     ),
@@ -118,6 +166,12 @@ FILE_ANCHORS: dict[str, tuple[str, ...]] = {
         "installer::kUninstallArgumentsField",
     ),
     "chrome/installer/util/util_constants.h": (
+        'kChromeExe[] = L"chrome.exe"',
+        'kChromeNewExe[] = L"new_chrome.exe"',
+        'kChromeOldExe[] = L"old_chrome.exe"',
+        'kChromeProxyExe[] = L"chrome_proxy.exe"',
+        'kChromeProxyNewExe[] = L"new_chrome_proxy.exe"',
+        'kChromeProxyOldExe[] = L"old_chrome_proxy.exe"',
         'kSetupExe[] = L"setup.exe"',
         'kUninstallStringField[] = L"UninstallString"',
         'kUninstallArgumentsField[] = L"UninstallArguments"',

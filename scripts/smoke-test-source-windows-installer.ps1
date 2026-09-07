@@ -13,6 +13,22 @@ if ([System.Environment]::OSVersion.Platform -ne [System.PlatformID]::Win32NT) {
   throw 'The Ghosium source-built installer smoke test must run on Windows.'
 }
 
+$repoRoot = Split-Path -Parent $PSScriptRoot
+$productLicense = Join-Path $repoRoot 'LICENSE'
+$thirdPartyNotices = Join-Path $repoRoot 'THIRD_PARTY_NOTICES.md'
+foreach ($requiredLegal in @($productLicense, $thirdPartyNotices)) {
+  if (!(Test-Path $requiredLegal -PathType Leaf)) {
+    throw "Source-installer smoke is missing canonical repository legal input: $requiredLegal"
+  }
+}
+$expectedLicenseSha256 = (Get-FileHash $productLicense -Algorithm SHA256).Hash.ToLowerInvariant()
+$expectedNoticesSha256 = (Get-FileHash $thirdPartyNotices -Algorithm SHA256).Hash.ToLowerInvariant()
+$canonicalLicenseText = Get-Content $productLicense -Raw
+if (!$canonicalLicenseText.Contains('Proprietary Commercial Software License Agreement') -or
+    !$canonicalLicenseText.Contains('Open-source components remain governed by their respective licenses.')) {
+  throw 'Canonical Ghosium product license does not satisfy the source-installer legal contract.'
+}
+
 $miniInstaller = (Resolve-Path $MiniInstallerPath).Path
 $localAppData = [Environment]::GetFolderPath([Environment+SpecialFolder]::LocalApplicationData)
 if (!$localAppData) {
@@ -30,6 +46,9 @@ $runtimeStderr = Join-Path $smokeRoot 'runtime.stderr.txt'
 $installLog = Join-Path $smokeRoot 'install.log'
 $uninstallLog = Join-Path $smokeRoot 'uninstall.log'
 $pathTrimCharacters = [char[]]@('\', '/')
+$expectedBrowserExecutable = 'Ghosium-Browser.exe'
+$installedLicensePath = Join-Path $installRoot 'GHOSIUM-LICENSE.txt'
+$installedNoticesPath = Join-Path $installRoot 'THIRD_PARTY_NOTICES.md'
 
 New-Item -ItemType Directory -Force -Path $smokeRoot | Out-Null
 
@@ -146,15 +165,19 @@ $installExitCode = $null
 $uninstallExitCode = $null
 $runtimeExitCode = $null
 $runtimeSmokePassed = $false
-$installedChromeVersion = $null
+$installedBrowserVersion = $null
+$installedBrowserExecutableName = $null
+$installedLicenseSha256 = $null
+$installedNoticesSha256 = $null
+$installedLegalPayloadVerified = $false
 $uninstallRegistryKey = $null
 $cleanupAttempted = $false
 $completed = $false
 
 try {
-  # Chromium mini_installer forwards these switches to setup.exe. Keep this a
-  # per-user install so the smoke does not require elevation on the dedicated
-  # self-hosted builder. Prevent any first-install browser launch.
+  # The upstream mini-installer machinery remains a technical build dependency.
+  # Keep this a per-user install so the smoke does not require elevation on the
+  # dedicated self-hosted builder. Prevent any first-install browser launch.
   $installArguments = @(
     '--verbose-logging',
     '--do-not-launch-chrome',
@@ -175,22 +198,64 @@ try {
     throw "Source-built installer did not create the expected Ghosium application directory: $installRoot`n$(Get-LogTail -Path $installLog)"
   }
 
-  $chromeCandidates = @(Get-ChildItem $installRoot -Recurse -File -Filter 'chrome.exe' -ErrorAction SilentlyContinue)
-  if ($chromeCandidates.Count -lt 1) {
-    throw "Installed source-built Ghosium chrome.exe was not found under $installRoot"
+  # Public binary identity is a release invariant. A build that still installs
+  # chrome.exe may be useful for source-patch testing, but it is not releasable
+  # as Ghosium 0.1.0.
+  $browserCandidates = @(
+    Get-ChildItem $installRoot -Recurse -File -Filter $expectedBrowserExecutable -ErrorAction SilentlyContinue
+  )
+  if ($browserCandidates.Count -ne 1) {
+    $legacyChrome = @(
+      Get-ChildItem $installRoot -Recurse -File -Filter 'chrome.exe' -ErrorAction SilentlyContinue
+    )
+    $legacyHint = if ($legacyChrome.Count -gt 0) {
+      " Found $($legacyChrome.Count) legacy chrome.exe binary/binaries instead."
+    } else {
+      ''
+    }
+    throw "Installed source-built Ghosium executable identity is incomplete: expected exactly one $expectedBrowserExecutable under $installRoot; found $($browserCandidates.Count).$legacyHint"
   }
-  $installedChrome = $chromeCandidates | Sort-Object FullName | Select-Object -First 1
-  $chromeInfo = $installedChrome.VersionInfo
-  if ([string]$chromeInfo.ProductName -ne 'Ghosium Browser') {
-    throw "Installed chrome.exe ProductName mismatch: '$($chromeInfo.ProductName)'"
+
+  $installedBrowser = $browserCandidates[0]
+  $installedBrowserExecutableName = $installedBrowser.Name
+  if ($installedBrowserExecutableName -cne $expectedBrowserExecutable) {
+    throw "Installed browser executable name mismatch: '$installedBrowserExecutableName'"
   }
-  if ([string]$chromeInfo.CompanyName -ne 'Brendigo') {
-    throw "Installed chrome.exe CompanyName mismatch: '$($chromeInfo.CompanyName)'"
+
+  $browserInfo = $installedBrowser.VersionInfo
+  if ([string]$browserInfo.ProductName -ne 'Ghosium Browser') {
+    throw "Installed $expectedBrowserExecutable ProductName mismatch: '$($browserInfo.ProductName)'"
   }
-  if (!$chromeInfo.ProductVersion) {
-    throw 'Installed chrome.exe ProductVersion is empty.'
+  if ([string]$browserInfo.CompanyName -ne 'Brendigo') {
+    throw "Installed $expectedBrowserExecutable CompanyName mismatch: '$($browserInfo.CompanyName)'"
   }
-  $installedChromeVersion = [string]$chromeInfo.ProductVersion
+  if (!$browserInfo.ProductVersion) {
+    throw "Installed $expectedBrowserExecutable ProductVersion is empty."
+  }
+  $installedBrowserVersion = [string]$browserInfo.ProductVersion
+
+  # Legal material must be part of the actual installed application, not only
+  # a detached GitHub release attachment. Require byte-identical copies of the
+  # reviewed repository license and third-party notices.
+  foreach ($installedLegal in @($installedLicensePath, $installedNoticesPath)) {
+    if (!(Test-Path $installedLegal -PathType Leaf)) {
+      throw "Installed Ghosium legal payload is missing: $installedLegal"
+    }
+  }
+  $installedLicenseSha256 = (Get-FileHash $installedLicensePath -Algorithm SHA256).Hash.ToLowerInvariant()
+  $installedNoticesSha256 = (Get-FileHash $installedNoticesPath -Algorithm SHA256).Hash.ToLowerInvariant()
+  if ($installedLicenseSha256 -ne $expectedLicenseSha256) {
+    throw 'Installed GHOSIUM-LICENSE.txt does not match repository LICENSE.'
+  }
+  if ($installedNoticesSha256 -ne $expectedNoticesSha256) {
+    throw 'Installed THIRD_PARTY_NOTICES.md does not match repository notices.'
+  }
+  $installedLicenseText = Get-Content $installedLicensePath -Raw
+  if (!$installedLicenseText.Contains('Proprietary Commercial Software License Agreement') -or
+      !$installedLicenseText.Contains('Open-source components remain governed by their respective licenses.')) {
+    throw 'Installed Ghosium license lost the proprietary-product or third-party-rights contract.'
+  }
+  $installedLegalPayloadVerified = $true
 
   $entries = @(Get-GhosiumUninstallEntries)
   if ($entries.Count -ne 1) {
@@ -227,7 +292,7 @@ try {
 
   # Exercise the installed layout, not the loose build-tree executable. This
   # catches missing DLL/resource/install-layout problems that a pre-install
-  # chrome.exe smoke cannot detect.
+  # runtime smoke cannot detect.
   $runtimeArguments = @(
     '--headless=new',
     '--disable-gpu',
@@ -239,7 +304,7 @@ try {
     'data:text/html,<html><body>ghosium-source-installed-runtime-ok</body></html>'
   )
   $runtime = Start-ProcessWithTimeout `
-    -FilePath $installedChrome.FullName `
+    -FilePath $installedBrowser.FullName `
     -ArgumentList $runtimeArguments `
     -TimeoutSeconds 60 `
     -Description 'Installed source-built Ghosium runtime smoke' `
@@ -280,6 +345,9 @@ try {
   if (Test-Path $defaultUserDataRoot) {
     throw "Default Ghosium user-data directory remains after --delete-profile uninstall: $defaultUserDataRoot"
   }
+  if ((Test-Path $installedLicensePath -PathType Leaf) -or (Test-Path $installedNoticesPath -PathType Leaf)) {
+    throw 'Installed Ghosium legal payload remains after application uninstall.'
+  }
 
   if (!$ReportPath) {
     $ReportPath = Join-Path (Get-Location).Path 'GHOSIUM-SOURCE-INSTALLER-SMOKE.json'
@@ -292,14 +360,26 @@ try {
   }
 
   [ordered]@{
-    schemaVersion = 1
+    schemaVersion = 3
     product = 'Ghosium Browser'
     architecture = 'windows-x64'
     installMode = 'per-user'
     miniInstallerSha256 = (Get-FileHash $miniInstaller -Algorithm SHA256).Hash.ToLowerInvariant()
-    installedChromeProductVersion = $installedChromeVersion
-    installedChromeProductName = 'Ghosium Browser'
+    installedBrowserExecutableName = $installedBrowserExecutableName
+    publicExecutableIdentityComplete = $installedBrowserExecutableName -ceq $expectedBrowserExecutable
+    installedBrowserProductVersion = $installedBrowserVersion
+    installedBrowserProductName = 'Ghosium Browser'
     publisher = 'Brendigo'
+    legalPayload = [ordered]@{
+      installed = $installedLegalPayloadVerified
+      productLicense = 'Brendigo Proprietary Commercial Software License Agreement'
+      agreementVersion = '1.0'
+      licenseSha256 = $installedLicenseSha256
+      thirdPartyNoticesSha256 = $installedNoticesSha256
+      matchesRepository = ($installedLicenseSha256 -eq $expectedLicenseSha256 -and $installedNoticesSha256 -eq $expectedNoticesSha256)
+      removedWithApplication = (!(Test-Path $installedLicensePath) -and !(Test-Path $installedNoticesPath))
+      thirdPartyLicensesPreserved = $true
+    }
     uninstallRegistryKey = $uninstallRegistryKey
     installExitCode = $installExitCode
     installedRuntimeSmoke = [ordered]@{
@@ -321,11 +401,13 @@ try {
     }
     repositoryCommit = if ($env:GITHUB_SHA) { $env:GITHUB_SHA } else { $null }
     verifiedUtc = [DateTime]::UtcNow.ToString('o')
-  } | ConvertTo-Json -Depth 5 | Set-Content $ReportPath -Encoding utf8
+  } | ConvertTo-Json -Depth 6 | Set-Content $ReportPath -Encoding utf8
 
   $completed = $true
-  Write-Host 'Source-built Ghosium mini_installer -> installed runtime -> registered setup.exe uninstall smoke test: OK'
-  Write-Host "Installed engine version: $installedChromeVersion"
+  Write-Host 'Source-built Ghosium mini_installer -> installed Ghosium runtime/legal payload -> registered setup.exe uninstall smoke test: OK'
+  Write-Host "Installed Ghosium executable: $installedBrowserExecutableName"
+  Write-Host "Installed browser file version: $installedBrowserVersion"
+  Write-Host 'Installed legal payload: repository-identical Ghosium license + third-party notices'
   Write-Host "Installer smoke provenance: $ReportPath"
 }
 finally {

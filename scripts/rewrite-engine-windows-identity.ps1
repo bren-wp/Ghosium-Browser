@@ -97,6 +97,14 @@ if (!$verify.Contains('kSafeBrowsingName[] = "chromium"')) {
   throw 'Safe Browsing client identity changed unexpectedly; review security integration before proceeding.'
 }
 
+# Windows executable and installed-shell identity is a coordinated extension of
+# the install-mode contract. Keep it in the same mandatory source transformation
+# so full-source builds cannot accidentally skip the public .exe rename.
+& (Join-Path $PSScriptRoot 'rewrite-engine-windows-executable.ps1') -SourceRoot $sourceRootResolved
+if ($LASTEXITCODE -ne 0) {
+  throw 'Ghosium Windows executable identity integration failed.'
+}
+
 $thirdPartyChanges = & git -C $sourceRootResolved status --porcelain=v1 -- third_party
 if ($LASTEXITCODE -ne 0) {
   throw 'Unable to verify third_party source state after Windows identity rewrite.'
@@ -105,4 +113,4 @@ if ($thirdPartyChanges) {
   throw 'Windows identity rewrite modified third_party sources; refusing to continue.'
 }
 
-Write-Host 'Ghosium Windows install identity: OK'
+Write-Host 'Ghosium Windows install, registry and executable identity: OK'

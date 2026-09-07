@@ -1,0 +1,97 @@
+name: Ghosium Performance Baseline
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'VERSION'
+      - 'scripts/benchmark-ghosium-windows.ps1'
+      - '.github/workflows/performance-baseline.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  baseline-v0-8-0:
+    name: Benchmark pre-0.1.0 public baseline
+    runs-on: windows-2025
+    timeout-minutes: 25
+
+    steps:
+      - name: Checkout benchmark harness
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Download immutable historical baseline release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          New-Item -ItemType Directory -Force -Path baseline, artifacts | Out-Null
+          gh release download v0.8.0 `
+            --repo $env:GITHUB_REPOSITORY `
+            --pattern 'Ghosium-Browser-Setup.exe' `
+            --dir baseline
+          if ($LASTEXITCODE -ne 0 -or !(Test-Path 'baseline/Ghosium-Browser-Setup.exe' -PathType Leaf)) {
+            throw 'Unable to download the historical v0.8.0 baseline Setup artifact.'
+          }
+          $hash = (Get-FileHash 'baseline/Ghosium-Browser-Setup.exe' -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($hash -ne '45815ec06c1e63954a29793cac756d6f91af44edaff569159c23fb9f1b8e6e50') {
+            throw "Historical baseline Setup hash mismatch: $hash"
+          }
+
+      - name: Install historical baseline
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $setup = (Resolve-Path 'baseline/Ghosium-Browser-Setup.exe').Path
+          $process = Start-Process -FilePath $setup -ArgumentList '/S' -Wait -PassThru
+          if ($process.ExitCode -ne 0) {
+            throw "Historical baseline installation failed with exit code $($process.ExitCode)"
+          }
+          $browser = Join-Path $env:LOCALAPPDATA 'Programs\Ghosium Browser\Ghosium-Browser.exe'
+          if (!(Test-Path $browser -PathType Leaf)) {
+            throw "Historical baseline browser executable was not installed: $browser"
+          }
+
+      - name: Measure cold/warm startup, RAM, CPU, processes and I/O
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $browser = Join-Path $env:LOCALAPPDATA 'Programs\Ghosium Browser\Ghosium-Browser.exe'
+          ./scripts/benchmark-ghosium-windows.ps1 `
+            -BrowserPath $browser `
+            -OutputPath 'artifacts/PERFORMANCE-BASELINE-v0.8.0.json' `
+            -IdleSeconds 60 `
+            -StartupTimeoutSeconds 30
+
+      - name: Uninstall historical baseline
+        if: always()
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Continue'
+          Get-Process -ErrorAction SilentlyContinue | Where-Object {
+            $_.ProcessName -in @('Ghosium-Browser', 'Ghosium-Engine')
+          } | Stop-Process -Force -ErrorAction SilentlyContinue
+
+          $installedSetup = Join-Path $env:LOCALAPPDATA 'Programs\Ghosium Browser\Installer\Ghosium-Browser-Setup.exe'
+          if (Test-Path $installedSetup -PathType Leaf) {
+            $process = Start-Process -FilePath $installedSetup -ArgumentList '/S', '/UNINSTALL' -Wait -PassThru
+            if ($process.ExitCode -ne 0) {
+              Write-Warning "Baseline uninstall returned exit code $($process.ExitCode)"
+            }
+          }
+
+      - name: Upload baseline benchmark
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: ghosium-performance-baseline-v0.8.0
+          path: artifacts/
+          if-no-files-found: warn
+          retention-days: 30

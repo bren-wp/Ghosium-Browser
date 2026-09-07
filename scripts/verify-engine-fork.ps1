@@ -8,6 +8,7 @@ Set-StrictMode -Version Latest
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $configPath = Join-Path $repoRoot 'engine/branding/product.json'
+$productVersionPath = Join-Path $repoRoot 'VERSION'
 $sourceRevisionPath = Join-Path $repoRoot 'ENGINE_SOURCE_REVISION'
 $snapshotRevisionPath = Join-Path $repoRoot 'ENGINE_REVISION'
 $thirdPartyNoticesPath = Join-Path $repoRoot 'THIRD_PARTY_NOTICES.md'
@@ -18,10 +19,12 @@ $productRefreshVectorPath = Join-Path $repoRoot 'engine/branding/vector/product_
 $assetGeneratorPath = Join-Path $repoRoot 'scripts/generate-engine-brand-assets.py'
 $defaultSearchRewritePath = Join-Path $repoRoot 'scripts/rewrite-engine-default-search.ps1'
 $windowsIdentityRewritePath = Join-Path $repoRoot 'scripts/rewrite-engine-windows-identity.ps1'
+$productVersionRewritePath = Join-Path $repoRoot 'scripts/rewrite-engine-product-version.ps1'
 $internalSchemeRewritePath = Join-Path $repoRoot 'scripts/rewrite-engine-internal-scheme.ps1'
 
 foreach ($required in @(
   $configPath,
+  $productVersionPath,
   $sourceRevisionPath,
   $snapshotRevisionPath,
   $thirdPartyNoticesPath,
@@ -32,6 +35,7 @@ foreach ($required in @(
   $assetGeneratorPath,
   $defaultSearchRewritePath,
   $windowsIdentityRewritePath,
+  $productVersionRewritePath,
   $internalSchemeRewritePath
 )) {
   if (!(Test-Path $required -PathType Leaf)) {
@@ -40,9 +44,13 @@ foreach ($required in @(
 }
 
 $config = Get-Content $configPath -Raw | ConvertFrom-Json
+$productVersion = (Get-Content $productVersionPath -Raw).Trim()
 $sourceRevision = (Get-Content $sourceRevisionPath -Raw).Trim()
 $snapshotRevision = (Get-Content $snapshotRevisionPath -Raw).Trim()
 
+if ($productVersion -notmatch '^0\.[1-9]\d*\.\d+$') {
+  throw "Ghosium VERSION must use the 0.x.y product line; found '$productVersion'."
+}
 if ($sourceRevision -notmatch '^[0-9a-f]{40}$') {
   throw 'ENGINE_SOURCE_REVISION must be a pinned 40-character lowercase Git commit.'
 }
@@ -199,8 +207,10 @@ if ($SourceRoot) {
     'chrome/app/settings_chromium_strings.grdp',
     'chrome/common/url_constants.h',
     'chrome/common/webui_url_constants.h',
+    'chrome/common/ghosium_product_version.h',
     'content/public/common/url_constants.h',
     'chrome/browser/browser_about_handler.cc',
+    'chrome/browser/ui/webui/version/version_ui.cc',
     'chrome/app/theme/chromium/BRANDING',
     'chrome/app/theme/chromium/product_logo.svg',
     'chrome/install_static/chromium_install_modes.h',
@@ -241,6 +251,25 @@ if ($SourceRoot) {
   }
   if (!$settingsStrings.Contains('Ghosium Support')) {
     throw 'Settings help surface is not routed as Ghosium Support.'
+  }
+
+  $versionHeader = Get-Content (Join-Path $resolvedSourceRoot 'chrome/common/ghosium_product_version.h') -Raw
+  if (!$versionHeader.Contains("kProductVersion[] = `"$productVersion`"")) {
+    throw "Generated Ghosium product version header does not match VERSION $productVersion."
+  }
+  $versionUi = Get-Content (Join-Path $resolvedSourceRoot 'chrome/browser/ui/webui/version/version_ui.cc') -Raw
+  foreach ($requiredVersionUi in @(
+    '#include "chrome/common/ghosium_product_version.h"',
+    'ghosium::kProductVersion',
+    'base::UTF8ToUTF16(ghosium::kProductVersion)'
+  )) {
+    if (!$versionUi.Contains($requiredVersionUi)) {
+      throw "Ghosium About/version surface is missing product-version integration: $requiredVersionUi"
+    }
+  }
+  if ($versionUi -match 'html_source->AddString\(version_ui::kVersion,\s*version_info::GetVersionNumber\(\)\);' -or
+      $versionUi.Contains('base::UTF8ToUTF16(version_info::GetVersionNumber()),')) {
+    throw 'Public Ghosium About/version surfaces still display the engine compatibility version as the product version.'
   }
 
   $branding = Get-Content (Join-Path $resolvedSourceRoot 'chrome/app/theme/chromium/BRANDING') -Raw

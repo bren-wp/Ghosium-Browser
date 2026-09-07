@@ -4,15 +4,80 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: ghosium-full-source-windows
+  group: ghosium-full-source-windows-${{ github.ref }}
   cancel-in-progress: false
 
 permissions:
   contents: read
 
 jobs:
+  validate-release-contract:
+    name: Validate Ghosium release contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Validate synchronized immutable version
+        id: version
+        shell: python
+        run: |
+          import json
+          import os
+          import re
+          from pathlib import Path
+
+          version = Path('VERSION').read_text(encoding='utf-8').strip()
+          if not re.fullmatch(r'0\.[1-9]\d*\.\d+', version):
+              raise SystemExit(f'Ghosium VERSION must use the 0.x.y product line: {version!r}')
+
+          manifests = [
+              Path('extension/manifest.json'),
+              Path('search-provider/manifest.json'),
+          ]
+          for path in manifests:
+              data = json.loads(path.read_text(encoding='utf-8'))
+              if data.get('version') != version:
+                  raise SystemExit(f'{path} version {data.get("version")!r} does not match VERSION {version}')
+              if data.get('manifest_version') != 3:
+                  raise SystemExit(f'{path} must remain Manifest V3')
+
+          catalog_path = Path('store-web/storage/data/extensions.json')
+          catalog = json.loads(catalog_path.read_text(encoding='utf-8'))
+          for extension in catalog.get('extensions', []):
+              if extension.get('status') == 'built_in' and extension.get('version') != version:
+                  raise SystemExit(
+                      f'{catalog_path}: built-in {extension.get("id")} version '
+                      f'{extension.get("version")!r} does not match VERSION {version}'
+                  )
+
+          license_text = Path('LICENSE').read_text(encoding='utf-8')
+          if 'Proprietary Commercial Software License Agreement' not in license_text:
+              raise SystemExit('Production release requires the Brendigo proprietary Ghosium license.')
+          if 'Open-source components remain governed by their respective licenses.' not in license_text:
+              raise SystemExit('Production license lost the required open-source/third-party rights preservation clause.')
+          if not Path('THIRD_PARTY_NOTICES.md').is_file():
+              raise SystemExit('Production release requires THIRD_PARTY_NOTICES.md.')
+
+          tag = f'ghosium-v{version}'
+          output = Path(os.environ['GITHUB_OUTPUT'])
+          with output.open('a', encoding='utf-8') as handle:
+              handle.write(f'version={version}\n')
+              handle.write(f'tag={tag}\n')
+
+          print(f'Ghosium release contract: {version} / {tag}')
+
   build-windows-source:
     name: Build pinned Ghosium engine from source
+    needs: validate-release-contract
     runs-on:
       - self-hosted
       - Windows
@@ -23,6 +88,7 @@ jobs:
       DEPOT_TOOLS_WIN_TOOLCHAIN: '0'
       DEPOT_TOOLS_UPDATE: '0'
       GIT_TERMINAL_PROMPT: '0'
+      GHOSIUM_VERSION: ${{ needs.validate-release-contract.outputs.version }}
 
     steps:
       - name: Checkout Ghosium source tooling
@@ -64,7 +130,7 @@ jobs:
           }
           ./scripts/bootstrap-engine-source.ps1 @params
 
-      - name: Apply Ghosium source branding
+      - name: Apply and verify Ghosium source fork
         shell: pwsh
         env:
           WORK_ROOT: ${{ steps.builder.outputs.work_root }}
@@ -73,6 +139,7 @@ jobs:
           $src = Join-Path $env:WORK_ROOT 'src'
           ./scripts/apply-engine-branding.ps1 -SourceRoot $src
           ./scripts/verify-engine-fork.ps1 -SourceRoot $src
+          ./scripts/verify-engine-windows-executable.ps1 -SourceRoot $src
 
       - name: Configure deterministic Windows x64 build
         shell: pwsh
@@ -93,9 +160,11 @@ jobs:
           $src = Join-Path $env:WORK_ROOT 'src'
           Push-Location $src
           try {
+            # The upstream GN/Ninja target names remain technical build-system
+            # dependencies. They are not accepted as public Ghosium identity.
             autoninja -C out/Ghosium chrome mini_installer
             if ($LASTEXITCODE -ne 0) {
-              throw "Chromium source compile failed with exit code $LASTEXITCODE"
+              throw "Pinned full-source browser compile failed with exit code $LASTEXITCODE"
             }
           } finally {
             Pop-Location
@@ -115,8 +184,29 @@ jobs:
             -RunRuntimeSmoke
 
           $out = Join-Path $src 'out/Ghosium'
-          Copy-Item (Join-Path $out 'mini_installer.exe') 'artifacts/full-source/Ghosium-Browser-Source-Setup.exe' -Force
+          Copy-Item (Join-Path $out 'mini_installer.exe') 'artifacts/full-source/Ghosium-Browser-Setup.exe' -Force
           Copy-Item (Join-Path $out 'chrome.7z') 'artifacts/full-source/Ghosium-Browser-Source-Runtime.7z' -Force
+          Copy-Item 'LICENSE' 'artifacts/full-source/GHOSIUM-LICENSE.txt' -Force
+          Copy-Item 'THIRD_PARTY_NOTICES.md' 'artifacts/full-source/THIRD_PARTY_NOTICES.md' -Force
+          Set-Content 'artifacts/full-source/GHOSIUM-VERSION.txt' $env:GHOSIUM_VERSION -Encoding ascii
+
+      - name: Verify release legal payload
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $license = Get-Content 'artifacts/full-source/GHOSIUM-LICENSE.txt' -Raw
+          if (!$license.Contains('Proprietary Commercial Software License Agreement')) {
+            throw 'Verified release payload is missing the Ghosium proprietary license.'
+          }
+          if (!$license.Contains('Open-source components remain governed by their respective licenses.')) {
+            throw 'Verified release payload lost the third-party/open-source rights preservation clause.'
+          }
+          if (!(Test-Path 'artifacts/full-source/THIRD_PARTY_NOTICES.md' -PathType Leaf)) {
+            throw 'Verified release payload is missing THIRD_PARTY_NOTICES.md.'
+          }
+          if ((Get-Item 'artifacts/full-source/THIRD_PARTY_NOTICES.md').Length -le 100) {
+            throw 'Verified release third-party notices are unexpectedly small.'
+          }
 
       - name: Smoke test source-built install and setup-based uninstall
         shell: pwsh
@@ -134,11 +224,14 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           $filesToHash = @(
-            'artifacts/full-source/Ghosium-Browser-Source-Setup.exe',
+            'artifacts/full-source/Ghosium-Browser-Setup.exe',
             'artifacts/full-source/Ghosium-Browser-Source-Runtime.7z',
             'artifacts/full-source/GHOSIUM-SOURCE-BUILD.json',
             'artifacts/full-source/GHOSIUM-BUILDER-READY.json',
-            'artifacts/full-source/GHOSIUM-SOURCE-INSTALLER-SMOKE.json'
+            'artifacts/full-source/GHOSIUM-SOURCE-INSTALLER-SMOKE.json',
+            'artifacts/full-source/GHOSIUM-VERSION.txt',
+            'artifacts/full-source/GHOSIUM-LICENSE.txt',
+            'artifacts/full-source/THIRD_PARTY_NOTICES.md'
           )
           $hashLines = foreach ($file in $filesToHash) {
             if (!(Test-Path $file -PathType Leaf)) {
@@ -153,8 +246,64 @@ jobs:
       - name: Upload verified full-source build
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: ghosium-full-source-windows-x64
+          name: ghosium-full-source-windows-x64-${{ env.GHOSIUM_VERSION }}
           path: artifacts/full-source/
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 30
           compression-level: 0
+
+  publish-source-built-release:
+    name: Publish immutable source-built Ghosium release
+    needs:
+      - validate-release-contract
+      - build-windows-source
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download verified source-built artifacts
+        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
+        with:
+          name: ghosium-full-source-windows-x64-${{ needs.validate-release-contract.outputs.version }}
+          path: artifacts
+
+      - name: Publish immutable Ghosium release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GHOSIUM_VERSION: ${{ needs.validate-release-contract.outputs.version }}
+          GHOSIUM_TAG: ${{ needs.validate-release-contract.outputs.tag }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if gh release view "$GHOSIUM_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Release $GHOSIUM_TAG already exists. Existing releases are immutable; refusing to overwrite it." >&2
+            exit 1
+          fi
+
+          for required in \
+            artifacts/Ghosium-Browser-Setup.exe \
+            artifacts/GHOSIUM-SOURCE-BUILD.json \
+            artifacts/GHOSIUM-SOURCE-INSTALLER-SMOKE.json \
+            artifacts/GHOSIUM-LICENSE.txt \
+            artifacts/THIRD_PARTY_NOTICES.md \
+            artifacts/SHA256SUMS.txt; do
+            test -f "$required"
+          done
+
+          gh release create "$GHOSIUM_TAG" \
+            artifacts/Ghosium-Browser-Setup.exe \
+            artifacts/Ghosium-Browser-Source-Runtime.7z \
+            artifacts/GHOSIUM-SOURCE-BUILD.json \
+            artifacts/GHOSIUM-BUILDER-READY.json \
+            artifacts/GHOSIUM-SOURCE-INSTALLER-SMOKE.json \
+            artifacts/GHOSIUM-VERSION.txt \
+            artifacts/GHOSIUM-LICENSE.txt \
+            artifacts/THIRD_PARTY_NOTICES.md \
+            artifacts/SHA256SUMS.txt \
+            --target "$GITHUB_SHA" \
+            --title "Ghosium Browser $GHOSIUM_VERSION" \
+            --notes $'Verified Ghosium Browser Windows x64 release built from the pinned source revision.\n\nRelease gate: pinned source checkout, Ghosium fork application, source verification, Windows executable identity verification, full compile, runtime smoke test, installer install/uninstall smoke test, proprietary Ghosium license + preserved third-party notices, SHA-256 manifest, and provenance must all succeed before this release job runs.\n\nTechnical upstream GN/Ninja target names and internal DLL/archive names may remain where a safe coordinated rename has not yet been proven, but they are not treated as public Ghosium product identity. Third-party/open-source components remain governed by their own licenses.' \
+            --repo "$GITHUB_REPOSITORY"
