@@ -83,12 +83,7 @@ $introRefreshTs = Join-Path $sourceRootResolved 'chrome/browser/resources/intro/
 Replace-RequiredRegex `
   -Path $accountConsistency `
   -Pattern '(?ms)^bool IsBrowserSigninAllowedByCommandLine\(\) \{\r?\n.*?^\}' `
-  -Replacement @'
-bool IsBrowserSigninAllowedByCommandLine() {
-  // Ghosium intentionally does not expose Google/GAIA browser sign-in.
-  return false;
-}
-'@.TrimEnd("`r", "`n") `
+  -Replacement "bool IsBrowserSigninAllowedByCommandLine() {`n  // Ghosium intentionally does not expose Google/GAIA browser sign-in.`n  return false;`n}" `
   -AlreadyPresent 'Ghosium intentionally does not expose Google/GAIA browser sign-in.' `
   -Description 'central browser sign-in disablement'
 
@@ -132,8 +127,8 @@ Replace-RequiredLiteral `
 Replace-RequiredRegex `
   -Path $introUi `
   -Pattern '(?s)source->AddLocalizedString\(\s*"declineSignInButtonTitle",\s*base::FeatureList::IsEnabled\(\s*switches::kProfileCreationDeclineSigninCTAExperiment\)\s*\? IDS_FRE_STAY_SIGNED_OUT_BUTTON_TITLE\s*: IDS_FRE_DECLINE_SIGN_IN_BUTTON_TITLE\);' `
-  -Replacement 'source->AddLocalizedString("declineSignInButtonTitle",`n                             IDS_FRE_WELCOME_START_BUTTON_LABEL);' `
-  -AlreadyPresent 'source->AddLocalizedString("declineSignInButtonTitle",`n                             IDS_FRE_WELCOME_START_BUTTON_LABEL);' `
+  -Replacement "source->AddLocalizedString(`"declineSignInButtonTitle`",`n                             IDS_FRE_WELCOME_START_BUTTON_LABEL);" `
+  -AlreadyPresent 'IDS_FRE_WELCOME_START_BUTTON_LABEL);' `
   -Description 'first-run Start browsing action'
 
 # Do not render account/sync benefit cards on either first-run variant.
