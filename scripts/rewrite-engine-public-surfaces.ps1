@@ -145,7 +145,7 @@ foreach ($path in $publicStringFiles) {
   $text = [IO.File]::ReadAllText($path)
   foreach ($legacy in $forbiddenVisible) {
     if ($text.Contains($legacy)) {
-      throw "Legacy public browser branding remains in $path: $legacy"
+      throw "Legacy public browser branding remains in ${path}: $legacy"
     }
   }
 }
