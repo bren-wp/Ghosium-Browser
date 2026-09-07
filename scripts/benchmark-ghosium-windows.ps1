@@ -21,7 +21,7 @@ function Get-GhosiumProcesses {
 }
 
 function Stop-GhosiumProcesses {
-  $processes = Get-GhosiumProcesses
+  $processes = @(Get-GhosiumProcesses)
   foreach ($process in $processes) {
     try {
       Stop-Process -Id $process.Id -Force -ErrorAction Stop
@@ -76,7 +76,7 @@ function Get-NetworkConnectionCount {
 }
 
 function Get-BrowserSample {
-  $processes = Get-GhosiumProcesses
+  $processes = @(Get-GhosiumProcesses)
   $ids = @($processes | ForEach-Object { $_.Id })
   $io = Get-ProcessIoTotals -ProcessIds $ids
 
