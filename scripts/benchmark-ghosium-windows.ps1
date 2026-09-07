@@ -166,7 +166,7 @@ function Measure-Startup {
   New-Item -ItemType Directory -Force -Path $ProfilePath | Out-Null
 
   $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
-  $launcher = Start-Ghosium -ProfilePath $ProfilePath -Url "$PageUrl?ghosium-startup=$Label"
+  $launcher = Start-Ghosium -ProfilePath $ProfilePath -Url "${PageUrl}?ghosium-startup=$Label"
   $window = Wait-ForUsableWindow -Stopwatch $stopwatch
   $stopwatch.Stop()
 
@@ -197,12 +197,12 @@ function Measure-TabScenario {
   New-Item -ItemType Directory -Force -Path $ProfilePath | Out-Null
 
   $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
-  Start-Ghosium -ProfilePath $ProfilePath -Url "$PageUrl?ghosium-tab=1" | Out-Null
+  Start-Ghosium -ProfilePath $ProfilePath -Url "${PageUrl}?ghosium-tab=1" | Out-Null
   $window = Wait-ForUsableWindow -Stopwatch $stopwatch
   $stopwatch.Stop()
 
   for ($index = 2; $index -le $TabCount; $index++) {
-    Start-Ghosium -ProfilePath $ProfilePath -Url "$PageUrl?ghosium-tab=$index" | Out-Null
+    Start-Ghosium -ProfilePath $ProfilePath -Url "${PageUrl}?ghosium-tab=$index" | Out-Null
     Start-Sleep -Milliseconds 250
   }
 
