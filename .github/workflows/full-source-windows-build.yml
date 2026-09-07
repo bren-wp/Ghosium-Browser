@@ -59,6 +59,14 @@ jobs:
                       f'{extension.get("version")!r} does not match VERSION {version}'
                   )
 
+          license_text = Path('LICENSE').read_text(encoding='utf-8')
+          if 'Proprietary Commercial Software License Agreement' not in license_text:
+              raise SystemExit('Production release requires the Brendigo proprietary Ghosium license.')
+          if 'Open-source components remain governed by their respective licenses.' not in license_text:
+              raise SystemExit('Production license lost the required open-source/third-party rights preservation clause.')
+          if not Path('THIRD_PARTY_NOTICES.md').is_file():
+              raise SystemExit('Production release requires THIRD_PARTY_NOTICES.md.')
+
           tag = f'ghosium-v{version}'
           output = Path(os.environ['GITHUB_OUTPUT'])
           with output.open('a', encoding='utf-8') as handle:
@@ -178,7 +186,27 @@ jobs:
           $out = Join-Path $src 'out/Ghosium'
           Copy-Item (Join-Path $out 'mini_installer.exe') 'artifacts/full-source/Ghosium-Browser-Setup.exe' -Force
           Copy-Item (Join-Path $out 'chrome.7z') 'artifacts/full-source/Ghosium-Browser-Source-Runtime.7z' -Force
+          Copy-Item 'LICENSE' 'artifacts/full-source/GHOSIUM-LICENSE.txt' -Force
+          Copy-Item 'THIRD_PARTY_NOTICES.md' 'artifacts/full-source/THIRD_PARTY_NOTICES.md' -Force
           Set-Content 'artifacts/full-source/GHOSIUM-VERSION.txt' $env:GHOSIUM_VERSION -Encoding ascii
+
+      - name: Verify release legal payload
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $license = Get-Content 'artifacts/full-source/GHOSIUM-LICENSE.txt' -Raw
+          if (!$license.Contains('Proprietary Commercial Software License Agreement')) {
+            throw 'Verified release payload is missing the Ghosium proprietary license.'
+          }
+          if (!$license.Contains('Open-source components remain governed by their respective licenses.')) {
+            throw 'Verified release payload lost the third-party/open-source rights preservation clause.'
+          }
+          if (!(Test-Path 'artifacts/full-source/THIRD_PARTY_NOTICES.md' -PathType Leaf)) {
+            throw 'Verified release payload is missing THIRD_PARTY_NOTICES.md.'
+          }
+          if ((Get-Item 'artifacts/full-source/THIRD_PARTY_NOTICES.md').Length -le 100) {
+            throw 'Verified release third-party notices are unexpectedly small.'
+          }
 
       - name: Smoke test source-built install and setup-based uninstall
         shell: pwsh
@@ -201,7 +229,9 @@ jobs:
             'artifacts/full-source/GHOSIUM-SOURCE-BUILD.json',
             'artifacts/full-source/GHOSIUM-BUILDER-READY.json',
             'artifacts/full-source/GHOSIUM-SOURCE-INSTALLER-SMOKE.json',
-            'artifacts/full-source/GHOSIUM-VERSION.txt'
+            'artifacts/full-source/GHOSIUM-VERSION.txt',
+            'artifacts/full-source/GHOSIUM-LICENSE.txt',
+            'artifacts/full-source/THIRD_PARTY_NOTICES.md'
           )
           $hashLines = foreach ($file in $filesToHash) {
             if (!(Test-Path $file -PathType Leaf)) {
@@ -253,10 +283,15 @@ jobs:
             exit 1
           fi
 
-          test -f artifacts/Ghosium-Browser-Setup.exe
-          test -f artifacts/GHOSIUM-SOURCE-BUILD.json
-          test -f artifacts/GHOSIUM-SOURCE-INSTALLER-SMOKE.json
-          test -f artifacts/SHA256SUMS.txt
+          for required in \
+            artifacts/Ghosium-Browser-Setup.exe \
+            artifacts/GHOSIUM-SOURCE-BUILD.json \
+            artifacts/GHOSIUM-SOURCE-INSTALLER-SMOKE.json \
+            artifacts/GHOSIUM-LICENSE.txt \
+            artifacts/THIRD_PARTY_NOTICES.md \
+            artifacts/SHA256SUMS.txt; do
+            test -f "$required"
+          done
 
           gh release create "$GHOSIUM_TAG" \
             artifacts/Ghosium-Browser-Setup.exe \
@@ -265,8 +300,10 @@ jobs:
             artifacts/GHOSIUM-BUILDER-READY.json \
             artifacts/GHOSIUM-SOURCE-INSTALLER-SMOKE.json \
             artifacts/GHOSIUM-VERSION.txt \
+            artifacts/GHOSIUM-LICENSE.txt \
+            artifacts/THIRD_PARTY_NOTICES.md \
             artifacts/SHA256SUMS.txt \
             --target "$GITHUB_SHA" \
             --title "Ghosium Browser $GHOSIUM_VERSION" \
-            --notes $'Verified Ghosium Browser Windows x64 release built from the pinned source revision.\n\nRelease gate: pinned source checkout, Ghosium fork application, source verification, Windows executable identity verification, full compile, runtime smoke test, installer install/uninstall smoke test, SHA-256 manifest, and provenance must all succeed before this release job runs.\n\nTechnical upstream GN/Ninja target names and internal DLL/archive names may remain where a safe coordinated rename has not yet been proven, but they are not treated as public Ghosium product identity.' \
+            --notes $'Verified Ghosium Browser Windows x64 release built from the pinned source revision.\n\nRelease gate: pinned source checkout, Ghosium fork application, source verification, Windows executable identity verification, full compile, runtime smoke test, installer install/uninstall smoke test, proprietary Ghosium license + preserved third-party notices, SHA-256 manifest, and provenance must all succeed before this release job runs.\n\nTechnical upstream GN/Ninja target names and internal DLL/archive names may remain where a safe coordinated rename has not yet been proven, but they are not treated as public Ghosium product identity. Third-party/open-source components remain governed by their own licenses.' \
             --repo "$GITHUB_REPOSITORY"
