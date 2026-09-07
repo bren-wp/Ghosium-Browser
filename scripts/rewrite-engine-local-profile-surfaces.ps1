@@ -71,6 +71,7 @@ function Replace-RequiredLiteral {
 
 $profileMenu = Join-Path $sourceRootResolved 'chrome/browser/ui/views/profiles/profile_menu_view.cc'
 $profileViewUtils = Join-Path $sourceRootResolved 'chrome/browser/ui/profiles/profile_view_utils.cc'
+$subscriptionService = Join-Path $sourceRootResolved 'components/subscription_eligibility/subscription_eligibility_service.cc'
 
 $identityReplacement = @'
   // Ghosium profile identity is local-first. Existing migrated account data may
@@ -101,6 +102,16 @@ void ProfileMenuView::BuildFeatureButtons() {
 
 #if BUILDFLAG(ENABLE_DICE_SUPPORT)
 '@
+
+# Google AI subscription state is not a Ghosium product entitlement. Disable it
+# at the shared service so cached profile tiers, Glic eligibility and any future
+# tier-driven browser UI all see the same fail-closed value.
+Replace-RequiredRegex `
+  -Path $subscriptionService `
+  -Pattern '(?ms)^int32_t SubscriptionEligibilityService::GetAiSubscriptionTier\(\) const \{\r?\n.*?^\}' `
+  -Replacement "int32_t SubscriptionEligibilityService::GetAiSubscriptionTier() const {`n  // Ghosium does not consume Google AI subscription entitlements.`n  return 0;`n}" `
+  -AlreadyPresent 'Ghosium does not consume Google AI subscription entitlements.' `
+  -Description 'Google AI subscription entitlement suppression'
 
 # Disable the Google AI-subscription avatar ring at its shared browser helper so
 # it cannot leak through the profile bubble, app menu, toolbar avatar or other
