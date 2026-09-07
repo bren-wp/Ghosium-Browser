@@ -45,36 +45,66 @@ jobs:
           fetch-depth: 1
 
       - name: Reject legacy browser branding and internal URLs
-        shell: bash
+        shell: python
         run: |
-          set -euo pipefail
+          from pathlib import Path
+          import re
 
-          roots=(
-            README.md
-            extension
-            search-provider
-            search-web
-            store-web
-            launcher
-            installer
-            packaging
+          # Product/UI surfaces remain strictly Ghosium-only. README is checked
+          # separately so its explicit legal-attribution section may accurately
+          # name Chromium and other third-party software without that legal text
+          # being mistaken for product branding.
+          roots = (
+              Path('extension'),
+              Path('search-provider'),
+              Path('search-web'),
+              Path('store-web'),
+              Path('launcher'),
+              Path('installer'),
+              Path('packaging'),
           )
+          suffixes = {'.md', '.html', '.php', '.json', '.cpp', '.h', '.rc', '.nsi'}
+          legacy = re.compile(
+              r'chromium|google\s+chrome|chrome\s+web\s+store|chrome://|'
+              r'chrome-untrusted://|support\.google|chrome\.google|google\.com/chrome',
+              re.I,
+          )
+          failures = []
 
-          pattern='chromium|google[[:space:]]+chrome|chrome[[:space:]]+web[[:space:]]+store|chrome://|chrome-untrusted://|support\.google|chrome\.google|google\.com/chrome'
-          if grep -RInEi \
-            --include='*.md' \
-            --include='*.html' \
-            --include='*.php' \
-            --include='*.json' \
-            --include='*.cpp' \
-            --include='*.h' \
-            --include='*.rc' \
-            --include='*.nsi' \
-            --include='Dockerfile' \
-            "$pattern" "${roots[@]}"; then
-            echo 'Legacy browser branding, internal scheme or product link remains in a Ghosium-controlled public surface.' >&2
-            exit 1
-          fi
+          for root in roots:
+              if not root.exists():
+                  continue
+              for path in root.rglob('*'):
+                  if not path.is_file():
+                      continue
+                  if path.name != 'Dockerfile' and path.suffix.lower() not in suffixes:
+                      continue
+                  text = path.read_text(encoding='utf-8', errors='replace')
+                  for number, line in enumerate(text.splitlines(), 1):
+                      if legacy.search(line):
+                          failures.append(f'{path}:{number}: {line.strip()}')
+
+          readme = Path('README.md').read_text(encoding='utf-8')
+          legal_heading = '## License and third-party rights'
+          if legal_heading not in readme:
+              failures.append('README.md: missing explicit legal-attribution section')
+          else:
+              public_readme, legal_readme = readme.split(legal_heading, 1)
+              for number, line in enumerate(public_readme.splitlines(), 1):
+                  if legacy.search(line):
+                      failures.append(f'README.md:{number}: {line.strip()}')
+              if 'Chromium' not in legal_readme or 'third-party' not in legal_readme.lower():
+                  failures.append(
+                      'README.md: legal-attribution section must preserve explicit Chromium/third-party attribution'
+                  )
+
+          if failures:
+              raise SystemExit(
+                  'Legacy browser branding, internal scheme or product link remains outside legal attribution:\n'
+                  + '\n'.join(failures)
+              )
+
+          print('Ghosium public branding contract: OK; legal third-party attribution remains isolated.')
 
       - name: Verify Ghosium product destinations
         shell: python
