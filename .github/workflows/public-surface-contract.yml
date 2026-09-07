@@ -13,6 +13,8 @@ on:
       - 'scripts/verify-engine-upstream-public-actions.ps1'
       - 'scripts/rewrite-engine-disable-unowned-promos.ps1'
       - 'scripts/verify-engine-disable-unowned-promos.ps1'
+      - 'scripts/rewrite-engine-browser-signin.ps1'
+      - 'scripts/verify-engine-browser-signin.ps1'
       - 'scripts/rebrand-engine-locales.ps1'
       - 'scripts/verify-engine-locales.ps1'
       - 'scripts/generate-engine-brand-assets.py'
@@ -29,6 +31,8 @@ on:
       - 'scripts/verify-engine-upstream-public-actions.ps1'
       - 'scripts/rewrite-engine-disable-unowned-promos.ps1'
       - 'scripts/verify-engine-disable-unowned-promos.ps1'
+      - 'scripts/rewrite-engine-browser-signin.ps1'
+      - 'scripts/verify-engine-browser-signin.ps1'
       - 'scripts/rebrand-engine-locales.ps1'
       - 'scripts/verify-engine-locales.ps1'
       - 'scripts/generate-engine-brand-assets.py'
@@ -40,7 +44,7 @@ permissions:
 
 jobs:
   public-surfaces:
-    name: Verify Ghosium Settings About and New Tab identity
+    name: Verify Ghosium Settings About New Tab and account-free identity
     runs-on: ubuntu-latest
     timeout-minutes: 25
 
@@ -62,6 +66,8 @@ jobs:
             'scripts/verify-engine-upstream-public-actions.ps1',
             'scripts/rewrite-engine-disable-unowned-promos.ps1',
             'scripts/verify-engine-disable-unowned-promos.ps1',
+            'scripts/rewrite-engine-browser-signin.ps1',
+            'scripts/verify-engine-browser-signin.ps1',
             'scripts/rebrand-engine-locales.ps1',
             'scripts/verify-engine-locales.ps1'
           )) {
@@ -106,10 +112,17 @@ jobs:
           /chrome/browser/extensions/extension_ui_util.cc
           /chrome/browser/resources/settings/settings_menu/
           /chrome/browser/resources/settings/route.ts
+          /chrome/browser/resources/settings/privacy_page/personalization_options.html
           /chrome/browser/ui/webui/settings/settings_ui.cc
           /chrome/browser/resources/new_tab_page/app.html
           /chrome/browser/ui/webui/new_tab_footer/footer_context_menu.cc
           /chrome/browser/ui/browser_actions.cc
+          /chrome/browser/signin/account_consistency_mode_manager.cc
+          /chrome/browser/ui/webui/intro/intro_ui.cc
+          /chrome/browser/resources/intro/sign_in_promo.html.ts
+          /chrome/browser/resources/intro/sign_in_promo.ts
+          /chrome/browser/resources/intro/sign_in_promo_refresh.html.ts
+          /chrome/browser/resources/intro/sign_in_promo_refresh.ts
           /components/desktop_to_mobile_promos/features.cc
           /components/strings/
           /extensions/strings/
@@ -134,7 +147,7 @@ jobs:
             throw "Ghosium brand-asset generation failed with exit code $LASTEXITCODE"
           }
 
-      - name: Apply complete Settings About New Tab and locale branding twice
+      - name: Apply complete Settings About New Tab account and locale branding twice
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
@@ -152,6 +165,7 @@ jobs:
           ./scripts/verify-engine-public-surfaces.ps1 -SourceRoot $env:PUBLIC_ENGINE_SRC
           ./scripts/verify-engine-upstream-public-actions.ps1 -SourceRoot $env:PUBLIC_ENGINE_SRC
           ./scripts/verify-engine-disable-unowned-promos.ps1 -SourceRoot $env:PUBLIC_ENGINE_SRC
+          ./scripts/verify-engine-browser-signin.ps1 -SourceRoot $env:PUBLIC_ENGINE_SRC
           ./scripts/verify-engine-locales.ps1 -SourceRoot $env:PUBLIC_ENGINE_SRC
 
       - name: Verify screenshot regression contract
@@ -193,6 +207,19 @@ jobs:
             exit 1
           fi
 
+          # Browser-level Google/GAIA sign-in is not a Ghosium account service.
+          grep -A3 -F 'bool IsBrowserSigninAllowedByCommandLine() {' "$src/chrome/browser/signin/account_consistency_mode_manager.cc" | grep -F 'return false;'
+          grep -F 'RegisterBooleanPref(prefs::kSigninAllowedOnNextStartup, false);' "$src/chrome/browser/signin/account_consistency_mode_manager.cc"
+          grep -F 'const int title_id = IDS_FRE_WELCOME_TITLE;' "$src/chrome/browser/ui/webui/intro/intro_ui.cc"
+          grep -F 'this.benefitCards_ = [];' "$src/chrome/browser/resources/intro/sign_in_promo.ts"
+          grep -F 'this.benefitCards_ = [];' "$src/chrome/browser/resources/intro/sign_in_promo_refresh.ts"
+          if grep -F 'id="acceptSignInButton"' \
+            "$src/chrome/browser/resources/intro/sign_in_promo.html.ts" \
+            "$src/chrome/browser/resources/intro/sign_in_promo_refresh.html.ts"; then
+            echo 'Google/GAIA browser sign-in CTA remains public in Ghosium first-run.' >&2
+            exit 1
+          fi
+
           # Three upstream action registrations are intentionally retained for
           # Chromium-internal compatibility, but the independent PowerShell
           # verifier above requires every one of them to be permanently hidden.
@@ -212,4 +239,4 @@ jobs:
             exit 1
           fi
 
-          echo 'Pinned Ghosium public surface contract: Ghosium identity only; Chromium customization, Google-owned surfaces and unowned mobile promos removed or permanently hidden.'
+          echo 'Pinned Ghosium public surface contract: Ghosium identity only; unowned Chromium/Google account, AI, customization and mobile surfaces removed or permanently hidden.'
