@@ -47,12 +47,11 @@ function Replace-ProductBrandingInBody {
     # upstream project name only there; it is not product branding.
     $updated = $chromiumWord.Replace($updated, 'Ghosium Browser', 1)
   } else {
-    # Several locales inflect Chromium. Match lowercase grammatical suffixes
-    # while leaving unrelated uppercase platform compounds intact. Chrome is
-    # replaced only as a standalone brand token so Chromebook/ChromeOS are not
-    # accidentally rewritten as malformed product names.
+    # Several locales inflect browser brand names. Match lowercase grammatical
+    # suffixes such as Chromiuma/Chromiumu/Chromeovih while deliberately not
+    # consuming uppercase compounds such as ChromiumOS or ChromeOS.
     $updated = $chromiumProductStem.Replace($updated, 'Ghosium Browser')
-    $updated = [regex]::Replace($updated, '\bChrome\b', 'Ghosium Browser')
+    $updated = $chromeProductStem.Replace($updated, 'Ghosium Browser')
   }
 
   $updated = $updated.Replace('Ghosium Browser browser', 'Ghosium Browser')
