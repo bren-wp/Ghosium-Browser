@@ -61,7 +61,9 @@ $requiredFiles = @(
   'locales/en-US.pak',
   'setup.exe',
   'mini_installer.exe',
-  'chrome.7z'
+  'chrome.7z',
+  'GHOSIUM-LICENSE.txt',
+  'THIRD_PARTY_NOTICES.md'
 )
 foreach ($relative in $requiredFiles) {
   $path = Join-Path $outPath $relative
@@ -72,6 +74,18 @@ foreach ($relative in $requiredFiles) {
     throw "Full-source build artifact is empty: $relative"
   }
 }
+
+$stagedLicensePath = Join-Path $outPath 'GHOSIUM-LICENSE.txt'
+$stagedNoticesPath = Join-Path $outPath 'THIRD_PARTY_NOTICES.md'
+$stagedLicenseSha256 = (Get-FileHash $stagedLicensePath -Algorithm SHA256).Hash.ToLowerInvariant()
+$stagedNoticesSha256 = (Get-FileHash $stagedNoticesPath -Algorithm SHA256).Hash.ToLowerInvariant()
+if ($stagedLicenseSha256 -ne $licenseSha256) {
+  throw 'Full-source build GHOSIUM-LICENSE.txt does not match repository LICENSE.'
+}
+if ($stagedNoticesSha256 -ne $thirdPartyNoticesSha256) {
+  throw 'Full-source build THIRD_PARTY_NOTICES.md does not match repository notices.'
+}
+
 if (Test-Path (Join-Path $outPath 'chrome.exe') -PathType Leaf) {
   throw 'Legacy public chrome.exe remains in the final Ghosium build output. The primary executable must be Ghosium-Browser.exe.'
 }
@@ -293,6 +307,8 @@ $filesToHash = [ordered]@{
   'Ghosium-Source-Installer.exe' = 'mini_installer.exe'
   'Ghosium-Engine.7z' = 'chrome.7z'
   'args.gn' = 'args.gn'
+  'GHOSIUM-LICENSE.txt' = 'GHOSIUM-LICENSE.txt'
+  'THIRD_PARTY_NOTICES.md' = 'THIRD_PARTY_NOTICES.md'
 }
 $hashes = [ordered]@{}
 foreach ($entry in $filesToHash.GetEnumerator()) {
@@ -306,7 +322,7 @@ if (!$ProvenancePath) {
 }
 
 $provenance = [ordered]@{
-  schemaVersion = 5
+  schemaVersion = 6
   product = 'Ghosium Browser'
   ghosiumVersion = $ghosiumVersion
   architecture = 'windows-x64'
@@ -325,6 +341,7 @@ $provenance = [ordered]@{
     thirdPartyLicensesPreserved = $true
     copyrightNoticesPreserved = $true
     attributionPreserved = $true
+    buildPayloadMatchesRepository = $true
     licenseSha256 = $licenseSha256
     thirdPartyNoticesSha256 = $thirdPartyNoticesSha256
   }
@@ -355,7 +372,7 @@ $provenance | ConvertTo-Json -Depth 7 | Set-Content $ProvenancePath -Encoding ut
 Write-Host 'Ghosium full-source Windows binary verification: OK'
 Write-Host "Primary executable: $expectedBrowserExecutable"
 Write-Host "Engine file version: $($engineInfo.ProductVersion)"
-Write-Host "Legal provenance: proprietary product license + preserved third-party rights recorded."
+Write-Host 'Legal provenance: staged build payload matches repository license + third-party notices.'
 if ($RunRuntimeSmoke) {
   Write-Host "Runtime smoke: data URL plus all eight ghost:// routes passed without disabling the browser sandbox."
 }
