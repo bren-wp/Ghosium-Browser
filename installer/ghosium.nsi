@@ -23,9 +23,12 @@ Unicode true
 !define INSTALL_MARKER "ghosium-install.marker"
 !define CLEANUP_DIR "$TEMP\Brendigo\Ghosium Browser Cleanup"
 !define CLEANUP_SETUP "$TEMP\Brendigo\Ghosium Browser Cleanup\Ghosium-Browser-Setup.exe"
+!define UPDATE_DIR "$TEMP\Brendigo\Ghosium Browser Update"
+!define UPDATE_SETUP "$TEMP\Brendigo\Ghosium Browser Update\Ghosium-Browser-Setup.exe"
 !define UNINSTALL_KEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\GhosiumBrowser"
 
 Var GhosiumUpdateMode
+Var GhosiumDeleteSelf
 
 Name "${PRODUCT_NAME} ${GHOSIUM_VERSION}"
 OutFile "${GHOSIUM_ARTIFACTS}\Ghosium-Browser-Setup.exe"
@@ -201,6 +204,33 @@ update_requires_new_setup:
   Quit
 FunctionEnd
 
+Function CleanupDownloadedUpdate
+  ; Only the installed copy of the standard Setup package may perform this
+  ; maintenance cleanup. The path to delete is fixed and never taken from a
+  ; command-line value, so /CLEANUPDATE cannot be abused as an arbitrary file
+  ; deletion primitive.
+  ReadRegStr $R2 HKCU "${UNINSTALL_KEY}" "InstallLocation"
+  StrCmp $R2 "" update_cleanup_invalid
+  GetFullPathName $R2 $R2
+  GetFullPathName $R3 "$R2\${INSTALLED_SETUP}"
+  GetFullPathName $R4 "$EXEPATH"
+  StrCmp $R4 $R3 update_cleanup_verified update_cleanup_invalid
+
+update_cleanup_invalid:
+  SetErrorLevel 7
+  Quit
+
+update_cleanup_verified:
+  ; Wait for the browser-downloaded Setup process to release its image before
+  ; deleting the fixed update package. This is still the same standard Setup
+  ; executable, not a separately built updater helper.
+  Sleep 1200
+  Delete /REBOOTOK "${UPDATE_SETUP}"
+  RMDir /REBOOTOK "${UPDATE_DIR}"
+  SetErrorLevel 0
+  Quit
+FunctionEnd
+
 Function RemoveGhosium
   SetShellVarContext current
 
@@ -265,7 +295,23 @@ FunctionEnd
 Function .onInit
   ${GetParameters} $R0
   StrCpy $GhosiumUpdateMode "0"
+  StrCpy $GhosiumDeleteSelf "0"
 
+  ; /DELETESELF is only meaningful for a browser-downloaded /UPDATE package.
+  ; It is recorded first, then the normal maintenance-mode dispatch continues.
+  ClearErrors
+  ${GetOptions} $R0 "/DELETESELF" $R1
+  IfErrors delete_self_checked
+  StrCpy $GhosiumDeleteSelf "1"
+delete_self_checked:
+
+  ClearErrors
+  ${GetOptions} $R0 "/CLEANUPDATE" $R1
+  IfErrors check_cleanup
+  Call CleanupDownloadedUpdate
+  Quit
+
+check_cleanup:
   ClearErrors
   ${GetOptions} $R0 "/CLEANUP" $R1
   IfErrors check_uninstall
@@ -380,5 +426,22 @@ setup_ready:
   StrCmp $GhosiumUpdateMode "1" update_complete section_done
 update_complete:
   DetailPrint "Ghosium Browser was updated to ${GHOSIUM_VERSION} using the standard Setup package."
+  StrCmp $GhosiumDeleteSelf "1" launch_update_cleanup section_done
+
+launch_update_cleanup:
+  ; The downloaded Setup cannot remove its own running image. Ask the freshly
+  ; installed copy of that exact same Setup product to delete the fixed browser
+  ; update path after this process exits. This is not a separate updater binary.
+  ClearErrors
+  Exec '"$INSTDIR\${INSTALLED_SETUP}" /S /CLEANUPDATE'
+  IfErrors update_cleanup_fallback section_done
+
+update_cleanup_fallback:
+  ; If the installed maintenance copy could not start, at least schedule the
+  ; browser-downloaded package for Windows cleanup rather than leaving it
+  ; permanently in the temporary directory.
+  Delete /REBOOTOK "$EXEPATH"
+  RMDir /REBOOTOK "${UPDATE_DIR}"
+
 section_done:
 SectionEnd
