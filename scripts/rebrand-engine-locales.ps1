@@ -8,6 +8,7 @@ Set-StrictMode -Version Latest
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $config = Get-Content (Join-Path $repoRoot 'engine/branding/product.json') -Raw | ConvertFrom-Json
+$localeUi = Get-Content (Join-Path $repoRoot 'engine/branding/locale-ui.json') -Raw | ConvertFrom-Json
 $sourceRootResolved = (Resolve-Path $SourceRoot).Path
 
 $legalChromiumIds = @(
@@ -30,15 +31,51 @@ function Get-TranslationLocaleCode {
   }
 }
 
+function Get-LocalizedUiString {
+  param(
+    [Parameter(Mandatory = $true)][string]$Locale,
+    [Parameter(Mandatory = $true)][string]$Key
+  )
+
+  $keyProperty = $localeUi.strings.PSObject.Properties[$Key]
+  if (!$keyProperty) {
+    throw "Missing Ghosium localized UI key: $Key"
+  }
+  $localeProperty = $keyProperty.Value.PSObject.Properties[$Locale]
+  if (!$localeProperty -or [string]::IsNullOrWhiteSpace([string]$localeProperty.Value)) {
+    throw "Missing Ghosium localized UI value for ${Key}/${Locale}"
+  }
+  return [string]$localeProperty.Value
+}
+
+function Get-ProductLocaleForXtbPath {
+  param([Parameter(Mandatory = $true)][string]$Path)
+
+  $name = [IO.Path]::GetFileName($Path)
+  foreach ($locale in @($config.locales.supported)) {
+    $productLocale = [string]$locale
+    $fileLocale = Get-TranslationLocaleCode -Locale $productLocale
+    if (!$fileLocale) {
+      continue
+    }
+    if ($name.EndsWith("_${fileLocale}.xtb", [StringComparison]::OrdinalIgnoreCase)) {
+      return $productLocale
+    }
+  }
+  return [string]$config.locales.default
+}
+
 function Replace-ProductBrandingInBody {
   param(
     [Parameter(Mandatory = $true)][string]$Body,
     [Parameter(Mandatory = $true)][AllowEmptyString()][string]$TranslationId,
-    [Parameter(Mandatory = $true)][bool]$PreserveChromiumProject
+    [Parameter(Mandatory = $true)][bool]$PreserveChromiumProject,
+    [Parameter(Mandatory = $false)][string]$Locale = 'en-US'
   )
 
+  $profileLabel = Get-LocalizedUiString -Locale $Locale -Key 'profile'
   if ($TranslationId -eq $settingsPeopleTranslationId) {
-    return 'Profile'
+    return $profileLabel
   }
 
   $updated = $Body
@@ -47,7 +84,7 @@ function Replace-ProductBrandingInBody {
   $updated = $updated.Replace('AI in Chrome', 'AI features')
   $updated = $updated.Replace('Gemini in Chromium', 'Gemini')
   $updated = $updated.Replace('Gemini in Chrome', 'Gemini')
-  $updated = $updated.Replace('You and Google', 'Profile')
+  $updated = $updated.Replace('You and Google', $profileLabel)
   $updated = $updated.Replace('Google Chrome for Testing', 'Ghosium Browser')
   $updated = $updated.Replace('Chrome for Testing', 'Ghosium Browser')
   $updated = $updated.Replace('Google Chrome', 'Ghosium Browser')
@@ -75,14 +112,15 @@ function Update-XtbBundle {
 
   $updatedFiles = 0
   foreach ($locale in @($config.locales.supported)) {
-    $fileLocale = Get-TranslationLocaleCode -Locale ([string]$locale)
+    $productLocale = [string]$locale
+    $fileLocale = Get-TranslationLocaleCode -Locale $productLocale
     if (!$fileLocale) {
       continue
     }
 
     $path = Join-Path $sourceRootResolved (Join-Path $Directory ($Prefix + $fileLocale + '.xtb'))
     if (!(Test-Path $path -PathType Leaf)) {
-      throw "Missing translation bundle for supported locale ${locale}: $path"
+      throw "Missing translation bundle for supported locale ${productLocale}: $path"
     }
 
     $text = [IO.File]::ReadAllText($path)
@@ -91,7 +129,11 @@ function Update-XtbBundle {
       param($match)
       $id = $match.Groups[2].Value
       $originalBody = $match.Groups[3].Value
-      $body = Replace-ProductBrandingInBody -Body $originalBody -TranslationId $id -PreserveChromiumProject $PreserveChromiumProject
+      $body = Replace-ProductBrandingInBody `
+        -Body $originalBody `
+        -TranslationId $id `
+        -PreserveChromiumProject $PreserveChromiumProject `
+        -Locale $productLocale
 
       if ($body -ne $originalBody) {
         $body = [regex]::Replace($body, '[ \t]+(?=\r?\n)', '')
@@ -135,6 +177,7 @@ function Normalize-RewrittenLocalizedResources {
     $updated = $text
 
     if ($extension -eq '.xtb') {
+      $productLocale = Get-ProductLocaleForXtbPath -Path $path
       $updated = [regex]::Replace(
         $updated,
         '(?s)(<translation\s+id="([0-9]+)"[^>]*>)(.*?)(</translation>)',
@@ -144,7 +187,8 @@ function Normalize-RewrittenLocalizedResources {
           $body = Replace-ProductBrandingInBody `
             -Body $match.Groups[3].Value `
             -TranslationId $id `
-            -PreserveChromiumProject $true
+            -PreserveChromiumProject $true `
+            -Locale $productLocale
           return $match.Groups[1].Value + $body + $match.Groups[4].Value
         }
       )
@@ -157,7 +201,8 @@ function Normalize-RewrittenLocalizedResources {
           $body = Replace-ProductBrandingInBody `
             -Body $match.Groups[2].Value `
             -TranslationId '' `
-            -PreserveChromiumProject $false
+            -PreserveChromiumProject $false `
+            -Locale ([string]$config.locales.default)
           return $match.Groups[1].Value + $body + $match.Groups[3].Value
         }
       )
@@ -218,17 +263,17 @@ if ($completePublicSurfaceSource) {
 
   & (Join-Path $PSScriptRoot 'rewrite-engine-upstream-public-actions.ps1') -SourceRoot $sourceRootResolved
   if ($LASTEXITCODE -ne 0) {
-    throw 'Ghosium upstream Chromium/Google browser-action suppression failed.'
+    throw 'Ghosium upstream browser-action suppression failed.'
   }
 
   & (Join-Path $PSScriptRoot 'rewrite-engine-disable-unowned-promos.ps1') -SourceRoot $sourceRootResolved
   if ($LASTEXITCODE -ne 0) {
-    throw 'Ghosium unowned Chromium mobile-promo suppression failed.'
+    throw 'Ghosium unowned mobile-promo suppression failed.'
   }
 
   & (Join-Path $PSScriptRoot 'rewrite-engine-browser-signin.ps1') -SourceRoot $sourceRootResolved
   if ($LASTEXITCODE -ne 0) {
-    throw 'Ghosium Google/GAIA browser sign-in suppression failed.'
+    throw 'Ghosium external account sign-in suppression failed.'
   }
 
   & (Join-Path $PSScriptRoot 'rewrite-engine-local-profile-surfaces.ps1') -SourceRoot $sourceRootResolved
@@ -276,17 +321,17 @@ if ($completePublicSurfaceSource) {
 
   & (Join-Path $PSScriptRoot 'verify-engine-upstream-public-actions.ps1') -SourceRoot $sourceRootResolved
   if ($LASTEXITCODE -ne 0) {
-    throw 'Ghosium upstream Chromium/Google browser-action verification failed.'
+    throw 'Ghosium upstream browser-action verification failed.'
   }
 
   & (Join-Path $PSScriptRoot 'verify-engine-disable-unowned-promos.ps1') -SourceRoot $sourceRootResolved
   if ($LASTEXITCODE -ne 0) {
-    throw 'Ghosium unowned Chromium mobile-promo verification failed.'
+    throw 'Ghosium unowned mobile-promo verification failed.'
   }
 
   & (Join-Path $PSScriptRoot 'verify-engine-browser-signin.ps1') -SourceRoot $sourceRootResolved
   if ($LASTEXITCODE -ne 0) {
-    throw 'Ghosium Google/GAIA browser sign-in verification failed.'
+    throw 'Ghosium external account sign-in verification failed.'
   }
 
   & (Join-Path $PSScriptRoot 'verify-engine-local-profile-surfaces.ps1') -SourceRoot $sourceRootResolved
@@ -305,4 +350,4 @@ if ($completePublicSurfaceSource) {
   }
 }
 
-Write-Host 'Ghosium supported locale branding verified; public surfaces, profile creation and App Menu stay Ghosium-owned/local-only while upstream account, Sync, AI, mobile and cloud profile promotions are removed, hidden or disabled.'
+Write-Host "Ghosium $(@($config.locales.supported).Count)-locale browser branding verified; English remains primary, Croatian is required, and localized profile surfaces stay Ghosium-owned/local-only."
