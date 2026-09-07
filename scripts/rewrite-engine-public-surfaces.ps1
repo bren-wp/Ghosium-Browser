@@ -223,7 +223,7 @@ Replace-RequiredRegex `
 Replace-RequiredRegex `
   -Path $settingsUiCc `
   -Pattern '(?s)if\s*\(show_glic\)\s*\{\s*update\.Set\("showAiPage",\s*true\);\s*\}' `
-  -Replacement "if (show_glic) {`n    update.Set(\"showAiPage\", false);`n  }" `
+  -Replacement "if (show_glic) {`n    update.Set(`"showAiPage`", false);`n  }" `
   -AlreadyPresent 'update.Set("showAiPage", false);' `
   -Description 'dynamic Glic AI Settings suppression'
 
