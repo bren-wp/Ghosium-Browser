@@ -8,9 +8,7 @@ on:
       - 'launcher/ghosium.rc'
       - 'installer/**'
       - 'scripts/**'
-      - '.github/workflows/windows-build.yml'
-      - '.github/workflows/full-source-windows-build.yml'
-      - '.github/workflows/installer-contract.yml'
+      - '.github/workflows/**'
   push:
     branches:
       - main
@@ -18,9 +16,7 @@ on:
       - 'launcher/ghosium.rc'
       - 'installer/**'
       - 'scripts/**'
-      - '.github/workflows/windows-build.yml'
-      - '.github/workflows/full-source-windows-build.yml'
-      - '.github/workflows/installer-contract.yml'
+      - '.github/workflows/**'
   workflow_dispatch:
 
 permissions:
@@ -34,7 +30,40 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Require immutable GitHub Actions references
+        shell: python
+        run: |
+          from pathlib import Path
+          import re
+
+          action_ref = re.compile(r'^\s*uses:\s*([^\s#]+)')
+          immutable = re.compile(r'^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+@[0-9a-f]{40}$')
+          docker_digest = re.compile(r'^docker://[^@\s]+@sha256:[0-9a-f]{64}$')
+          failures = []
+
+          for path in sorted(Path('.github/workflows').glob('*.y*ml')):
+              for number, line in enumerate(path.read_text(encoding='utf-8').splitlines(), 1):
+                  match = action_ref.match(line)
+                  if not match:
+                      continue
+                  ref = match.group(1)
+                  if ref.startswith('./'):
+                      continue
+                  if immutable.fullmatch(ref) or docker_digest.fullmatch(ref):
+                      continue
+                  failures.append(f'{path}:{number}: {ref}')
+
+          if failures:
+              raise SystemExit(
+                  'Workflow actions must be pinned to immutable commit SHAs/digests:\n' +
+                  '\n'.join(failures)
+              )
+          print('GitHub Actions immutable-reference contract: OK')
 
       - name: Validate installer PowerShell scripts
         shell: pwsh
