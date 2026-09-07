@@ -66,8 +66,8 @@ if ($updated -ne $text) {
 $verify = [IO.File]::ReadAllText($sourcePath)
 foreach ($required in @(
   '#include <algorithm>',
-  'true /* force_verify_in_dev_builds */',
-  'signed running Ghosium Browser executable'
+  'base::win::IsBinaryTrusted(setup_path_, true,',
+  'true /* force_verify_in_dev_builds */'
 )) {
   if (!$verify.Contains($required)) {
     throw "Ghosium updater hardening failed: missing $required"
@@ -75,6 +75,15 @@ foreach ($required in @(
 }
 if ($verify.Contains('false /* force_verify_in_dev_builds */')) {
   throw 'Ghosium updater still permits Chromium unbranded builds to bypass Authenticode verification.'
+}
+
+# Keep this verifier structural rather than dependent on prose comments: what
+# matters is that the trust API is present and its unbranded-build bypass is
+# forcibly disabled before Setup launch.
+$trustIndex = $verify.IndexOf('base::win::IsBinaryTrusted(setup_path_, true,')
+$launchIndex = $verify.IndexOf('base::LaunchProcess')
+if ($trustIndex -lt 0 -or $launchIndex -lt 0 -or $trustIndex -gt $launchIndex) {
+  throw 'Ghosium updater must perform Authenticode publisher verification before launching Setup.'
 }
 
 Write-Host 'Ghosium updater hardening: Authenticode is mandatory in unbranded release/dev configurations.'
