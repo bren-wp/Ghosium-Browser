@@ -50,7 +50,7 @@ Current shortcuts include:
 - `!mdn` — MDN Web Docs
 - `!so` — Stack Overflow
 
-Example: `chromium !gh` opens GitHub search for `chromium`. Unknown bangs remain normal Ghosium queries instead of being forwarded anywhere.
+Example: `browser !gh` opens GitHub search for `browser`. Unknown bangs remain normal Ghosium queries instead of being forwarded anywhere.
 
 The JSON API does not automatically redirect external bangs; `/api/search.php` returns bang metadata so a client can decide whether to leave Ghosium Search.
 
