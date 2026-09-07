@@ -19,8 +19,17 @@
 
 ### Product contract
 - `VERSION`, Ghosium Privacy, Ghosium Search and built-in Ghosium Store metadata now report `0.1.0`.
+- Added a separate Ghosium product-version source contract so public About/version surfaces report the Ghosium version rather than presenting the pinned browser-engine compatibility version as the product version.
+- Added a coordinated Windows source migration for the public primary executable `Ghosium-Browser.exe`, proxy helper `Ghosium-Proxy.exe`, installer/update filename constants and Windows VisualElements identity.
+- Full-source binary and installer verification now reject a release that still exposes public `chrome.exe` as the installed primary browser executable.
 - Release documentation now distinguishes source audit, source patching, full-source compile, runtime verification and release publication.
-- Technical upstream GN/Ninja target names remain internal build dependencies until a coordinated rename is proven by a successful compile and runtime test.
+- Technical upstream GN/Ninja targets and internal DLL/archive names remain implementation dependencies until a separate coordinated rename is proven by successful compile/runtime testing.
+
+### Licensing and attribution
+- Ghosium Browser's Brendigo-authored proprietary portions are governed by the Brendigo Proprietary Commercial Software License Agreement Version 1.0 in `LICENSE`.
+- Chromium and all other third-party/open-source components remain governed by their respective licenses; Ghosium's proprietary license does not remove or narrow rights granted by those licenses.
+- Production release payloads must include verified `GHOSIUM-LICENSE.txt` and `THIRD_PARTY_NOTICES.md` files, and both are covered by the release SHA-256 manifest.
+- Brand-surface CI treats required upstream names in the isolated legal-attribution section as legal notices rather than Ghosium product branding, while continuing to reject legacy branding in public product/UI surfaces.
 
 > `0.1.0` is not considered a released source-built browser until the full-source workflow completes successfully on the production commit and creates `ghosium-v0.1.0`.
 
