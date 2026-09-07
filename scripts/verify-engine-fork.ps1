@@ -18,6 +18,7 @@ $productRefreshVectorPath = Join-Path $repoRoot 'engine/branding/vector/product_
 $assetGeneratorPath = Join-Path $repoRoot 'scripts/generate-engine-brand-assets.py'
 $defaultSearchRewritePath = Join-Path $repoRoot 'scripts/rewrite-engine-default-search.ps1'
 $windowsIdentityRewritePath = Join-Path $repoRoot 'scripts/rewrite-engine-windows-identity.ps1'
+$internalSchemeRewritePath = Join-Path $repoRoot 'scripts/rewrite-engine-internal-scheme.ps1'
 
 foreach ($required in @(
   $configPath,
@@ -30,7 +31,8 @@ foreach ($required in @(
   $productRefreshVectorPath,
   $assetGeneratorPath,
   $defaultSearchRewritePath,
-  $windowsIdentityRewritePath
+  $windowsIdentityRewritePath,
+  $internalSchemeRewritePath
 )) {
   if (!(Test-Path $required -PathType Leaf)) {
     throw "Required Ghosium fork file is missing: $required"
@@ -86,6 +88,31 @@ foreach ($url in $expectedUrls) {
 foreach ($property in $config.productUrls.PSObject.Properties) {
   if ($actualUrls -notcontains [string]$property.Value) {
     throw "Product-generated URL is outside the approved allowlist: $($property.Value)"
+  }
+}
+
+$expectedInternalRoutes = @(
+  'ghost://newtab/',
+  'ghost://history/',
+  'ghost://bookmarks/',
+  'ghost://downloads/',
+  'ghost://settings/',
+  'ghost://profiles/',
+  'ghost://extensions/',
+  'ghost://passwords/'
+)
+if ([string]$config.internalUi.scheme -ne 'ghost' -or
+    [string]$config.internalUi.untrustedScheme -ne 'ghost-untrusted') {
+  throw 'Ghosium internal UI must use ghost:// and ghost-untrusted://.'
+}
+$actualInternalRoutes = @($config.internalUi.routes)
+if ($actualInternalRoutes.Count -ne $expectedInternalRoutes.Count -or
+    @($actualInternalRoutes | Sort-Object -Unique).Count -ne $expectedInternalRoutes.Count) {
+  throw 'Ghosium internal UI route contract must contain exactly eight unique routes.'
+}
+foreach ($route in $expectedInternalRoutes) {
+  if ($actualInternalRoutes -notcontains $route) {
+    throw "Missing required Ghosium internal UI route: $route"
   }
 }
 
@@ -159,18 +186,21 @@ if ($SourceRoot) {
   $resolvedSourceRoot = (Resolve-Path $SourceRoot).Path
   $gitDirectory = Join-Path $resolvedSourceRoot '.git'
   if (!(Test-Path $gitDirectory)) {
-    throw "SourceRoot is not a Chromium Git checkout: $resolvedSourceRoot"
+    throw "SourceRoot is not a Git checkout: $resolvedSourceRoot"
   }
 
   $actualCommit = (& git -C $resolvedSourceRoot rev-parse HEAD).Trim()
   if ($LASTEXITCODE -ne 0 -or $actualCommit -ne $sourceRevision) {
-    throw "Chromium checkout must be detached at $sourceRevision; found $actualCommit"
+    throw "Engine checkout must be detached at $sourceRevision; found $actualCommit"
   }
 
   $requiredEngineFiles = @(
     'chrome/app/chromium_strings.grd',
     'chrome/app/settings_chromium_strings.grdp',
     'chrome/common/url_constants.h',
+    'chrome/common/webui_url_constants.h',
+    'content/public/common/url_constants.h',
+    'chrome/browser/browser_about_handler.cc',
     'chrome/app/theme/chromium/BRANDING',
     'chrome/app/theme/chromium/product_logo.svg',
     'chrome/install_static/chromium_install_modes.h',
@@ -233,7 +263,37 @@ if ($SourceRoot) {
     throw 'Engine product URL routing is missing Ghosium Support.'
   }
   if ($urlConstants.Contains('https://support.google.com/chrome?p=help&ctx=')) {
-    throw 'Legacy Chromium/Chrome Help URLs remain in Ghosium product routing.'
+    throw 'Legacy third-party Help URLs remain in Ghosium product routing.'
+  }
+
+  $contentUrlConstants = Get-Content (Join-Path $resolvedSourceRoot 'content/public/common/url_constants.h') -Raw
+  if (!$contentUrlConstants.Contains('kChromeUIScheme[] = "ghost"') -or
+      !$contentUrlConstants.Contains('kChromeUIUntrustedScheme[] = "ghost-untrusted"')) {
+    throw 'Canonical Ghosium WebUI schemes are not ghost / ghost-untrusted.'
+  }
+  if ($contentUrlConstants.Contains('kChromeUIScheme[] = "chrome"') -or
+      $contentUrlConstants.Contains('kChromeUIUntrustedScheme[] = "chrome-untrusted"')) {
+    throw 'Legacy internal WebUI scheme values remain active.'
+  }
+
+  $webUiConstants = Get-Content (Join-Path $resolvedSourceRoot 'chrome/common/webui_url_constants.h') -Raw
+  foreach ($nativeRoute in @(
+    'ghost://newtab/',
+    'ghost://history/',
+    'ghost://bookmarks/',
+    'ghost://downloads/',
+    'ghost://settings/',
+    'ghost://extensions/'
+  )) {
+    if (!$webUiConstants.Contains($nativeRoute)) {
+      throw "Ghosium WebUI constants are missing: $nativeRoute"
+    }
+  }
+
+  $aboutHandler = Get-Content (Join-Path $resolvedSourceRoot 'chrome/browser/browser_about_handler.cc') -Raw
+  if (!$aboutHandler.Contains('GURL("ghost://settings/manageProfile")') -or
+      !$aboutHandler.Contains('GURL("ghost://password-manager/")')) {
+    throw 'ghost://profiles or ghost://passwords alias routing is missing.'
   }
 
   $searchSource = Get-Content (Join-Path $resolvedSourceRoot 'components/search_engines/template_url_prepopulate_data.cc') -Raw
@@ -280,7 +340,7 @@ if ($SourceRoot) {
     'L"Chromium PDF Document"'
   )) {
     if ($windowsIdentity.Contains($legacyWindowsIdentity)) {
-      throw "Legacy Chromium Windows identity remains active: $legacyWindowsIdentity"
+      throw "Legacy Windows product identity remains active: $legacyWindowsIdentity"
     }
   }
   if (!$windowsIdentity.Contains('kSafeBrowsingName[] = "chromium"')) {
@@ -309,7 +369,7 @@ if ($SourceRoot) {
 
   $productSvg = Get-Content (Join-Path $resolvedSourceRoot 'chrome/app/theme/chromium/product_logo.svg') -Raw
   if (!$productSvg.Contains('aria-label="Ghosium"') -or !$productSvg.Contains('#62E7D5')) {
-    throw 'Chromium product_logo.svg was not replaced with the Ghosium mark.'
+    throw 'Product logo SVG was not replaced with the Ghosium mark.'
   }
 
   $darkLogo = Get-Content (Join-Path $resolvedSourceRoot 'ui/webui/resources/images/chrome_logo_dark.svg') -Raw
@@ -319,10 +379,13 @@ if ($SourceRoot) {
 
   $contextualToolbar = Get-Content (Join-Path $resolvedSourceRoot 'chrome/browser/resources/contextual_tasks/top_toolbar_logo.html.ts') -Raw
   if ($contextualToolbar.Contains('chrome_product.svg') -or $contextualToolbar.Contains('chrome_logo_dark.svg')) {
-    throw 'Contextual toolbar still references a legacy Chrome/Chromium product logo.'
+    throw 'Contextual toolbar still references a legacy product logo asset.'
   }
-  if ([regex]::Matches($contextualToolbar, 'chrome://theme/current-channel-logo@2x').Count -lt 2) {
-    throw 'Contextual toolbar is not consistently routed to the Ghosium current-channel logo.'
+  if ([regex]::Matches($contextualToolbar, 'ghost://theme/current-channel-logo@2x').Count -lt 2) {
+    throw 'Contextual toolbar is not consistently routed through the Ghosium internal scheme.'
+  }
+  if ($contextualToolbar.Contains('chrome://')) {
+    throw 'Contextual toolbar still exposes the legacy internal WebUI scheme.'
   }
 
   $managedProfile = Get-Content (Join-Path $resolvedSourceRoot 'chrome/browser/resources/signin/managed_user_profile_notice/managed_user_profile_notice_value_prop.html.ts') -Raw
@@ -333,7 +396,7 @@ if ($SourceRoot) {
   $productVector = Get-Content (Join-Path $resolvedSourceRoot 'components/vector_icons/chromium/product.icon') -Raw
   $productRefreshVector = Get-Content (Join-Path $resolvedSourceRoot 'components/vector_icons/chromium/product_refresh.icon') -Raw
   if (!$productVector.Contains('Ghosium product vector mark') -or !$productRefreshVector.Contains('Ghosium product vector mark')) {
-    throw 'Chromium vector product icons were not replaced with Ghosium vectors.'
+    throw 'Product vector icons were not replaced with Ghosium vectors.'
   }
 
   $pngSignature = [byte[]](0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A)
@@ -371,7 +434,7 @@ if ($SourceRoot) {
     throw 'Unable to verify third_party source status.'
   }
   if ($status) {
-    throw 'Ghosium branding automation must not modify Chromium third_party sources.'
+    throw 'Ghosium branding automation must not modify third_party sources.'
   }
 }
 
