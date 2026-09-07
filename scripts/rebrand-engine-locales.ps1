@@ -37,16 +37,22 @@ function Replace-ProductBrandingInBody {
     [Parameter(Mandatory = $true)][bool]$PreserveChromiumProject
   )
 
+  # The upstream Google account/sync Settings page is hidden from Ghosium's
+  # public menu. Keep a neutral internal route title rather than implying that
+  # Google account services are owned by Ghosium.
   if ($TranslationId -eq $settingsPeopleTranslationId) {
-    return 'Ghosium'
+    return 'Profile'
   }
 
   $updated = $Body
   $updated = $updated.Replace('Chrome Web Store', 'Ghosium Store')
   $updated = $updated.Replace('Chrome Colors', 'Ghosium Colors')
-  $updated = $updated.Replace('AI in Chrome', 'AI in Ghosium')
-  $updated = $updated.Replace('Gemini in Chromium', 'Gemini in Ghosium')
-  $updated = $updated.Replace('Gemini in Chrome', 'Gemini in Ghosium')
+  # Google/Gemini AI Settings are hidden from Ghosium. Shared localized strings
+  # that remain compiled are neutralized, never relabeled as a Ghosium AI service.
+  $updated = $updated.Replace('AI in Chrome', 'AI features')
+  $updated = $updated.Replace('Gemini in Chromium', 'Gemini')
+  $updated = $updated.Replace('Gemini in Chrome', 'Gemini')
+  $updated = $updated.Replace('You and Google', 'Profile')
   $updated = $updated.Replace('Google Chrome for Testing', 'Ghosium Browser')
   $updated = $updated.Replace('Chrome for Testing', 'Ghosium Browser')
   $updated = $updated.Replace('Google Chrome', 'Ghosium Browser')
@@ -177,7 +183,13 @@ $publicSurfaceRequired = @(
   'chrome/app/settings_strings.grdp',
   'chrome/app/shared_settings_strings.grdp',
   'chrome/app/glic_strings.grdp',
-  'chrome/browser/extensions/extension_ui_util.cc'
+  'chrome/browser/extensions/extension_ui_util.cc',
+  'chrome/browser/resources/settings/settings_menu/settings_menu.html',
+  'chrome/browser/resources/settings/settings_menu/settings_menu.ts',
+  'chrome/browser/resources/settings/route.ts',
+  'chrome/browser/ui/webui/settings/settings_ui.cc',
+  'chrome/browser/resources/new_tab_page/app.html',
+  'chrome/browser/ui/webui/new_tab_footer/footer_context_menu.cc'
 )
 $completePublicSurfaceSource = $true
 foreach ($relative in $publicSurfaceRequired) {
