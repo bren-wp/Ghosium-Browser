@@ -2,12 +2,6 @@ name: Ghosium Full-Source Windows Build
 
 on:
   workflow_dispatch:
-  pull_request:
-    branches:
-      - main
-  push:
-    branches:
-      - main
 
 concurrency:
   group: ghosium-full-source-windows-${{ github.ref }}
@@ -232,7 +226,7 @@ jobs:
     needs:
       - validate-release-contract
       - build-windows-source
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:
       contents: write
