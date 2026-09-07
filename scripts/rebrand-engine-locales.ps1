@@ -43,9 +43,12 @@ function Replace-ProductBrandingInBody {
   $updated = $updated.Replace('Google Chrome', 'Ghosium Browser')
 
   if ($PreserveChromiumProject -and $legalChromiumIds -contains $TranslationId) {
-    # These two translated messages are third-party legal attribution. Keep the
-    # upstream project name only there; it is not product branding.
-    $updated = $chromiumWord.Replace($updated, 'Ghosium Browser', 1)
+    # These two translated messages are third-party legal attribution. On the
+    # first pass replace only the product token. On later normalization passes,
+    # keep the remaining upstream-project attribution intact.
+    if (!$updated.Contains('Ghosium Browser')) {
+      $updated = $chromiumWord.Replace($updated, 'Ghosium Browser', 1)
+    }
   } else {
     # Several locales inflect browser brand names. Match lowercase grammatical
     # suffixes such as Chromiuma/Chromiumu/Chromeovih while deliberately not
