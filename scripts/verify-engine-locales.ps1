@@ -62,8 +62,8 @@ function Assert-XtbBundleBranding {
 
       if ($RequireSettingsRoot -and $id -eq $settingsPeopleTranslationId) {
         $settingsRootFound = $true
-        if ($body.Trim() -ne 'Ghosium') {
-          throw "Settings root is not Ghosium-branded in locale ${locale}: translation $id = '$($body.Trim())'"
+        if ($body.Trim() -ne 'Profile') {
+          throw "Hidden upstream account Settings title is not neutralized in locale ${locale}: translation $id = '$($body.Trim())'"
         }
         continue
       }
@@ -106,4 +106,4 @@ if ($thirdPartyChanges) {
   throw 'Locale audit detected third_party modifications.'
 }
 
-Write-Host 'Ghosium 30-locale browser + complete Settings branding audit: OK'
+Write-Host 'Ghosium 30-locale browser branding audit: OK; hidden Google account root is neutral Profile copy.'
