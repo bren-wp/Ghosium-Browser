@@ -62,7 +62,8 @@ function Assert-NoForbiddenVisibleBrand {
       'Gemini in Chromium',
       'Gemini in Chrome',
       'Chrome Colors',
-      'Open Chrome Web Store'
+      'Open Chrome Web Store',
+      'You and Google'
     )) {
       if ($visible.Contains($forbidden)) {
         throw "Legacy public browser branding remains visible in ${Path}: $forbidden"
@@ -105,7 +106,7 @@ Assert-MessageContains -Path $chromiumStrings -MessageId 'IDS_ABOUT_VERSION_COMP
 Assert-MessageContains -Path $chromiumStrings -MessageId 'IDS_ABOUT_VERSION_COPYRIGHT' -Expected 'Brendigo. Ghosium Browser. All rights reserved.'
 Assert-MessageContains -Path $settingsChromiumStrings -MessageId 'IDS_SETTINGS_ABOUT_PROGRAM' -Expected 'About Ghosium Browser'
 Assert-MessageContains -Path $settingsChromiumStrings -MessageId 'IDS_SETTINGS_GET_HELP_USING_CHROME' -Expected 'Ghosium Support'
-Assert-MessageContains -Path $settingsStrings -MessageId 'IDS_SETTINGS_PEOPLE' -Expected 'Profile and services'
+Assert-MessageContains -Path $settingsStrings -MessageId 'IDS_SETTINGS_PEOPLE' -Expected 'Ghosium'
 
 foreach ($path in @(
   $chromiumStrings,
