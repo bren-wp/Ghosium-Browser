@@ -49,6 +49,7 @@ jobs:
             'scripts/rewrite-engine-product-links.ps1',
             'scripts/rewrite-engine-default-search.ps1',
             'scripts/rewrite-engine-windows-identity.ps1',
+            'scripts/rewrite-engine-internal-scheme.ps1',
             'scripts/verify-engine-locales.ps1',
             'scripts/verify-engine-fork.ps1',
             'scripts/configure-engine-build.ps1',
@@ -177,8 +178,31 @@ jobs:
             }
           }
 
+          if ([string]$config.internalUi.scheme -ne 'ghost' -or [string]$config.internalUi.untrustedScheme -ne 'ghost-untrusted') {
+            throw 'Ghosium internal UI schemes must be ghost / ghost-untrusted.'
+          }
+          $expectedRoutes = @(
+            'ghost://newtab/',
+            'ghost://history/',
+            'ghost://bookmarks/',
+            'ghost://downloads/',
+            'ghost://settings/',
+            'ghost://profiles/',
+            'ghost://extensions/',
+            'ghost://passwords/'
+          )
+          $routes = @($config.internalUi.routes)
+          if ($routes.Count -ne $expectedRoutes.Count) {
+            throw 'Ghosium internal route contract must contain exactly eight routes.'
+          }
+          foreach ($route in $expectedRoutes) {
+            if ($routes -notcontains $route) {
+              throw "Missing Ghosium internal route: $route"
+            }
+          }
+
   pinned-source-smoke:
-    name: Apply branding to pinned Chromium source
+    name: Apply branding to pinned upstream source
     needs: source-contract
     runs-on: ubuntu-latest
     timeout-minutes: 25
@@ -187,11 +211,11 @@ jobs:
       - name: Checkout Ghosium fork tooling
         uses: actions/checkout@v5
 
-      - name: Sparse checkout pinned Chromium source
+      - name: Sparse checkout pinned upstream source
         shell: bash
         run: |
           set -euo pipefail
-          src="${RUNNER_TEMP}/chromium-src"
+          src="${RUNNER_TEMP}/ghosium-engine-src"
           revision="$(tr -d '\r\n ' < ENGINE_SOURCE_REVISION)"
 
           git init "$src"
@@ -204,11 +228,13 @@ jobs:
           /chrome/app/resources/
           /chrome/app/theme/chromium/
           /chrome/common/url_constants.h
+          /chrome/common/webui_url_constants.h
           /chrome/install_static/chromium_install_modes.h
           /chrome/installer/setup/setup_main.cc
           /chrome/installer/setup/uninstall.cc
           /chrome/installer/setup/install_worker.cc
           /chrome/installer/util/util_constants.h
+          /chrome/browser/browser_about_handler.cc
           /chrome/browser/ui/chrome_pages.cc
           /chrome/browser/ui/webui/side_panel/customize_chrome/customize_chrome_page_handler.cc
           /chrome/browser/ui/webui/extensions/extensions_ui.cc
@@ -219,6 +245,7 @@ jobs:
           /components/search_engines/template_url_prepopulate_data.cc
           /components/strings/
           /components/vector_icons/chromium/
+          /content/public/common/url_constants.h
           /extensions/strings/
           /ui/webui/resources/images/chrome_logo_dark.svg
           EOF
@@ -226,43 +253,64 @@ jobs:
           git -C "$src" fetch --depth=1 --filter=blob:none origin "$revision"
           git -C "$src" checkout --detach FETCH_HEAD
           test "$(git -C "$src" rev-parse HEAD)" = "$revision"
-          echo "CHROMIUM_SRC=$src" >> "$GITHUB_ENV"
+          echo "ENGINE_SRC=$src" >> "$GITHUB_ENV"
 
       - name: Apply complete Ghosium source branding
         shell: pwsh
-        run: ./scripts/apply-engine-branding.ps1 -SourceRoot $env:CHROMIUM_SRC
+        run: ./scripts/apply-engine-branding.ps1 -SourceRoot $env:ENGINE_SRC
 
       - name: Validate resulting source diff
         shell: bash
         run: |
           set -euo pipefail
-          git -C "$CHROMIUM_SRC" diff --check
-          grep -F 'Customize Ghosium' "$CHROMIUM_SRC/chrome/app/chromium_strings.grd"
-          grep -F 'alt="Ghosium logo"' "$CHROMIUM_SRC/chrome/browser/resources/signin/managed_user_profile_notice/managed_user_profile_notice_value_prop.html.ts"
-          test "$(grep -Fc 'chrome://theme/current-channel-logo@2x' "$CHROMIUM_SRC/chrome/browser/resources/contextual_tasks/top_toolbar_logo.html.ts")" -ge 2
-          grep -F 'aria-label="Ghosium"' "$CHROMIUM_SRC/ui/webui/resources/images/chrome_logo_dark.svg"
-          grep -F 'Ghosium Search' "$CHROMIUM_SRC/components/search_engines/template_url_prepopulate_data.cc"
-          grep -F 'https://search.ghosium.com/?q={searchTerms}' "$CHROMIUM_SRC/components/search_engines/template_url_prepopulate_data.cc"
-          grep -F 'prepopulate_id = 1101' "$CHROMIUM_SRC/components/search_engines/template_url_prepopulate_data.cc"
-          grep -F 'kCompanyPathName[] = L"Brendigo"' "$CHROMIUM_SRC/chrome/install_static/chromium_install_modes.h"
-          grep -F 'kProductPathName[] = L"Ghosium"' "$CHROMIUM_SRC/chrome/install_static/chromium_install_modes.h"
-          grep -F '.base_app_name = L"Ghosium Browser"' "$CHROMIUM_SRC/chrome/install_static/chromium_install_modes.h"
-          grep -F '.browser_prog_id_prefix = L"GhosiumHTM"' "$CHROMIUM_SRC/chrome/install_static/chromium_install_modes.h"
-          grep -F '.direct_launch_url_scheme = "ghosium"' "$CHROMIUM_SRC/chrome/install_static/chromium_install_modes.h"
+          git -C "$ENGINE_SRC" diff --check
+          grep -F 'Customize Ghosium' "$ENGINE_SRC/chrome/app/chromium_strings.grd"
+          grep -F 'alt="Ghosium logo"' "$ENGINE_SRC/chrome/browser/resources/signin/managed_user_profile_notice/managed_user_profile_notice_value_prop.html.ts"
+          test "$(grep -Fc 'ghost://theme/current-channel-logo@2x' "$ENGINE_SRC/chrome/browser/resources/contextual_tasks/top_toolbar_logo.html.ts")" -ge 2
+          grep -F 'aria-label="Ghosium"' "$ENGINE_SRC/ui/webui/resources/images/chrome_logo_dark.svg"
+          grep -F 'Ghosium Search' "$ENGINE_SRC/components/search_engines/template_url_prepopulate_data.cc"
+          grep -F 'https://search.ghosium.com/?q={searchTerms}' "$ENGINE_SRC/components/search_engines/template_url_prepopulate_data.cc"
+          grep -F 'prepopulate_id = 1101' "$ENGINE_SRC/components/search_engines/template_url_prepopulate_data.cc"
+          grep -F 'kCompanyPathName[] = L"Brendigo"' "$ENGINE_SRC/chrome/install_static/chromium_install_modes.h"
+          grep -F 'kProductPathName[] = L"Ghosium"' "$ENGINE_SRC/chrome/install_static/chromium_install_modes.h"
+          grep -F '.base_app_name = L"Ghosium Browser"' "$ENGINE_SRC/chrome/install_static/chromium_install_modes.h"
+          grep -F '.browser_prog_id_prefix = L"GhosiumHTM"' "$ENGINE_SRC/chrome/install_static/chromium_install_modes.h"
+          grep -F '.direct_launch_url_scheme = "ghosium"' "$ENGINE_SRC/chrome/install_static/chromium_install_modes.h"
+
+          grep -F 'kChromeUIScheme[] = "ghost"' "$ENGINE_SRC/content/public/common/url_constants.h"
+          grep -F 'kChromeUIUntrustedScheme[] = "ghost-untrusted"' "$ENGINE_SRC/content/public/common/url_constants.h"
+          for route in \
+            'ghost://newtab/' \
+            'ghost://history/' \
+            'ghost://bookmarks/' \
+            'ghost://downloads/' \
+            'ghost://settings/' \
+            'ghost://extensions/'; do
+            grep -F "$route" "$ENGINE_SRC/chrome/common/webui_url_constants.h"
+          done
+          grep -F 'GURL("ghost://settings/manageProfile")' "$ENGINE_SRC/chrome/browser/browser_about_handler.cc"
+          grep -F 'GURL("ghost://password-manager/")' "$ENGINE_SRC/chrome/browser/browser_about_handler.cc"
+
+          if grep -RInF --include='*.cc' --include='*.h' --include='*.html' --include='*.ts' --include='*.grd' --include='*.grdp' --include='*.xtb' \
+            --exclude-dir=test --exclude-dir=tests --exclude-dir=testing --exclude-dir=tools --exclude-dir=third_party \
+            'chrome://' "$ENGINE_SRC/chrome" "$ENGINE_SRC/components" "$ENGINE_SRC/content" "$ENGINE_SRC/extensions" "$ENGINE_SRC/ui"; then
+            echo 'Legacy internal browser scheme remains in audited production source.' >&2
+            exit 1
+          fi
 
           # Ghosium is uninstallable through the normal installed setup.exe flow.
           # No separate uninstall.exe is introduced or expected.
-          grep -F 'kSetupExe[] = L"setup.exe"' "$CHROMIUM_SRC/chrome/installer/util/util_constants.h"
-          grep -F 'kUninstallStringField[] = L"UninstallString"' "$CHROMIUM_SRC/chrome/installer/util/util_constants.h"
-          grep -F 'kUninstallArgumentsField[] = L"UninstallArguments"' "$CHROMIUM_SRC/chrome/installer/util/util_constants.h"
-          grep -F 'HasSwitch(installer::switches::kUninstall)' "$CHROMIUM_SRC/chrome/installer/setup/setup_main.cc"
-          grep -F 'UninstallProduct(' "$CHROMIUM_SRC/chrome/installer/setup/setup_main.cc"
-          grep -F 'InstallStatus UninstallProduct(' "$CHROMIUM_SRC/chrome/installer/setup/uninstall.cc"
-          grep -F 'installer::kUninstallStringField' "$CHROMIUM_SRC/chrome/installer/setup/install_worker.cc"
-          grep -F 'installer::kUninstallArgumentsField' "$CHROMIUM_SRC/chrome/installer/setup/install_worker.cc"
+          grep -F 'kSetupExe[] = L"setup.exe"' "$ENGINE_SRC/chrome/installer/util/util_constants.h"
+          grep -F 'kUninstallStringField[] = L"UninstallString"' "$ENGINE_SRC/chrome/installer/util/util_constants.h"
+          grep -F 'kUninstallArgumentsField[] = L"UninstallArguments"' "$ENGINE_SRC/chrome/installer/util/util_constants.h"
+          grep -F 'HasSwitch(installer::switches::kUninstall)' "$ENGINE_SRC/chrome/installer/setup/setup_main.cc"
+          grep -F 'UninstallProduct(' "$ENGINE_SRC/chrome/installer/setup/setup_main.cc"
+          grep -F 'InstallStatus UninstallProduct(' "$ENGINE_SRC/chrome/installer/setup/uninstall.cc"
+          grep -F 'installer::kUninstallStringField' "$ENGINE_SRC/chrome/installer/setup/install_worker.cc"
+          grep -F 'installer::kUninstallArgumentsField' "$ENGINE_SRC/chrome/installer/setup/install_worker.cc"
 
-          if git -C "$CHROMIUM_SRC" status --porcelain=v1 -- third_party | grep -q .; then
+          if git -C "$ENGINE_SRC" status --porcelain=v1 -- third_party | grep -q .; then
             echo "third_party was modified" >&2
             exit 1
           fi
-          git -C "$CHROMIUM_SRC" status --short
+          git -C "$ENGINE_SRC" status --short
