@@ -106,6 +106,15 @@ if ($LASTEXITCODE -ne 0) {
   throw 'Ghosium native Windows VersionUpdater integration failed.'
 }
 
+# Chromium's generic trust helper intentionally bypasses Authenticode for
+# unbranded builds unless verification is forced. Ghosium is an unbranded
+# Chromium fork, so force signature + publisher verification before the update
+# Setup can ever be launched.
+& (Join-Path $PSScriptRoot 'harden-engine-version-updater.ps1') -SourceRoot $sourceRootResolved
+if ($LASTEXITCODE -ne 0) {
+  throw 'Ghosium native Windows VersionUpdater hardening failed.'
+}
+
 $thirdPartyChanges = & git -C $sourceRootResolved status --porcelain=v1 -- third_party
 if ($LASTEXITCODE -ne 0) {
   throw 'Unable to verify third_party source state after product-version rewrite.'
@@ -114,4 +123,4 @@ if ($thirdPartyChanges) {
   throw 'Product-version rewrite modified third_party sources; refusing to continue.'
 }
 
-Write-Host "Ghosium product version $productVersion applied to About surfaces and native updater; engine compatibility version remains separate."
+Write-Host "Ghosium product version $productVersion applied to About surfaces and hardened native updater; engine compatibility version remains separate."
