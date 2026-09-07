@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.1.1 — Ghosium-only public surfaces
+
+### Branding and identity
+- Completed screenshot-facing Settings and About branding so the distributed browser identifies itself as Ghosium Browser by Brendigo instead of Chromium.
+- Replaced the public Chromium product logo with the canonical Ghosium SVG/PNG/ICO asset set and independently verifies deterministic binary logo outputs.
+- Replaced browser-owned help/product entry points with Ghosium-controlled Support and Store destinations while preserving required Chromium/open-source attribution in legal material.
+- Expanded public product-string branding through the generic Settings resource bundle and all 30 supported locales.
+
+### Removed upstream product surfaces
+- Removed the public `You and Google` Settings navigation entry; the compatibility route remains internal under the neutral `Profile` title and Settings opens on Privacy & security instead.
+- Removed the Google/Gemini AI Settings navigation entry and hard-disabled its route, including dynamic Glic re-enablement.
+- Removed the Chromium New Tab customization button and its footer context-menu action instead of merely relabeling them.
+- Keeps compatibility-sensitive CustomizeChrome, GEIC, Glic/Gemini and AI-overlay browser actions registered internally but permanently invisible in the Ghosium action tree.
+- Hides the upstream Chromium Web Store component-app tile from New Tab/App Launcher; Ghosium Store remains the first-party extension-store destination.
+- Disables Chromium desktop-to-mobile acquisition, NTP mobile-app promotion, mobile-promo notification and related active-day tracking gates because Ghosium does not currently ship a Ghosium mobile browser.
+
+### Verification
+- Added a pinned-source `Ghosium Public Surface Contract` that applies the complete transform twice for idempotence against the exact Chromium revision in `ENGINE_SOURCE_REVISION`.
+- The contract independently verifies Settings/About identity, public logo hashes, 30-language branding, Web Store suppression, hidden Google-owned routes/actions, removed Customize entry points and disabled unowned mobile promos.
+- Public-surface transformations remain forbidden from modifying `third_party` source.
+
+> `0.1.1` is not considered a released source-built browser until the controlled full-source Windows workflow compiles and runtime-tests the exact production commit and publishes the corresponding `ghosium-v0.1.1` release.
+
 ## 0.1.0 — new Ghosium product line
 
 ### Release architecture
