@@ -1,6 +1,6 @@
 # Ghosium Browser
 
-**Ghosium Browser by Brendigo** is a source-derived open browser fork for Windows x64. The current product line starts at **0.1.0** and is being developed as a source-built Ghosium product rather than a precompiled upstream snapshot with a renamed launcher.
+**Ghosium Browser by Brendigo** is a source-derived browser fork for Windows x64. The current product line starts at **0.1.0** and is being developed as a source-built Ghosium product rather than a precompiled upstream snapshot with a renamed launcher.
 
 ## Current release contract
 
@@ -116,13 +116,21 @@ The launcher rejects high-risk command-line overrides such as sandbox removal, s
 
 ## Windows identity
 
-The source branding pipeline rewrites the pinned Windows install-mode identity to Ghosium/Brendigo values for product path, base application identity, browser ProgID prefix, HTML/PDF document identity, and direct-launch scheme. Technical upstream identifiers that are part of compatibility/security contracts are not renamed blindly.
+The source branding pipeline rewrites the pinned Windows install-mode identity to Ghosium/Brendigo values for product path, base application identity, browser ProgID prefix, HTML/PDF document identity, direct-launch scheme, primary executable and proxy executable. Technical upstream identifiers that remain part of compatibility/security contracts are not renamed blindly.
 
 The canonical user profile path is:
 
 ```text
 %LOCALAPPDATA%\Brendigo\Ghosium\User Data
 ```
+
+The canonical public Windows executable is:
+
+```text
+Ghosium-Browser.exe
+```
+
+A source-built release that still installs a public `chrome.exe` fails the release verifier.
 
 ## Source build
 
@@ -134,6 +142,7 @@ The Windows full-source build uses:
 - `scripts/bootstrap-engine-source.ps1` for source checkout;
 - `scripts/apply-engine-branding.ps1` for coordinated Ghosium source changes;
 - `scripts/verify-engine-fork.ps1` for source-fork verification;
+- `scripts/verify-engine-windows-executable.ps1` for independent Windows executable/source-shell verification;
 - `scripts/verify-engine-build-output.ps1` for compiled output/runtime verification;
 - `scripts/smoke-test-source-windows-installer.ps1` for source-built install/uninstall verification.
 
@@ -158,6 +167,8 @@ docs/                   architecture, security, release and build documentation
 
 Existing releases are never overwritten. If `ghosium-v0.x.y` already exists, the release workflow fails instead of replacing its assets. Every merged production change therefore requires a new product version before another release can be created.
 
-## License
+## License and third-party rights
 
-Ghosium-authored source is licensed under the BSD 3-Clause License in `LICENSE`. Copyright holder/publisher: **Brendigo**. Third-party components keep their original licenses and required notices.
+Ghosium Browser is distributed under the **Brendigo Proprietary Commercial Software License Agreement** in `LICENSE`. Brendigo-authored code, branding, artwork, documentation, patches and other proprietary portions are licensed under that agreement unless a separate written license explicitly states otherwise. Public repository visibility does not by itself grant an open-source license to Brendigo-authored proprietary material.
+
+Chromium and every other third-party or open-source component remain governed by their own licenses. Nothing in the Ghosium proprietary license removes, narrows, replaces or overrides rights granted directly under those third-party licenses. Required notices and attribution are preserved in `THIRD_PARTY_NOTICES.md` and the applicable bundled license material.
