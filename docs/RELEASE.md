@@ -29,18 +29,20 @@ Required evidence:
 2. pinned browser source revision checkout;
 3. pinned patch-anchor verification;
 4. Ghosium fork application and source verification;
-5. full browser compile;
-6. compiled-output/product verification;
-7. runtime smoke test;
-8. source-built installer install/uninstall round trip;
-9. build provenance;
-10. SHA-256 manifest.
+5. Windows executable/source-shell identity verification;
+6. full browser compile;
+7. compiled-output/product verification;
+8. runtime smoke test;
+9. source-built installer install/uninstall round trip;
+10. Brendigo proprietary product-license verification and preserved third-party attribution;
+11. build provenance;
+12. SHA-256 manifest.
 
 A source audit, source patch, precompiled snapshot package, or launcher/installer smoke test alone does not satisfy this gate.
 
 ## Public release assets
 
-The full-source pipeline currently publishes verified source-built artifacts and verification records, including:
+The full-source pipeline publishes only artifacts produced or copied into the verified full-source payload before hashing. The current release set includes:
 
 - `Ghosium-Browser-Setup.exe`;
 - `Ghosium-Browser-Source-Runtime.7z`;
@@ -48,11 +50,15 @@ The full-source pipeline currently publishes verified source-built artifacts and
 - `GHOSIUM-BUILDER-READY.json`;
 - `GHOSIUM-SOURCE-INSTALLER-SMOKE.json`;
 - `GHOSIUM-VERSION.txt`;
+- `GHOSIUM-LICENSE.txt` — Brendigo Proprietary Commercial Software License Agreement;
+- `THIRD_PARTY_NOTICES.md` — required third-party/open-source notices and attribution;
 - `SHA256SUMS.txt`.
+
+`GHOSIUM-LICENSE.txt` does not replace or override the licenses of Chromium or any other third-party/open-source component. Their rights and obligations remain governed by their respective license texts and required notices.
 
 A Portable executable must not be advertised for the new source-built product line until its packaging path is built from the same verified source output and passes equivalent runtime/cleanup tests. Historical Portable assets remain attached to their historical releases.
 
-GitHub also provides source archives for the release tag.
+GitHub also provides source archives for the release tag. Repository visibility does not itself change the proprietary license applicable to Brendigo-authored portions.
 
 ## Immutability
 
@@ -66,8 +72,9 @@ Before production publication, the repository must keep passing the applicable c
 
 - immutable GitHub Action SHAs and minimal token permissions;
 - version progression and bundled-component synchronization;
+- proprietary Ghosium product-license consistency and third-party rights preservation;
 - absence of the historical snapshot-based stable release path;
-- Ghosium-only controlled product surfaces;
+- Ghosium-only controlled product surfaces, with upstream names isolated to legal/technical contexts;
 - pinned source/build tooling;
 - Ghosium source fork and Windows identity;
 - installer/runtime verification;
