@@ -80,6 +80,64 @@ jobs:
 
           print(f'Ghosium product version contract OK: {version}')
 
+      - name: Verify proprietary product license and third-party rights
+        shell: python
+        run: |
+          import json
+          from pathlib import Path
+
+          license_path = Path('LICENSE')
+          notices_path = Path('THIRD_PARTY_NOTICES.md')
+          readme_path = Path('README.md')
+          config_path = Path('engine/branding/product.json')
+
+          for path in (license_path, notices_path, readme_path, config_path):
+              if not path.is_file():
+                  raise SystemExit(f'Required legal/release contract file is missing: {path}')
+
+          license_text = license_path.read_text(encoding='utf-8')
+          required_license = (
+              '# GHOSIUM BROWSER',
+              'Proprietary Commercial Software License Agreement',
+              'GHOSIUM Browser is proprietary commercial software.',
+              'Third-party and open-source software components are excluded from Brendigo',
+              'Open-source components remain governed by their respective licenses.',
+              'THIRD_PARTY_NOTICES.md',
+          )
+          for value in required_license:
+              if value not in license_text:
+                  raise SystemExit(f'Ghosium proprietary LICENSE contract is missing: {value}')
+
+          readme = readme_path.read_text(encoding='utf-8')
+          required_readme = (
+              '## License and third-party rights',
+              'Brendigo Proprietary Commercial Software License Agreement',
+              'Public repository visibility does not by itself grant an open-source license',
+              'Chromium and every other third-party or open-source component remain governed by their own licenses.',
+          )
+          for value in required_readme:
+              if value not in readme:
+                  raise SystemExit(f'README legal contract is missing: {value}')
+          for obsolete in (
+              'Ghosium-authored source is licensed under the BSD 3-Clause License in `LICENSE`',
+              'source-derived open browser fork',
+          ):
+              if obsolete in readme:
+                  raise SystemExit(f'Obsolete Ghosium licensing claim returned in README: {obsolete}')
+
+          config = json.loads(config_path.read_text(encoding='utf-8'))
+          legal = config.get('legal', {})
+          for key in ('preserveThirdPartyLicenses', 'preserveCopyrightNotices', 'preserveAttribution'):
+              if legal.get(key) is not True:
+                  raise SystemExit(f'Third-party legal preservation invariant must remain enabled: {key}')
+          if legal.get('thirdPartySurface') != 'legal/third-party':
+              raise SystemExit('Third-party attribution surface changed unexpectedly.')
+
+          if len(notices_path.read_text(encoding='utf-8').strip()) < 100:
+              raise SystemExit('THIRD_PARTY_NOTICES.md is unexpectedly empty or incomplete.')
+
+          print('Ghosium proprietary product license + preserved third-party rights contract: OK')
+
       - name: Verify source-built-only release architecture
         shell: python
         run: |
