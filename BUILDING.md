@@ -8,19 +8,20 @@ The canonical Windows release path is `.github/workflows/full-source-windows-bui
 
 It performs the following fail-closed sequence:
 
-1. validate the Ghosium product version and bundled component versions;
+1. validate the Ghosium product version, bundled component versions and release legal contract;
 2. validate the Windows source-builder host;
 3. verify the pinned source patch anchors;
 4. checkout the exact revision from `ENGINE_SOURCE_REVISION` using pinned `depot_tools`;
 5. apply the Ghosium source fork;
-6. verify the resulting source tree;
+6. verify the resulting source tree and independent Windows executable identity contract;
 7. configure the reviewed Windows x64 GN arguments;
 8. compile the browser and installer from source;
 9. verify compiled product identity and run the runtime smoke test;
-10. run a real source-built install/uninstall round trip;
-11. generate provenance records and SHA-256 hashes;
-12. upload verified artifacts;
-13. on a production `main` push, create a new immutable `ghosium-v0.x.y` release only if that tag does not already exist.
+10. copy and verify the Brendigo proprietary license plus third-party notices into the release payload;
+11. run a real source-built install/uninstall round trip;
+12. generate provenance records and SHA-256 hashes covering binaries, reports and legal payload;
+13. upload verified artifacts;
+14. on production `main`, create a new immutable `ghosium-v0.x.y` release only if that tag does not already exist.
 
 No source audit, patch verifier, launcher build, snapshot package, or installer-only test is sufficient evidence of a source-built Ghosium Browser.
 
@@ -51,9 +52,9 @@ The source tree and build output require substantially more disk space, memory, 
 
 ## Technical upstream build names
 
-The pinned upstream build graph currently uses technical target/intermediate names such as `chrome`, `mini_installer`, and `chrome.7z`. These names must not leak into user-facing Ghosium product identity.
+The pinned upstream build graph still uses technical target/intermediate names such as `chrome`, `mini_installer`, `chrome.dll`, `chrome_elf.dll` and `chrome.7z`. Those implementation names must not be presented as public Ghosium product identity.
 
-Do not globally rename them. A technical rename is complete only after the full dependency chain, process spawning, DLL loading, installer logic, sandbox/crash integration, tests, and runtime behavior have been rebuilt and verified successfully.
+The public Windows primary executable contract is `Ghosium-Browser.exe`, with `Ghosium-Proxy.exe` for the Windows proxy helper. Do not globally rename remaining technical DLL/target names without a coordinated compile/runtime migration. A technical rename is complete only after the full dependency chain, process spawning, DLL loading, installer logic, sandbox/crash integration, tests, and runtime behavior have been rebuilt and verified successfully.
 
 ## Desktop source language
 
@@ -68,6 +69,7 @@ Use the repository scripts rather than reproducing ad-hoc commands:
 ./scripts/bootstrap-engine-source.ps1 -Destination <work-root>
 ./scripts/apply-engine-branding.ps1 -SourceRoot <work-root>\src
 ./scripts/verify-engine-fork.ps1 -SourceRoot <work-root>\src
+./scripts/verify-engine-windows-executable.ps1 -SourceRoot <work-root>\src
 ./scripts/configure-engine-build.ps1 -SourceRoot <work-root>\src -OutDir out/Ghosium
 ```
 
@@ -81,4 +83,8 @@ The current benchmark reports startup time, RAM, process/handle count, CPU, disk
 
 ## Legal and security requirements
 
-Required upstream and third-party notices/licenses remain intact regardless of branding level. Performance work must preserve sandboxing, site isolation, certificate validation and other browser security invariants.
+Brendigo-authored proprietary portions of Ghosium Browser are governed by the Brendigo Proprietary Commercial Software License Agreement in `LICENSE`, unless a separate written license explicitly states otherwise. Production release payloads include a verified copy as `GHOSIUM-LICENSE.txt`.
+
+Chromium and all other third-party/open-source components remain governed by their respective licenses. `THIRD_PARTY_NOTICES.md`, upstream copyright notices and other required license material must not be removed or rewritten as Ghosium ownership. The proprietary Ghosium license cannot be used to narrow rights granted directly by those third-party licenses.
+
+Performance, branding and packaging work must preserve sandboxing, site isolation, certificate validation and other browser security invariants.
