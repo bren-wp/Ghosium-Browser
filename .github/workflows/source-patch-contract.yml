@@ -14,6 +14,7 @@ on:
       - 'scripts/rewrite-engine-default-search.ps1'
       - 'scripts/rewrite-engine-windows-identity.ps1'
       - 'scripts/rewrite-engine-windows-executable.ps1'
+      - 'scripts/rewrite-engine-legal-payload.ps1'
       - 'scripts/rewrite-engine-product-version.ps1'
       - 'scripts/rewrite-engine-internal-scheme.ps1'
       - 'scripts/rebrand-engine-locales.ps1'
@@ -37,6 +38,7 @@ on:
       - 'scripts/rewrite-engine-default-search.ps1'
       - 'scripts/rewrite-engine-windows-identity.ps1'
       - 'scripts/rewrite-engine-windows-executable.ps1'
+      - 'scripts/rewrite-engine-legal-payload.ps1'
       - 'scripts/rewrite-engine-product-version.ps1'
       - 'scripts/rewrite-engine-internal-scheme.ps1'
       - 'scripts/rebrand-engine-locales.ps1'
@@ -56,7 +58,7 @@ jobs:
   source-patch-contract:
     name: Verify pinned upstream patch compatibility
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
 
     steps:
       - name: Checkout
@@ -75,6 +77,7 @@ jobs:
             'scripts/rewrite-engine-default-search.ps1',
             'scripts/rewrite-engine-windows-identity.ps1',
             'scripts/rewrite-engine-windows-executable.ps1',
+            'scripts/rewrite-engine-legal-payload.ps1',
             'scripts/rewrite-engine-product-version.ps1',
             'scripts/rewrite-engine-internal-scheme.ps1',
             'scripts/rebrand-engine-locales.ps1',
@@ -141,3 +144,35 @@ jobs:
         run: |
           set -euo pipefail
           python3 scripts/verify-pinned-source-anchors.py
+
+      - name: Apply legal payload patch to pristine pinned source
+        shell: bash
+        run: |
+          set -euo pipefail
+          src="${RUNNER_TEMP}/ghosium-legal-payload-src"
+          revision="$(tr -d '\r\n ' < ENGINE_SOURCE_REVISION)"
+
+          git init "$src"
+          git -C "$src" remote add origin https://github.com/chromium/chromium.git
+          git -C "$src" config core.sparseCheckout true
+          mkdir -p "$src/.git/info"
+          cat > "$src/.git/info/sparse-checkout" <<'EOF'
+          /chrome/installer/mini_installer/BUILD.gn
+          /chrome/installer/mini_installer/chrome.release
+          EOF
+
+          git -C "$src" fetch --depth=1 --filter=blob:none origin "$revision"
+          git -C "$src" checkout --detach FETCH_HEAD
+          test "$(git -C "$src" rev-parse HEAD)" = "$revision"
+
+          pwsh -NoLogo -NoProfile -File ./scripts/rewrite-engine-legal-payload.ps1 -SourceRoot "$src"
+          # The patch must also be idempotent when configuration tooling invokes it again.
+          pwsh -NoLogo -NoProfile -File ./scripts/rewrite-engine-legal-payload.ps1 -SourceRoot "$src"
+
+          git -C "$src" diff --check
+          test "$(grep -Fc '"'$root_out_dir'/GHOSIUM-LICENSE.txt",' "$src/chrome/installer/mini_installer/BUILD.gn")" -eq 1
+          test "$(grep -Fc '"'$root_out_dir'/THIRD_PARTY_NOTICES.md",' "$src/chrome/installer/mini_installer/BUILD.gn")" -eq 1
+          test "$(grep -Fc 'GHOSIUM-LICENSE.txt: %(ChromeDir)s\' "$src/chrome/installer/mini_installer/chrome.release")" -eq 1
+          test "$(grep -Fc 'THIRD_PARTY_NOTICES.md: %(ChromeDir)s\' "$src/chrome/installer/mini_installer/chrome.release")" -eq 1
+
+          echo 'Ghosium legal payload patch against pristine pinned Chromium: OK'
