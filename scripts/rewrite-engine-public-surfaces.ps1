@@ -28,14 +28,12 @@ function Rewrite-GritMessageBodies {
     param($match)
     $body = $match.Groups[2].Value
 
-    # Prefer natural Ghosium UI copy for common public labels before applying
-    # generic browser-brand substitutions.
     $body = $body.Replace('Chrome Web Store', 'Ghosium Store')
     $body = $body.Replace('Chrome Colors', 'Ghosium Colors')
     $body = $body.Replace('AI in Chrome', 'AI in Ghosium')
     $body = $body.Replace('Gemini in Chromium', 'Gemini in Ghosium')
     $body = $body.Replace('Gemini in Chrome', 'Gemini in Ghosium')
-    $body = $body.Replace('You and Google', 'Profile and services')
+    $body = $body.Replace('You and Google', 'Ghosium')
     $body = $body.Replace('Google Chrome for Testing', 'Ghosium Browser')
     $body = $body.Replace('Chrome for Testing', 'Ghosium Browser')
     $body = $body.Replace('Google Chrome', 'Ghosium Browser')
@@ -93,9 +91,6 @@ foreach ($path in @(
   Rewrite-GritMessageBodies -Path $path
 }
 
-# About must identify the distributed product and publisher first. Chromium and
-# other upstream copyright/license notices remain preserved in the dedicated
-# third-party/legal material and the About license paragraph.
 Set-GritMessage `
   -Path $chromiumStrings `
   -MessageId 'IDS_ABOUT_VERSION_COMPANY_NAME' `
@@ -105,16 +100,13 @@ Set-GritMessage `
   -MessageId 'IDS_ABOUT_VERSION_COPYRIGHT' `
   -Value 'Copyright <ph name="YEAR">{0,date,y}<ex>2026</ex></ph> Brendigo. Ghosium Browser. All rights reserved.'
 
-# The generic Settings source owns the top-level account/services navigation.
-# Do not present it as a Google-owned browser section in Ghosium.
+# Brand the top-level account/services section without pretending Ghosium owns
+# the Google Account service used by individual subfeatures.
 Set-GritMessage `
   -Path $settingsStrings `
   -MessageId 'IDS_SETTINGS_PEOPLE' `
-  -Value 'Profile and services'
+  -Value 'Ghosium'
 
-# The upstream Web Store component application must never appear as a Ghosium
-# New Tab/App Launcher tile. Ghosium Store remains reachable through the
-# separately rewritten first-party Store links at https://store.ghosium.com/.
 if (!(Test-Path $extensionUiUtil -PathType Leaf)) {
   throw "Pinned source layout changed; extension UI target is missing: $extensionUiUtil"
 }
@@ -135,10 +127,6 @@ if ([regex]::IsMatch($extensionUiText, $webStorePattern)) {
   throw 'Unable to hide the upstream Web Store app; extension_ui_util.cc layout changed.'
 }
 
-# Fail closed on the exact regressions visible in the reported Settings/New Tab
-# screenshots. Generic Google service names may remain where they accurately
-# describe a distinct service, but the browser itself must never be presented as
-# Chromium/Chrome or expose the old Web Store tile.
 $publicStringFiles = @(
   $chromiumStrings,
   $settingsChromiumStrings,
@@ -155,7 +143,8 @@ $forbiddenVisible = @(
   'Gemini in Chromium',
   'Gemini in Chrome',
   'Chrome Colors',
-  'Open Chrome Web Store'
+  'Open Chrome Web Store',
+  'You and Google'
 )
 foreach ($path in $publicStringFiles) {
   $text = [IO.File]::ReadAllText($path)
@@ -167,8 +156,9 @@ foreach ($path in $publicStringFiles) {
 }
 
 $settingsText = [IO.File]::ReadAllText($settingsStrings)
-if (!$settingsText.Contains('Profile and services')) {
-  throw 'Ghosium Settings top-level profile/services label was not installed.'
+$peopleBodies = [regex]::Matches($settingsText, '(?s)<message\s+[^>]*name="IDS_SETTINGS_PEOPLE"[^>]*>(.*?)</message>')
+if ($peopleBodies.Count -lt 1 -or @($peopleBodies | Where-Object { !$_.Groups[1].Value.Contains('Ghosium') }).Count -gt 0) {
+  throw 'Ghosium Settings top-level branded section was not installed.'
 }
 $chromiumText = [IO.File]::ReadAllText($chromiumStrings)
 foreach ($required in @(
