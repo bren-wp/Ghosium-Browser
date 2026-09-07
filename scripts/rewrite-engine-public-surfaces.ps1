@@ -119,32 +119,16 @@ if (!(Test-Path $extensionUiUtil -PathType Leaf)) {
   throw "Pinned source layout changed; extension UI target is missing: $extensionUiUtil"
 }
 $extensionUiText = [IO.File]::ReadAllText($extensionUiUtil)
-$oldBlock = @'
-bool IsBlockedByPolicy(const Extension* app, content::BrowserContext* context) {
-  Profile* profile = Profile::FromBrowserContext(context);
-  DCHECK(profile);
-
-  return app->id() == extensions::kWebStoreAppId &&
-         profile->GetPrefs()->GetBoolean(
-             policy::policy_prefs::kHideWebStoreIcon);
-}
-'@
-$newBlock = @'
-bool IsBlockedByPolicy(const Extension* app, content::BrowserContext* context) {
-  Profile* profile = Profile::FromBrowserContext(context);
-  DCHECK(profile);
-
-  // Ghosium has its own Store surface. Never expose the upstream Web Store
-  // component app as a New Tab/App Launcher tile in the distributed browser.
-  if (app->id() == extensions::kWebStoreAppId) {
+$webStorePattern = '(?s)return\s+app->id\(\)\s*==\s*extensions::kWebStoreAppId\s*&&\s*profile->GetPrefs\(\)->GetBoolean\(\s*policy::policy_prefs::kHideWebStoreIcon\s*\);'
+$webStoreReplacement = @'
+if (app->id() == extensions::kWebStoreAppId) {
     return true;
   }
 
   return false;
-}
-'@
-if ($extensionUiText.Contains($oldBlock)) {
-  $extensionUiText = $extensionUiText.Replace($oldBlock, $newBlock)
+'@.TrimEnd("`r", "`n")
+if ([regex]::IsMatch($extensionUiText, $webStorePattern)) {
+  $extensionUiText = [regex]::Replace($extensionUiText, $webStorePattern, $webStoreReplacement, 1)
   [IO.File]::WriteAllText($extensionUiUtil, $extensionUiText, [Text.UTF8Encoding]::new($false))
 } elseif (!$extensionUiText.Contains('if (app->id() == extensions::kWebStoreAppId) {') -or
           !$extensionUiText.Contains('return true;')) {
