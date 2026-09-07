@@ -32,7 +32,7 @@ function Get-TranslationLocaleCode {
 function Replace-ProductBrandingInBody {
   param(
     [Parameter(Mandatory = $true)][string]$Body,
-    [Parameter(Mandatory = $true)][string]$TranslationId,
+    [Parameter(Mandatory = $true)][AllowEmptyString()][string]$TranslationId,
     [Parameter(Mandatory = $true)][bool]$PreserveChromiumProject
   )
 
