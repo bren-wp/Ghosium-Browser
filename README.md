@@ -100,20 +100,26 @@ Supported installer/browser launch locales:
 
 The selected installer language is stored in `ghosium-language.txt`; the Ghosium launcher validates the locale and starts the browser using that language. Portable mode asks for a language on first use and stores it beside the portable profile.
 
-## Privacy defaults
+## Privacy and security defaults
 
 Ghosium disables browser sync, crash reporting, background browser mode, unnecessary background networking, Domain Reliability reporting and hyperlink-auditing pings at launcher level. The bundled declarative privacy rules block selected third-party trackers and remove common campaign/click identifiers.
+
+The launcher rejects command-line overrides that can disable the sandbox, web security, certificate validation, site isolation, protected extensions or remote-debugging boundaries. Its own Windows process also enables stricter DLL search, image-load, legacy extension-point and dynamic-code mitigations before starting the browser runtime.
 
 Ghosium does not claim anonymity. Websites intentionally visited by the user still receive normal web requests and may use their own cookies or fingerprinting techniques subject to browser controls and Ghosium filtering.
 
 ## Weak-PC optimization
 
-Systems with **8 GiB RAM or less** automatically use Low Memory mode:
+Systems with **8 GiB RAM or less** automatically use Low Memory mode without reducing renderer/site isolation:
 
-- renderer process limit: 6
-- disk cache budget: 128 MiB
+- systems with 4 GiB RAM or less use a 64 MiB disk-cache budget;
+- systems above 4 GiB and up to 8 GiB use a 128 MiB disk-cache budget;
+- background browser mode and unnecessary background networking stay disabled;
+- no renderer-process cap is applied, so the browser keeps its normal process-isolation policy.
 
-The sandbox, certificate validation and core process isolation remain enabled. Users can force normal resource behavior with `--ghosium-balanced` or force the constrained profile with `--ghosium-low-memory`.
+Users can force normal resource behavior with `--ghosium-balanced` or force the constrained cache profile with `--ghosium-low-memory`.
+
+The canonical local profile path is `%LOCALAPPDATA%\Brendigo\Ghosium\User Data`. Existing profiles from earlier releases are detected and preserved so upgrading does not silently discard user data.
 
 ## Stable Release assets
 
