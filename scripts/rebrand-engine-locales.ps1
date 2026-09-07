@@ -32,7 +32,7 @@ function Get-TranslationLocaleCode {
 function Replace-ProductBrandingInBody {
   param(
     [Parameter(Mandatory = $true)][string]$Body,
-    [Parameter(Mandatory = $true)][string]$TranslationId,
+    [Parameter(Mandatory = $true)][AllowEmptyString()][string]$TranslationId,
     [Parameter(Mandatory = $true)][bool]$PreserveChromiumProject
   )
 
@@ -43,20 +43,22 @@ function Replace-ProductBrandingInBody {
   $updated = $updated.Replace('Google Chrome', 'Ghosium Browser')
 
   if ($PreserveChromiumProject -and $legalChromiumIds -contains $TranslationId) {
-    # Legal messages deliberately retain Chromium as the upstream project name.
-    # Replace only the first standalone product token and leave the linked
-    # upstream project token intact.
-    $updated = $chromiumWord.Replace($updated, 'Ghosium Browser', 1)
+    # These two translated messages are third-party legal attribution. On the
+    # first pass replace only the product token. On later normalization passes,
+    # keep the remaining upstream-project attribution intact.
+    if (!$updated.Contains('Ghosium Browser')) {
+      $updated = $chromiumWord.Replace($updated, 'Ghosium Browser', 1)
+    }
   } else {
-    # Several locales inflect brand names (for example Croatian Chromiuma /
-    # Chromiumu). Match a lowercase grammatical suffix as well as a standalone
-    # token, but intentionally do not consume uppercase compounds such as
-    # ChromiumOS/ChromeOS.
+    # Several locales inflect browser brand names. Match lowercase grammatical
+    # suffixes such as Chromiuma/Chromiumu/Chromeovih while deliberately not
+    # consuming uppercase compounds such as ChromiumOS or ChromeOS.
     $updated = $chromiumProductStem.Replace($updated, 'Ghosium Browser')
     $updated = $chromeProductStem.Replace($updated, 'Ghosium Browser')
   }
 
   $updated = $updated.Replace('Ghosium Browser browser', 'Ghosium Browser')
+  $updated = $updated.Replace('Ghosium Browser Browser', 'Ghosium Browser')
   return $updated
 }
 
@@ -87,11 +89,6 @@ function Update-XtbBundle {
       $originalBody = $match.Groups[3].Value
       $body = Replace-ProductBrandingInBody -Body $originalBody -TranslationId $id -PreserveChromiumProject $PreserveChromiumProject
 
-      # Some upstream XTB entries deliberately wrap sentences with a space
-      # immediately before the newline. Once a branding replacement changes
-      # that entry, git diff --check treats the inherited trailing whitespace as
-      # newly introduced. Normalize whitespace only inside entries whose body
-      # actually changed; leave unrelated upstream translations byte-for-byte.
       if ($body -ne $originalBody) {
         $body = [regex]::Replace($body, '[ \t]+(?=\r?\n)', '')
       }
@@ -108,9 +105,80 @@ function Update-XtbBundle {
   Write-Host "Updated $updatedFiles localized bundle(s) under $Directory"
 }
 
+function Normalize-RewrittenLocalizedResources {
+  # Product-link routing can touch additional translated bundles outside the
+  # three core product-string families. Normalize only files already changed by
+  # the reviewed branding pipeline so unrelated source stays byte-for-byte.
+  $changed = @(& git -C $sourceRootResolved diff --name-only --diff-filter=ACMRT)
+  if ($LASTEXITCODE -ne 0) {
+    throw 'Unable to enumerate source files changed by Ghosium branding.'
+  }
+
+  $normalizedFiles = 0
+  foreach ($relative in $changed) {
+    if (!$relative -or $relative -match '(^|/)(third_party|test|tests|testing|tools)(/|$)') {
+      continue
+    }
+
+    $extension = [IO.Path]::GetExtension($relative).ToLowerInvariant()
+    if ($extension -notin @('.xtb', '.grd', '.grdp')) {
+      continue
+    }
+
+    $path = Join-Path $sourceRootResolved $relative
+    if (!(Test-Path $path -PathType Leaf)) {
+      continue
+    }
+
+    $text = [IO.File]::ReadAllText($path)
+    $updated = $text
+
+    if ($extension -eq '.xtb') {
+      $updated = [regex]::Replace(
+        $updated,
+        '(?s)(<translation\s+id="([0-9]+)"[^>]*>)(.*?)(</translation>)',
+        {
+          param($match)
+          $id = $match.Groups[2].Value
+          $body = Replace-ProductBrandingInBody `
+            -Body $match.Groups[3].Value `
+            -TranslationId $id `
+            -PreserveChromiumProject $true
+          return $match.Groups[1].Value + $body + $match.Groups[4].Value
+        }
+      )
+    } else {
+      $updated = [regex]::Replace(
+        $updated,
+        '(?s)(<message\b[^>]*>)(.*?)(</message>)',
+        {
+          param($match)
+          $body = Replace-ProductBrandingInBody `
+            -Body $match.Groups[2].Value `
+            -TranslationId '' `
+            -PreserveChromiumProject $false
+          return $match.Groups[1].Value + $body + $match.Groups[3].Value
+        }
+      )
+    }
+
+    # Any file already rewritten by the branding pipeline can inherit trailing
+    # spaces from an upstream translated line. Normalize them before diff-check.
+    $updated = [regex]::Replace($updated, '[ \t]+(?=\r?\n)', '')
+
+    if ($updated -ne $text) {
+      [IO.File]::WriteAllText($path, $updated, [Text.UTF8Encoding]::new($false))
+      $normalizedFiles++
+    }
+  }
+
+  Write-Host "Normalized $normalizedFiles additional rewritten localization resource(s)."
+}
+
 Update-XtbBundle -Directory 'chrome/app/resources' -Prefix 'chromium_strings_' -PreserveChromiumProject $false
 Update-XtbBundle -Directory 'components/strings' -Prefix 'components_chromium_strings_' -PreserveChromiumProject $true
 Update-XtbBundle -Directory 'extensions/strings' -Prefix 'extensions_strings_' -PreserveChromiumProject $false
+Normalize-RewrittenLocalizedResources
 
 $thirdPartyChanges = & git -C $sourceRootResolved status --porcelain=v1 -- third_party
 if ($LASTEXITCODE -ne 0) {

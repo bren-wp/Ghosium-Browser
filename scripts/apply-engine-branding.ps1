@@ -18,15 +18,15 @@ if ($LASTEXITCODE -ne 0 -or $actualCommit -ne $expectedCommit) {
 
 # A pinned commit is not sufficient if the checkout already contains local
 # edits. Refuse every tracked, untracked or submodule worktree change before
-# touching Chromium so accidental source/security modifications cannot become
-# part of a Ghosium build outside the reviewed branding transformation.
+# touching the upstream source so accidental source/security modifications
+# cannot become part of a Ghosium build outside the reviewed transformation.
 $initialWorktreeStatus = @(& git -C $sourceRootResolved status --porcelain=v1 --untracked-files=all)
 if ($LASTEXITCODE -ne 0) {
-  throw 'Unable to verify the initial Chromium worktree state.'
+  throw 'Unable to verify the initial upstream worktree state.'
 }
 if ($initialWorktreeStatus.Count -gt 0) {
   $preview = ($initialWorktreeStatus | Select-Object -First 10) -join '; '
-  throw "Refusing to brand a dirty Chromium checkout. Reset or review all source changes first. Detected: $preview"
+  throw "Refusing to brand a dirty upstream checkout. Reset or review all source changes first. Detected: $preview"
 }
 
 function Set-GritMessage {
@@ -160,22 +160,22 @@ Replace-RequiredLiteral -Path $managedProfileNotice -OldValue 'alt="Chrome logo"
 Replace-RequiredLiteral -Path $contextualToolbarLogo -OldValue 'src="chrome://resources/cr_components/searchbox/icons/chrome_product.svg"' -NewValue 'src="chrome://theme/current-channel-logo@2x"'
 Replace-RequiredLiteral -Path $contextualToolbarLogo -OldValue 'src="chrome://resources/images/chrome_logo_dark.svg"' -NewValue 'src="chrome://theme/current-channel-logo@2x"'
 
-# These two messages are legal attribution, not Ghosium product branding. Keep
-# Chromium named here as the upstream open-source project while making it clear
-# that Ghosium Browser is the product the user is running.
+# These messages are legal attribution rather than product branding. Required
+# upstream project attribution is preserved in the dedicated legal surface.
 $legalLicense = 'Ghosium Browser is built with the <ph name="BEGIN_LINK_CHROMIUM">&lt;a target="_blank" href="$1" aria-description="$3"&gt;</ph>Chromium<ph name="END_LINK_CHROMIUM">&lt;/a&gt;</ph> open-source project and other <ph name="BEGIN_LINK_OSS">&lt;a target="_blank" href="$2" aria-description="$3"&gt;</ph>open-source software<ph name="END_LINK_OSS">&lt;/a&gt;</ph>.'
 $legalChromium = 'Ghosium Browser is built with the <ph name="BEGIN_LINK_CHROMIUM">&lt;a target="_blank" href="$1"&gt;</ph>Chromium<ph name="END_LINK_CHROMIUM">&lt;/a&gt;</ph> open-source project.'
 Set-GritMessage -Path $componentStrings -MessageId 'IDS_VERSION_UI_LICENSE' -Value $legalLicense
 Set-GritMessage -Path $componentStrings -MessageId 'IDS_VERSION_UI_LICENSE_CHROMIUM' -Value $legalChromium
 
-# Windows file metadata and product identity are sourced from Chromium BRANDING.
+# Windows file metadata and product identity are sourced from the upstream
+# BRANDING file but all values that escape to the user are Ghosium/Brendigo.
 Set-BrandingValue -Path $brandingFile -Key 'COMPANY_FULLNAME' -Value 'Brendigo'
 Set-BrandingValue -Path $brandingFile -Key 'COMPANY_SHORTNAME' -Value 'Brendigo'
 Set-BrandingValue -Path $brandingFile -Key 'PRODUCT_FULLNAME' -Value 'Ghosium Browser'
 Set-BrandingValue -Path $brandingFile -Key 'PRODUCT_SHORTNAME' -Value 'Ghosium'
 Set-BrandingValue -Path $brandingFile -Key 'PRODUCT_INSTALLER_FULLNAME' -Value 'Ghosium Browser Installer'
 Set-BrandingValue -Path $brandingFile -Key 'PRODUCT_INSTALLER_SHORTNAME' -Value 'Ghosium Installer'
-Set-BrandingValue -Path $brandingFile -Key 'COPYRIGHT' -Value 'Copyright @LASTCHANGE_YEAR@ Brendigo. Chromium and third-party components retain their respective copyrights.'
+Set-BrandingValue -Path $brandingFile -Key 'COPYRIGHT' -Value 'Copyright @LASTCHANGE_YEAR@ Brendigo. Third-party components retain their respective copyrights.'
 Set-BrandingValue -Path $brandingFile -Key 'MAC_BUNDLE_ID' -Value 'com.brendigo.ghosium'
 Set-BrandingValue -Path $brandingFile -Key 'MAC_CREATOR_CODE' -Value 'Gh24'
 
@@ -189,16 +189,16 @@ if ($LASTEXITCODE -ne 0) {
   throw 'Ghosium first-party product link routing failed.'
 }
 
-# Install Ghosium Search as the distribution fallback in Chromium's owned
-# search-engine layer. This intentionally does not edit third_party engine data
-# and does not use enterprise policy to force the provider.
+# Install Ghosium Search as the distribution fallback in the owned search layer.
+# This intentionally does not edit third_party engine data and does not use
+# enterprise policy to force the provider.
 & (Join-Path $PSScriptRoot 'rewrite-engine-default-search.ps1') -SourceRoot $sourceRootResolved
 if ($LASTEXITCODE -ne 0) {
   throw 'Ghosium Search source integration failed.'
 }
 
 # Rebrand Windows install paths, Default Programs identities, document ProgIDs
-# and direct-launch scheme without renaming internal Chromium build targets.
+# and direct-launch scheme without renaming internal upstream build targets.
 & (Join-Path $PSScriptRoot 'rewrite-engine-windows-identity.ps1') -SourceRoot $sourceRootResolved
 if ($LASTEXITCODE -ne 0) {
   throw 'Ghosium Windows install identity integration failed.'
@@ -238,6 +238,13 @@ if ($LASTEXITCODE -ne 0) {
   throw 'Ghosium supported locale branding failed.'
 }
 
+# Convert the complete production WebUI namespace after all targeted branding
+# replacements have consumed their reviewed upstream anchors.
+& (Join-Path $PSScriptRoot 'rewrite-engine-internal-scheme.ps1') -SourceRoot $sourceRootResolved
+if ($LASTEXITCODE -ne 0) {
+  throw 'Ghosium ghost:// internal UI rebranding failed.'
+}
+
 $thirdPartyChanges = & git -C $sourceRootResolved status --porcelain=v1 -- third_party
 if ($LASTEXITCODE -ne 0) {
   throw 'Unable to verify third_party source status after branding.'
@@ -246,9 +253,12 @@ if ($thirdPartyChanges) {
   throw 'Branding operation modified third_party sources; refusing to continue.'
 }
 
+# Verify the final state, including Ghosium identity and the canonical ghost://
+# namespace, so the same verifier can safely be invoked again by the full-source
+# Windows workflow after apply-engine-branding.ps1 completes.
 & (Join-Path $PSScriptRoot 'verify-engine-fork.ps1') -SourceRoot $sourceRootResolved
 if ($LASTEXITCODE -ne 0) {
   throw 'Ghosium full-source verification failed after branding.'
 }
 
-Write-Host 'Source-level Ghosium branding, Search, Windows identity, first-party links, locale strings and product icons applied successfully.'
+Write-Host 'Source-level Ghosium branding, Search, Windows identity, first-party links, locales, product icons and ghost:// internal UI routing applied and verified successfully.'

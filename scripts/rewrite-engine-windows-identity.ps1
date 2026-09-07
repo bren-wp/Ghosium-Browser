@@ -17,7 +17,7 @@ if ($LASTEXITCODE -ne 0 -or $actualRevision -ne $expectedRevision) {
 
 $target = Join-Path $sourceRootResolved 'chrome/install_static/chromium_install_modes.h'
 if (!(Test-Path $target -PathType Leaf)) {
-  throw "Pinned Chromium Windows install-mode source is missing: $target"
+  throw "Pinned upstream Windows install-mode source is missing: $target"
 }
 
 function Replace-RequiredLiteral {
@@ -31,7 +31,7 @@ function Replace-RequiredLiteral {
     return $Text
   }
   if (!$Text.Contains($OldValue)) {
-    throw "Pinned Chromium Windows identity changed; missing expected literal: $OldValue"
+    throw "Pinned upstream Windows identity changed; missing expected literal: $OldValue"
   }
   return $Text.Replace($OldValue, $NewValue)
 }
@@ -86,13 +86,13 @@ foreach ($forbiddenVisible in @(
   'L"Chromium PDF Document"'
 )) {
   if ($verify.Contains($forbiddenVisible)) {
-    throw "Legacy Chromium Windows product identity remains: $forbiddenVisible"
+    throw "Legacy upstream Windows product identity remains: $forbiddenVisible"
   }
 }
 
-# Safe Browsing client naming is an upstream security-service contract, not a
-# user-visible Windows product identity. Do not casually rewrite it while
-# security invariants require the upstream protection path to remain intact.
+# Safe Browsing client naming is a security-service compatibility contract, not
+# a user-visible Windows product identity. Keep it unchanged until Ghosium owns
+# and reviews an equivalent security backend contract.
 if (!$verify.Contains('kSafeBrowsingName[] = "chromium"')) {
   throw 'Safe Browsing client identity changed unexpectedly; review security integration before proceeding.'
 }

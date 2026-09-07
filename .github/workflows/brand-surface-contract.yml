@@ -1,0 +1,149 @@
+name: Ghosium Brand Surface Contract
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'README.md'
+      - 'extension/**'
+      - 'search-provider/**'
+      - 'search-web/**'
+      - 'store-web/**'
+      - 'launcher/**'
+      - 'installer/**'
+      - 'packaging/**'
+      - '.github/workflows/brand-surface-contract.yml'
+  push:
+    branches:
+      - main
+    paths:
+      - 'README.md'
+      - 'extension/**'
+      - 'search-provider/**'
+      - 'search-web/**'
+      - 'store-web/**'
+      - 'launcher/**'
+      - 'installer/**'
+      - 'packaging/**'
+      - '.github/workflows/brand-surface-contract.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  brand-surface:
+    name: Verify Ghosium-only public surfaces
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Reject legacy browser branding and internal URLs
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          roots=(
+            README.md
+            extension
+            search-provider
+            search-web
+            store-web
+            launcher
+            installer
+            packaging
+          )
+
+          pattern='chromium|google[[:space:]]+chrome|chrome[[:space:]]+web[[:space:]]+store|chrome://|chrome-untrusted://|support\.google|chrome\.google|google\.com/chrome'
+          if grep -RInEi \
+            --include='*.md' \
+            --include='*.html' \
+            --include='*.php' \
+            --include='*.json' \
+            --include='*.cpp' \
+            --include='*.h' \
+            --include='*.rc' \
+            --include='*.nsi' \
+            --include='Dockerfile' \
+            "$pattern" "${roots[@]}"; then
+            echo 'Legacy browser branding, internal scheme or product link remains in a Ghosium-controlled public surface.' >&2
+            exit 1
+          fi
+
+      - name: Verify Ghosium product destinations
+        shell: python
+        run: |
+          from pathlib import Path
+          import re
+
+          files = (
+              Path('extension/newtab.html'),
+              Path('search-provider/manifest.json'),
+              Path('search-web/index.php'),
+              Path('store-web/index.php'),
+          )
+          allowed_hosts = {'ghosium.com', 'search.ghosium.com', 'store.ghosium.com'}
+          url_re = re.compile(r'https://([a-z0-9.-]+)(?:/[^\s"\'<>)]*)?', re.I)
+
+          for path in files:
+              text = path.read_text(encoding='utf-8')
+              for host in url_re.findall(text):
+                  host = host.lower()
+                  if host not in allowed_hosts:
+                      raise SystemExit(f'Non-Ghosium product URL in {path}: https://{host}')
+
+          print('Ghosium public product destinations: OK')
+
+      - name: Verify Ghost route contract is documented
+        shell: bash
+        run: |
+          set -euo pipefail
+          for route in \
+            'ghost://newtab/' \
+            'ghost://history/' \
+            'ghost://bookmarks/' \
+            'ghost://downloads/' \
+            'ghost://settings/' \
+            'ghost://profiles/' \
+            'ghost://extensions/' \
+            'ghost://passwords/'; do
+            grep -F "$route" README.md >/dev/null
+          done
+
+      - name: Verify launcher hardening and isolation contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          launcher='launcher/main.cpp'
+
+          for required in \
+            'SetDefaultDllDirectories' \
+            'NoRemoteImages = 1' \
+            'NoLowMandatoryLabelImages = 1' \
+            'PreferSystem32Images = 1' \
+            'DisableExtensionPoints = 1' \
+            'ProhibitDynamicCode = 1' \
+            '--disable-gpu-sandbox' \
+            '--disable-site-isolation-trials' \
+            '--disable-features' \
+            '--ignore-certificate-errors' \
+            'L"Brendigo" / L"Ghosium" / L"User Data"'; do
+            grep -F -- "$required" "$launcher" >/dev/null || {
+              echo "Launcher hardening invariant missing: $required" >&2
+              exit 1
+            }
+          done
+
+          if grep -F -- '--renderer-process-limit' "$launcher"; then
+            echo 'Ghosium low-memory mode must not reduce renderer/site isolation through a renderer-process cap.' >&2
+            exit 1
+          fi
+
+          grep -F '64ULL * 1024ULL * 1024ULL' "$launcher" >/dev/null
+          grep -F '128ULL * 1024ULL * 1024ULL' "$launcher" >/dev/null
