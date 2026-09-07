@@ -188,9 +188,16 @@ $publicSurfaceRequired = @(
   'chrome/browser/resources/settings/settings_menu/settings_menu.ts',
   'chrome/browser/resources/settings/route.ts',
   'chrome/browser/ui/webui/settings/settings_ui.cc',
+  'chrome/browser/resources/settings/privacy_page/personalization_options.html',
   'chrome/browser/resources/new_tab_page/app.html',
   'chrome/browser/ui/webui/new_tab_footer/footer_context_menu.cc',
   'chrome/browser/ui/browser_actions.cc',
+  'chrome/browser/signin/account_consistency_mode_manager.cc',
+  'chrome/browser/ui/webui/intro/intro_ui.cc',
+  'chrome/browser/resources/intro/sign_in_promo.html.ts',
+  'chrome/browser/resources/intro/sign_in_promo.ts',
+  'chrome/browser/resources/intro/sign_in_promo_refresh.html.ts',
+  'chrome/browser/resources/intro/sign_in_promo_refresh.ts',
   'components/desktop_to_mobile_promos/features.cc'
 )
 $completePublicSurfaceSource = $true
@@ -215,6 +222,11 @@ if ($completePublicSurfaceSource) {
   & (Join-Path $PSScriptRoot 'rewrite-engine-disable-unowned-promos.ps1') -SourceRoot $sourceRootResolved
   if ($LASTEXITCODE -ne 0) {
     throw 'Ghosium unowned Chromium mobile-promo suppression failed.'
+  }
+
+  & (Join-Path $PSScriptRoot 'rewrite-engine-browser-signin.ps1') -SourceRoot $sourceRootResolved
+  if ($LASTEXITCODE -ne 0) {
+    throw 'Ghosium Google/GAIA browser sign-in suppression failed.'
   }
 } else {
   Write-Host 'Narrow sparse engine audit detected; complete public-surface source transform is delegated to Ghosium Public Surface Contract.'
@@ -254,6 +266,11 @@ if ($completePublicSurfaceSource) {
   if ($LASTEXITCODE -ne 0) {
     throw 'Ghosium unowned Chromium mobile-promo verification failed.'
   }
+
+  & (Join-Path $PSScriptRoot 'verify-engine-browser-signin.ps1') -SourceRoot $sourceRootResolved
+  if ($LASTEXITCODE -ne 0) {
+    throw 'Ghosium Google/GAIA browser sign-in verification failed.'
+  }
 }
 
-Write-Host 'Ghosium supported locale branding verified; complete public surfaces, hidden upstream actions and unowned mobile promos are independently verified whenever their source set is present.'
+Write-Host 'Ghosium supported locale branding verified; complete public surfaces, hidden upstream actions, unowned mobile promos and browser-account entry points are independently verified whenever their source set is present.'
