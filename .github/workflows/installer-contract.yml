@@ -24,7 +24,7 @@ permissions:
 
 jobs:
   installer-contract:
-    name: Verify install and uninstall architecture
+    name: Verify single-Setup install update and uninstall architecture
     runs-on: ubuntu-latest
     timeout-minutes: 5
 
@@ -148,27 +148,41 @@ jobs:
             exit 1
           fi
 
-      - name: Reject standalone uninstall executables
+      - name: Reject standalone maintenance executables
         shell: bash
         run: |
           set -euo pipefail
 
-          if find . -type f \( -iname 'uninstall.exe' -o -iname 'ghosium-uninstall.exe' -o -iname 'ghosium-browser-uninstall.exe' \) -print -quit | grep -q .; then
-            echo 'A standalone uninstall executable is forbidden.' >&2
+          if find . -type f \( \
+            -iname 'uninstall.exe' -o \
+            -iname 'ghosium-uninstall.exe' -o \
+            -iname 'ghosium-browser-uninstall.exe' -o \
+            -iname 'update.exe' -o \
+            -iname 'updater.exe' -o \
+            -iname 'ghosium-update.exe' -o \
+            -iname 'ghosium-updater.exe' -o \
+            -iname 'ghosium-browser-update.exe' -o \
+            -iname 'ghosium-browser-updater.exe' \
+          \) -print -quit | grep -q .; then
+            echo 'A standalone uninstall/update executable is forbidden; Ghosium uses the standard Setup package for maintenance.' >&2
             exit 1
           fi
 
           active_nsi="$(sed 's/[[:space:]]*;.*$//' installer/ghosium.nsi)"
           if printf '%s\n' "$active_nsi" | grep -nE 'WriteUninstaller|MUI_UNPAGE_|Section[[:space:]]+"Uninstall"|Uninstall\.exe'; then
-            echo 'installer/ghosium.nsi must use the setup executable for uninstall instead of generating a standalone uninstaller.' >&2
+            echo 'installer/ghosium.nsi must use the Setup executable for uninstall instead of generating a standalone uninstaller.' >&2
+            exit 1
+          fi
+          if printf '%s\n' "$active_nsi" | grep -nEi '(^|[\\/])(update|updater)\.exe'; then
+            echo 'installer/ghosium.nsi must not invoke or package a standalone updater executable.' >&2
             exit 1
           fi
           if printf '%s\n' "$active_nsi" | grep -nEi 'cmd\.exe|powershell(\.exe)?'; then
-            echo 'Uninstall cleanup must not depend on cmd.exe or PowerShell shell command strings.' >&2
+            echo 'Maintenance cleanup/update must not depend on cmd.exe or PowerShell shell command strings.' >&2
             exit 1
           fi
 
-      - name: Verify same-setup uninstall registration and delete guard
+      - name: Verify same-Setup uninstall registration and delete guard
         shell: bash
         run: |
           set -euo pipefail
@@ -204,6 +218,59 @@ jobs:
               raise SystemExit('Silent uninstall switches are in the unsafe NSIS order; /S must precede /UNINSTALL')
           if '/CLEANUP /S' in text:
               raise SystemExit('Silent cleanup switches are in the unsafe NSIS order; /S must precede /CLEANUP')
+          PY
+
+      - name: Verify same-Setup update maintenance contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          text = Path('installer/ghosium.nsi').read_text(encoding='utf-8')
+          required = [
+              'Var GhosiumUpdateMode',
+              'Function ValidateUpdateTarget',
+              '${GetOptions} $R0 "/UPDATE" $R1',
+              'StrCpy $GhosiumUpdateMode "1"',
+              'Call ValidateUpdateTarget',
+              'SetSilent silent',
+              r'IfFileExists "$INSTDIR\${INSTALL_MARKER}" 0 update_target_invalid'.replace(r'\"', '"'),
+              r'IfFileExists "$INSTDIR\${INSTALLED_SETUP}" 0 update_target_invalid'.replace(r'\"', '"'),
+              r'IfFileExists "$INSTDIR\${PRODUCT_EXE}" 0 update_target_invalid'.replace(r'\"', '"'),
+              r'StrCmp "$EXEPATH" "$INSTDIR\${INSTALLED_SETUP}" update_requires_new_setup'.replace(r'\"', '"'),
+              'nsExec::ExecToLog',
+              '/IM "Ghosium-Browser.exe" /T /F',
+              '/IM "Ghosium-Engine.exe" /T /F',
+              'StrCmp $GhosiumUpdateMode "1" language_ready',
+              'No separate uninstall.exe or update.exe is generated.',
+              '"URLUpdateInfo" "https://ghosium.com/update"',
+          ]
+          missing = [needle for needle in required if needle not in text]
+          if missing:
+              raise SystemExit('Missing same-Setup update invariant(s):\n' + '\n'.join(missing))
+
+          forbidden = [
+              'Update.exe',
+              'Updater.exe',
+              'Ghosium-Update.exe',
+              'Ghosium-Updater.exe',
+              'Ghosium-Browser-Update.exe',
+              'Ghosium-Browser-Updater.exe',
+          ]
+          active = '\n'.join(
+              line.split(';', 1)[0] for line in text.splitlines()
+          )
+          for token in forbidden:
+              if token.lower() in active.lower():
+                  raise SystemExit(f'Standalone updater reference is forbidden: {token}')
+
+          # An update must preserve browser profile data. Program files are under
+          # $INSTDIR while Chromium user data is outside that directory; the
+          # update path must not recursively remove the installation first.
+          update_region = text[text.index('prepare_update:'):text.index('install_payload:')]
+          if 'RMDir /r' in update_region or 'DeleteRegKey' in update_region:
+              raise SystemExit('Update preparation must not uninstall the browser or erase registration/profile data.')
           PY
 
       - name: Verify source-built release performs real installer smoke test
@@ -251,5 +318,9 @@ jobs:
 
           if grep -Ei 'copy-item.*uninstall\.exe|upload.*uninstall\.exe|ghosium-(browser-)?uninstall\.exe' .github/workflows/full-source-windows-build.yml; then
             echo 'Full-source workflow must not package a standalone uninstaller.' >&2
+            exit 1
+          fi
+          if grep -Ei 'copy-item.*(update|updater)\.exe|upload.*(update|updater)\.exe|ghosium-(browser-)?(update|updater)\.exe' .github/workflows/full-source-windows-build.yml; then
+            echo 'Full-source workflow must not package a standalone updater.' >&2
             exit 1
           fi
