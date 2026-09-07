@@ -1,6 +1,6 @@
 # Ghosium Browser
 
-**Ghosium Browser by Brendigo** is a Chromium-derived browser fork for Windows x64. The current product line starts at **0.1.0** and is being developed as a source-built Ghosium product rather than a precompiled upstream snapshot with a renamed launcher.
+**Ghosium Browser by Brendigo** is a source-derived open browser fork for Windows x64. The current product line starts at **0.1.0** and is being developed as a source-built Ghosium product rather than a precompiled upstream snapshot with a renamed launcher.
 
 ## Current release contract
 
