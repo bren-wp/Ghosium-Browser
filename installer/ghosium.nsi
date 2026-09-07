@@ -26,6 +26,7 @@ Unicode true
 !define UPDATE_DIR "$TEMP\Brendigo\Ghosium Browser Update"
 !define UPDATE_SETUP "$TEMP\Brendigo\Ghosium Browser Update\Ghosium-Browser-Setup.exe"
 !define UNINSTALL_KEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\GhosiumBrowser"
+!define USER_DATA_DIR "$LOCALAPPDATA\Brendigo\Ghosium\User Data"
 
 Var GhosiumUpdateMode
 Var GhosiumDeleteSelf
@@ -66,6 +67,7 @@ VIAddVersionKey /LANG=1033 "LegalCopyright" "Copyright (c) 2026 Brendigo"
 !insertmacro MUI_PAGE_INSTFILES
 !insertmacro MUI_PAGE_FINISH
 
+; English is intentionally first and remains the default Setup/browser locale.
 !insertmacro MUI_LANGUAGE "English"
 !insertmacro MUI_LANGUAGE "Croatian"
 !insertmacro MUI_LANGUAGE "German"
@@ -96,6 +98,14 @@ VIAddVersionKey /LANG=1033 "LegalCopyright" "Copyright (c) 2026 Brendigo"
 !insertmacro MUI_LANGUAGE "TradChinese"
 !insertmacro MUI_LANGUAGE "Arabic"
 !insertmacro MUI_LANGUAGE "Hebrew"
+!insertmacro MUI_LANGUAGE "Serbian"
+!insertmacro MUI_LANGUAGE "Catalan"
+!insertmacro MUI_LANGUAGE "Estonian"
+!insertmacro MUI_LANGUAGE "Latvian"
+!insertmacro MUI_LANGUAGE "Lithuanian"
+!insertmacro MUI_LANGUAGE "Indonesian"
+!insertmacro MUI_LANGUAGE "Thai"
+!insertmacro MUI_LANGUAGE "Vietnamese"
 
 LangString GhosiumLocale ${LANG_ENGLISH} "en-US"
 LangString GhosiumLocale ${LANG_CROATIAN} "hr"
@@ -127,6 +137,14 @@ LangString GhosiumLocale ${LANG_SIMPCHINESE} "zh-CN"
 LangString GhosiumLocale ${LANG_TRADCHINESE} "zh-TW"
 LangString GhosiumLocale ${LANG_ARABIC} "ar"
 LangString GhosiumLocale ${LANG_HEBREW} "he"
+LangString GhosiumLocale ${LANG_SERBIAN} "sr"
+LangString GhosiumLocale ${LANG_CATALAN} "ca"
+LangString GhosiumLocale ${LANG_ESTONIAN} "et"
+LangString GhosiumLocale ${LANG_LATVIAN} "lv"
+LangString GhosiumLocale ${LANG_LITHUANIAN} "lt"
+LangString GhosiumLocale ${LANG_INDONESIAN} "id"
+LangString GhosiumLocale ${LANG_THAI} "th"
+LangString GhosiumLocale ${LANG_VIETNAMESE} "vi"
 
 Function LaunchCleanup
   StrCpy $R4 "0"
@@ -374,10 +392,20 @@ install_payload:
   File /r "${GHOSIUM_STAGE}\*"
 
   ; Preserve the selected language during maintenance updates. A normal install
-  ; or explicit reinstall still records the language selected in this Setup.
+  ; records the Setup selection and initializes the native browser's Local State
+  ; only when the user does not already have one, so reinstall/update never
+  ; overwrites a language later selected in Ghosium Settings.
   StrCmp $GhosiumUpdateMode "1" language_ready
   FileOpen $0 "$INSTDIR\ghosium-language.txt" w
   FileWrite $0 "$(GhosiumLocale)$\r$\n"
+  FileClose $0
+
+  CreateDirectory "$LOCALAPPDATA\Brendigo"
+  CreateDirectory "$LOCALAPPDATA\Brendigo\Ghosium"
+  CreateDirectory "${USER_DATA_DIR}"
+  IfFileExists "${USER_DATA_DIR}\Local State" language_ready 0
+  FileOpen $0 "${USER_DATA_DIR}\Local State" w
+  FileWrite $0 '{$\"intl$\":{$\"app_locale$\":$\"$(GhosiumLocale)$\"}}$\r$\n'
   FileClose $0
 language_ready:
 
