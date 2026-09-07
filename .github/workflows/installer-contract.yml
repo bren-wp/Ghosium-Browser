@@ -217,10 +217,20 @@ jobs:
           grep -Fq './scripts/smoke-test-source-windows-installer.ps1' "$workflow"
           grep -Fq 'GHOSIUM-SOURCE-INSTALLER-SMOKE.json' "$workflow"
           grep -Fq 'Ghosium-Browser-Setup.exe' "$workflow"
+          grep -Fq 'Verify release legal payload' "$workflow"
+          grep -Fq "Copy-Item 'LICENSE' 'artifacts/full-source/GHOSIUM-LICENSE.txt'" "$workflow"
+          grep -Fq "Copy-Item 'THIRD_PARTY_NOTICES.md' 'artifacts/full-source/THIRD_PARTY_NOTICES.md'" "$workflow"
           grep -Fq "\$expectedBrowserExecutable = 'Ghosium-Browser.exe'" "$smoke"
           grep -Fq -- "-Filter \$expectedBrowserExecutable" "$smoke"
           grep -Fq 'publicExecutableIdentityComplete' "$smoke"
           grep -Fq 'installedBrowserExecutableName' "$smoke"
+          grep -Fq 'GHOSIUM-LICENSE.txt' "$smoke"
+          grep -Fq 'THIRD_PARTY_NOTICES.md' "$smoke"
+          grep -Fq 'installedLegalPayloadVerified' "$smoke"
+          grep -Fq 'legalPayload = [ordered]@{' "$smoke"
+          grep -Fq 'matchesRepository' "$smoke"
+          grep -Fq 'removedWithApplication' "$smoke"
+          grep -Fq 'thirdPartyLicensesPreserved' "$smoke"
           grep -Fq "'--uninstall'" "$smoke"
           grep -Fq "'--force-uninstall'" "$smoke"
           grep -Fq "'--delete-profile'" "$smoke"
@@ -232,8 +242,12 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          grep -Fq 'setup.exe --uninstall' scripts/verify-engine-build-output.ps1
-          grep -Fq 'standaloneExecutable = $false' scripts/verify-engine-build-output.ps1
+          verifier='scripts/verify-engine-build-output.ps1'
+          grep -Fq 'setup.exe --uninstall' "$verifier"
+          grep -Fq 'standaloneExecutable = $false' "$verifier"
+          grep -Fq "'GHOSIUM-LICENSE.txt'" "$verifier"
+          grep -Fq "'THIRD_PARTY_NOTICES.md'" "$verifier"
+          grep -Fq 'thirdPartyLicensesPreserved = $true' "$verifier"
 
           if grep -Ei 'copy-item.*uninstall\.exe|upload.*uninstall\.exe|ghosium-(browser-)?uninstall\.exe' .github/workflows/full-source-windows-build.yml; then
             echo 'Full-source workflow must not package a standalone uninstaller.' >&2
