@@ -140,6 +140,7 @@ jobs:
             'launcher/main.cpp',
             'launcher/ghosium.rc',
             'ghosium.ico',
+            'ENGINE_ARCHIVE_SHA256',
             'scripts/build-native-launcher.ps1',
             'scripts/resolve-nsis.ps1',
             'scripts/smoke-test-windows-installer.ps1',
@@ -161,6 +162,11 @@ jobs:
             if (!(Test-Path $required -PathType Leaf)) {
               throw "Required file missing: $required"
             }
+          }
+
+          $expectedArchiveHash = (Get-Content 'ENGINE_ARCHIVE_SHA256' -Raw).Trim().ToLowerInvariant()
+          if ($expectedArchiveHash -notmatch '^[0-9a-f]{64}$') {
+            throw 'ENGINE_ARCHIVE_SHA256 must contain one lowercase SHA-256 digest'
           }
 
           $icon = [IO.File]::ReadAllBytes((Resolve-Path 'ghosium.ico'))
@@ -239,10 +245,19 @@ jobs:
             }
           }
 
+          $expectedArchiveHash = (Get-Content 'ENGINE_ARCHIVE_SHA256' -Raw).Trim().ToLowerInvariant()
+          if ($expectedArchiveHash -notmatch '^[0-9a-f]{64}$') {
+            throw 'ENGINE_ARCHIVE_SHA256 must contain one lowercase SHA-256 digest'
+          }
+
           $base = "https://storage.googleapis.com/chromium-browser-snapshots/Win_x64/$env:ENGINE_REVISION"
           $archive = 'downloads/engine-win.zip'
           Download-VerifiedFile "$base/chrome-win.zip" $archive
           $archiveHash = (Get-FileHash $archive -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($archiveHash -ne $expectedArchiveHash) {
+            throw "Pinned Windows engine archive SHA-256 mismatch. Expected $expectedArchiveHash; actual $archiveHash"
+          }
+          Write-Host "Pinned Windows engine archive SHA-256 verified: $archiveHash"
           Expand-Archive -Path $archive -DestinationPath 'downloads/engine' -Force
 
           $sourceDirectory = 'downloads/engine/chrome-win'
