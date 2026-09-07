@@ -30,6 +30,7 @@ $runtimeStderr = Join-Path $smokeRoot 'runtime.stderr.txt'
 $installLog = Join-Path $smokeRoot 'install.log'
 $uninstallLog = Join-Path $smokeRoot 'uninstall.log'
 $pathTrimCharacters = [char[]]@('\', '/')
+$expectedBrowserExecutable = 'Ghosium-Browser.exe'
 
 New-Item -ItemType Directory -Force -Path $smokeRoot | Out-Null
 
@@ -146,15 +147,16 @@ $installExitCode = $null
 $uninstallExitCode = $null
 $runtimeExitCode = $null
 $runtimeSmokePassed = $false
-$installedChromeVersion = $null
+$installedBrowserVersion = $null
+$installedBrowserExecutableName = $null
 $uninstallRegistryKey = $null
 $cleanupAttempted = $false
 $completed = $false
 
 try {
-  # Chromium mini_installer forwards these switches to setup.exe. Keep this a
-  # per-user install so the smoke does not require elevation on the dedicated
-  # self-hosted builder. Prevent any first-install browser launch.
+  # The upstream mini-installer machinery remains a technical build dependency.
+  # Keep this a per-user install so the smoke does not require elevation on the
+  # dedicated self-hosted builder. Prevent any first-install browser launch.
   $installArguments = @(
     '--verbose-logging',
     '--do-not-launch-chrome',
@@ -175,22 +177,41 @@ try {
     throw "Source-built installer did not create the expected Ghosium application directory: $installRoot`n$(Get-LogTail -Path $installLog)"
   }
 
-  $chromeCandidates = @(Get-ChildItem $installRoot -Recurse -File -Filter 'chrome.exe' -ErrorAction SilentlyContinue)
-  if ($chromeCandidates.Count -lt 1) {
-    throw "Installed source-built Ghosium chrome.exe was not found under $installRoot"
+  # Public binary identity is a release invariant. A build that still installs
+  # chrome.exe may be useful for source-patch testing, but it is not releasable
+  # as Ghosium 0.1.0.
+  $browserCandidates = @(
+    Get-ChildItem $installRoot -Recurse -File -Filter $expectedBrowserExecutable -ErrorAction SilentlyContinue
+  )
+  if ($browserCandidates.Count -ne 1) {
+    $legacyChrome = @(
+      Get-ChildItem $installRoot -Recurse -File -Filter 'chrome.exe' -ErrorAction SilentlyContinue
+    )
+    $legacyHint = if ($legacyChrome.Count -gt 0) {
+      " Found $($legacyChrome.Count) legacy chrome.exe binary/binaries instead."
+    } else {
+      ''
+    }
+    throw "Installed source-built Ghosium executable identity is incomplete: expected exactly one $expectedBrowserExecutable under $installRoot; found $($browserCandidates.Count).$legacyHint"
   }
-  $installedChrome = $chromeCandidates | Sort-Object FullName | Select-Object -First 1
-  $chromeInfo = $installedChrome.VersionInfo
-  if ([string]$chromeInfo.ProductName -ne 'Ghosium Browser') {
-    throw "Installed chrome.exe ProductName mismatch: '$($chromeInfo.ProductName)'"
+
+  $installedBrowser = $browserCandidates[0]
+  $installedBrowserExecutableName = $installedBrowser.Name
+  if ($installedBrowserExecutableName -cne $expectedBrowserExecutable) {
+    throw "Installed browser executable name mismatch: '$installedBrowserExecutableName'"
   }
-  if ([string]$chromeInfo.CompanyName -ne 'Brendigo') {
-    throw "Installed chrome.exe CompanyName mismatch: '$($chromeInfo.CompanyName)'"
+
+  $browserInfo = $installedBrowser.VersionInfo
+  if ([string]$browserInfo.ProductName -ne 'Ghosium Browser') {
+    throw "Installed $expectedBrowserExecutable ProductName mismatch: '$($browserInfo.ProductName)'"
   }
-  if (!$chromeInfo.ProductVersion) {
-    throw 'Installed chrome.exe ProductVersion is empty.'
+  if ([string]$browserInfo.CompanyName -ne 'Brendigo') {
+    throw "Installed $expectedBrowserExecutable CompanyName mismatch: '$($browserInfo.CompanyName)'"
   }
-  $installedChromeVersion = [string]$chromeInfo.ProductVersion
+  if (!$browserInfo.ProductVersion) {
+    throw "Installed $expectedBrowserExecutable ProductVersion is empty."
+  }
+  $installedBrowserVersion = [string]$browserInfo.ProductVersion
 
   $entries = @(Get-GhosiumUninstallEntries)
   if ($entries.Count -ne 1) {
@@ -227,7 +248,7 @@ try {
 
   # Exercise the installed layout, not the loose build-tree executable. This
   # catches missing DLL/resource/install-layout problems that a pre-install
-  # chrome.exe smoke cannot detect.
+  # runtime smoke cannot detect.
   $runtimeArguments = @(
     '--headless=new',
     '--disable-gpu',
@@ -239,7 +260,7 @@ try {
     'data:text/html,<html><body>ghosium-source-installed-runtime-ok</body></html>'
   )
   $runtime = Start-ProcessWithTimeout `
-    -FilePath $installedChrome.FullName `
+    -FilePath $installedBrowser.FullName `
     -ArgumentList $runtimeArguments `
     -TimeoutSeconds 60 `
     -Description 'Installed source-built Ghosium runtime smoke' `
@@ -292,13 +313,15 @@ try {
   }
 
   [ordered]@{
-    schemaVersion = 1
+    schemaVersion = 2
     product = 'Ghosium Browser'
     architecture = 'windows-x64'
     installMode = 'per-user'
     miniInstallerSha256 = (Get-FileHash $miniInstaller -Algorithm SHA256).Hash.ToLowerInvariant()
-    installedChromeProductVersion = $installedChromeVersion
-    installedChromeProductName = 'Ghosium Browser'
+    installedBrowserExecutableName = $installedBrowserExecutableName
+    publicExecutableIdentityComplete = $installedBrowserExecutableName -ceq $expectedBrowserExecutable
+    installedBrowserProductVersion = $installedBrowserVersion
+    installedBrowserProductName = 'Ghosium Browser'
     publisher = 'Brendigo'
     uninstallRegistryKey = $uninstallRegistryKey
     installExitCode = $installExitCode
@@ -324,8 +347,9 @@ try {
   } | ConvertTo-Json -Depth 5 | Set-Content $ReportPath -Encoding utf8
 
   $completed = $true
-  Write-Host 'Source-built Ghosium mini_installer -> installed runtime -> registered setup.exe uninstall smoke test: OK'
-  Write-Host "Installed engine version: $installedChromeVersion"
+  Write-Host 'Source-built Ghosium mini_installer -> installed Ghosium runtime -> registered setup.exe uninstall smoke test: OK'
+  Write-Host "Installed Ghosium executable: $installedBrowserExecutableName"
+  Write-Host "Installed browser file version: $installedBrowserVersion"
   Write-Host "Installer smoke provenance: $ReportPath"
 }
 finally {
