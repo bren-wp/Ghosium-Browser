@@ -22,7 +22,10 @@ constexpr wchar_t kBalancedSwitch[] = L"--ghosium-balanced";
 constexpr wchar_t kWaitSwitch[] = L"--ghosium-wait";
 constexpr wchar_t kPortableProfilePrefix[] = L"--ghosium-portable-profile=";
 constexpr wchar_t kLanguagePrefix[] = L"--ghosium-language=";
+constexpr std::uint64_t kVeryLowMemoryThresholdBytes = 4ULL * 1024ULL * 1024ULL * 1024ULL;
 constexpr std::uint64_t kLowMemoryThresholdBytes = 8ULL * 1024ULL * 1024ULL * 1024ULL;
+constexpr std::uint64_t kVeryLowMemoryDiskCacheBytes = 64ULL * 1024ULL * 1024ULL;
+constexpr std::uint64_t kLowMemoryDiskCacheBytes = 128ULL * 1024ULL * 1024ULL;
 
 std::wstring ToLower(std::wstring value) {
   std::transform(value.begin(), value.end(), value.begin(), [](wchar_t ch) {
@@ -85,7 +88,18 @@ fs::path LocalProfileDirectory() {
     return {};
   }
   buffer.resize(length);
-  return fs::path(buffer) / kProductName / L"User Data";
+
+  const fs::path local_app_data(buffer);
+  const fs::path branded = local_app_data / L"Brendigo" / L"Ghosium" / L"User Data";
+  const fs::path legacy = local_app_data / kProductName / L"User Data";
+
+  std::error_code error;
+  if (!fs::exists(branded, error) && !error && fs::is_directory(legacy, error) && !error) {
+    // Preserve existing profiles from pre-Brendigo-path releases. New profiles
+    // use the canonical Brendigo/Ghosium location.
+    return legacy;
+  }
+  return branded;
 }
 
 std::wstring ReadFirstLine(const fs::path& path) {
@@ -152,8 +166,16 @@ bool IsProtectedArgument(const std::wstring& argument, bool* consumes_next) {
   const std::wstring lowered = ToLower(argument);
 
   const std::vector<std::wstring> valued = {
-      L"--user-data-dir", L"--load-extension", L"--disable-extensions-except",
-      L"--remote-debugging-port", L"--lang"};
+      L"--user-data-dir",
+      L"--load-extension",
+      L"--disable-extensions-except",
+      L"--remote-debugging-port",
+      L"--remote-debugging-address",
+      L"--lang",
+      L"--disable-features",
+      L"--enable-features",
+      L"--unsafely-treat-insecure-origin-as-secure",
+      L"--ignore-certificate-errors-spki-list"};
   for (const auto& option : valued) {
     if (lowered == option) {
       *consumes_next = true;
@@ -168,9 +190,13 @@ bool IsProtectedArgument(const std::wstring& argument, bool* consumes_next) {
          lowered == L"--enable-sync" ||
          lowered == L"--disable-extensions" ||
          lowered == L"--no-sandbox" ||
+         lowered == L"--disable-gpu-sandbox" ||
          lowered == L"--disable-web-security" ||
-         lowered == L"--ignore-certificate-errors" ||
+         StartsWithInsensitive(lowered, L"--ignore-certificate-errors") ||
+         lowered == L"--ignore-ssl-errors-with-hosts" ||
+         lowered == L"--allow-insecure-localhost" ||
          lowered == L"--allow-running-insecure-content" ||
+         lowered == L"--disable-site-isolation-trials" ||
          lowered == L"--remote-debugging-pipe" ||
          IsInternalSwitch(lowered);
 }
@@ -178,10 +204,33 @@ bool IsProtectedArgument(const std::wstring& argument, bool* consumes_next) {
 void ApplyLauncherMitigations() {
   SetDllDirectoryW(L"");
 
+  // Restrict the launcher's DLL search path without assuming one specific
+  // minimum Windows SDK/runtime. The child browser process applies its own
+  // upstream mitigations and sandbox policies independently.
+  using SetDefaultDllDirectoriesFn = BOOL(WINAPI*)(DWORD);
+  if (HMODULE kernel32 = GetModuleHandleW(L"kernel32.dll")) {
+    const auto set_default_dll_directories = reinterpret_cast<SetDefaultDllDirectoriesFn>(
+        GetProcAddress(kernel32, "SetDefaultDllDirectories"));
+    if (set_default_dll_directories != nullptr) {
+      constexpr DWORD kLoadLibrarySearchUserDirs = 0x00000400;
+      constexpr DWORD kLoadLibrarySearchSystem32 = 0x00000800;
+      set_default_dll_directories(kLoadLibrarySearchUserDirs | kLoadLibrarySearchSystem32);
+    }
+  }
+
   PROCESS_MITIGATION_IMAGE_LOAD_POLICY image_policy{};
   image_policy.NoRemoteImages = 1;
   image_policy.NoLowMandatoryLabelImages = 1;
+  image_policy.PreferSystem32Images = 1;
   SetProcessMitigationPolicy(ProcessImageLoadPolicy, &image_policy, sizeof(image_policy));
+
+  PROCESS_MITIGATION_EXTENSION_POINT_DISABLE_POLICY extension_policy{};
+  extension_policy.DisableExtensionPoints = 1;
+  SetProcessMitigationPolicy(ProcessExtensionPointDisablePolicy, &extension_policy, sizeof(extension_policy));
+
+  PROCESS_MITIGATION_DYNAMIC_CODE_POLICY dynamic_code_policy{};
+  dynamic_code_policy.ProhibitDynamicCode = 1;
+  SetProcessMitigationPolicy(ProcessDynamicCodePolicy, &dynamic_code_policy, sizeof(dynamic_code_policy));
 }
 
 }  // namespace
@@ -259,6 +308,7 @@ int APIENTRY wWinMain(HINSTANCE, HINSTANCE, LPWSTR, int) {
                           (!force_balanced && memory_bytes != 0 && memory_bytes <= kLowMemoryThresholdBytes);
 
   std::vector<std::wstring> arguments;
+  arguments.reserve(static_cast<size_t>(argc) + 16U);
   arguments.emplace_back(engine_executable.wstring());
   arguments.emplace_back(L"--user-data-dir=" + profile_directory.wstring());
   arguments.emplace_back(L"--load-extension=" + privacy_extension.wstring() + L"," + search_extension.wstring());
@@ -273,8 +323,11 @@ int APIENTRY wWinMain(HINSTANCE, HINSTANCE, LPWSTR, int) {
   arguments.emplace_back(L"--no-default-browser-check");
 
   if (low_memory) {
-    arguments.emplace_back(L"--renderer-process-limit=6");
-    arguments.emplace_back(L"--disk-cache-size=134217728");
+    const std::uint64_t cache_bytes =
+        memory_bytes != 0 && memory_bytes <= kVeryLowMemoryThresholdBytes
+            ? kVeryLowMemoryDiskCacheBytes
+            : kLowMemoryDiskCacheBytes;
+    arguments.emplace_back(L"--disk-cache-size=" + std::to_wstring(cache_bytes));
   }
 
   for (int index = 1; index < argc; ++index) {
@@ -290,6 +343,7 @@ int APIENTRY wWinMain(HINSTANCE, HINSTANCE, LPWSTR, int) {
   LocalFree(argv);
 
   std::wstring command_line;
+  command_line.reserve(4096);
   for (size_t index = 0; index < arguments.size(); ++index) {
     if (index != 0) {
       command_line.push_back(L' ');
@@ -315,10 +369,16 @@ int APIENTRY wWinMain(HINSTANCE, HINSTANCE, LPWSTR, int) {
   CloseHandle(process_info.hThread);
 
   if (wait_for_engine) {
-    WaitForSingleObject(process_info.hProcess, INFINITE);
+    const DWORD wait_result = WaitForSingleObject(process_info.hProcess, INFINITE);
+    if (wait_result != WAIT_OBJECT_0) {
+      CloseHandle(process_info.hProcess);
+      return 6;
+    }
+
     DWORD exit_code = 0;
     if (!GetExitCodeProcess(process_info.hProcess, &exit_code)) {
-      exit_code = 6;
+      CloseHandle(process_info.hProcess);
+      return 6;
     }
     CloseHandle(process_info.hProcess);
     return static_cast<int>(exit_code);
