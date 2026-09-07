@@ -19,6 +19,7 @@ on:
       - 'scripts/rebrand-engine-locales.ps1'
       - 'scripts/verify-engine-locales.ps1'
       - 'scripts/verify-engine-fork.ps1'
+      - 'scripts/verify-engine-windows-executable.ps1'
       - 'scripts/configure-engine-build.ps1'
       - 'scripts/generate-engine-brand-assets.py'
       - 'scripts/verify-pinned-source-anchors.py'
@@ -41,6 +42,7 @@ on:
       - 'scripts/rebrand-engine-locales.ps1'
       - 'scripts/verify-engine-locales.ps1'
       - 'scripts/verify-engine-fork.ps1'
+      - 'scripts/verify-engine-windows-executable.ps1'
       - 'scripts/configure-engine-build.ps1'
       - 'scripts/generate-engine-brand-assets.py'
       - 'scripts/verify-pinned-source-anchors.py'
@@ -78,6 +80,7 @@ jobs:
             'scripts/rebrand-engine-locales.ps1',
             'scripts/verify-engine-locales.ps1',
             'scripts/verify-engine-fork.ps1',
+            'scripts/verify-engine-windows-executable.ps1',
             'scripts/configure-engine-build.ps1'
           )) {
             $tokens = $null
