@@ -39,7 +39,10 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+          fetch-depth: 1
 
       - name: Reject legacy browser branding and internal URLs
         shell: bash
@@ -112,3 +115,35 @@ jobs:
             'ghost://passwords/'; do
             grep -F "$route" README.md >/dev/null
           done
+
+      - name: Verify launcher hardening and isolation contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          launcher='launcher/main.cpp'
+
+          for required in \
+            'SetDefaultDllDirectories' \
+            'NoRemoteImages = 1' \
+            'NoLowMandatoryLabelImages = 1' \
+            'PreferSystem32Images = 1' \
+            'DisableExtensionPoints = 1' \
+            'ProhibitDynamicCode = 1' \
+            '--disable-gpu-sandbox' \
+            '--disable-site-isolation-trials' \
+            '--disable-features' \
+            '--ignore-certificate-errors' \
+            'L"Brendigo" / L"Ghosium" / L"User Data"'; do
+            grep -F "$required" "$launcher" >/dev/null || {
+              echo "Launcher hardening invariant missing: $required" >&2
+              exit 1
+            }
+          done
+
+          if grep -F -- '--renderer-process-limit' "$launcher"; then
+            echo 'Ghosium low-memory mode must not reduce renderer/site isolation through a renderer-process cap.' >&2
+            exit 1
+          fi
+
+          grep -F '64ULL * 1024ULL * 1024ULL' "$launcher" >/dev/null
+          grep -F '128ULL * 1024ULL * 1024ULL' "$launcher" >/dev/null
