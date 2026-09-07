@@ -18,6 +18,8 @@ on:
       - 'scripts/verify-engine-local-profile-surfaces.ps1'
       - 'scripts/rewrite-engine-profile-picker-local-only.ps1'
       - 'scripts/verify-engine-profile-picker-local-only.ps1'
+      - 'scripts/rewrite-engine-app-menu-account-surfaces.ps1'
+      - 'scripts/verify-engine-app-menu-account-surfaces.ps1'
       - 'scripts/rebrand-engine-locales.ps1'
       - 'scripts/verify-engine-locales.ps1'
       - 'scripts/generate-engine-brand-assets.py'
@@ -39,6 +41,8 @@ on:
       - 'scripts/verify-engine-local-profile-surfaces.ps1'
       - 'scripts/rewrite-engine-profile-picker-local-only.ps1'
       - 'scripts/verify-engine-profile-picker-local-only.ps1'
+      - 'scripts/rewrite-engine-app-menu-account-surfaces.ps1'
+      - 'scripts/verify-engine-app-menu-account-surfaces.ps1'
       - 'scripts/rebrand-engine-locales.ps1'
       - 'scripts/verify-engine-locales.ps1'
       - 'scripts/generate-engine-brand-assets.py'
@@ -78,6 +82,8 @@ jobs:
             'scripts/verify-engine-local-profile-surfaces.ps1',
             'scripts/rewrite-engine-profile-picker-local-only.ps1',
             'scripts/verify-engine-profile-picker-local-only.ps1',
+            'scripts/rewrite-engine-app-menu-account-surfaces.ps1',
+            'scripts/verify-engine-app-menu-account-surfaces.ps1',
             'scripts/rebrand-engine-locales.ps1',
             'scripts/verify-engine-locales.ps1'
           )
@@ -125,6 +131,9 @@ jobs:
           /chrome/browser/resources/new_tab_page/app.html
           /chrome/browser/ui/webui/new_tab_footer/footer_context_menu.cc
           /chrome/browser/ui/browser_actions.cc
+          /chrome/browser/ui/browser_command_controller.cc
+          /chrome/browser/ui/views/toolbar/app_menu.cc
+          /chrome/browser/ui/toolbar/app_menu_model.cc
           /chrome/browser/signin/account_consistency_mode_manager.cc
           /chrome/browser/ui/webui/intro/intro_ui.cc
           /chrome/browser/resources/intro/sign_in_promo.html.ts
@@ -171,6 +180,7 @@ jobs:
             'verify-engine-browser-signin.ps1',
             'verify-engine-local-profile-surfaces.ps1',
             'verify-engine-profile-picker-local-only.ps1',
+            'verify-engine-app-menu-account-surfaces.ps1',
             'verify-engine-locales.ps1'
           )
           foreach ($script in $verifiers) {
@@ -194,6 +204,10 @@ jobs:
           grep -F 'Ghosium does not consume Google AI subscription entitlements.' "$src/components/subscription_eligibility/subscription_eligibility_service.cc"
           grep -F 'html_source->AddBoolean("signInProfileCreationFlowSupported", false);' "$src/chrome/browser/ui/webui/signin/profile_picker_ui.cc"
           grep -F 'html_source->AddBoolean("isBrowserSigninAllowed", false);' "$src/chrome/browser/ui/webui/signin/profile_picker_ui.cc"
+          grep -F 'Ghosium profile rows are local-only; browser-account status chips are not' "$src/chrome/browser/ui/views/toolbar/app_menu.cc"
+          grep -F 'Ghosium does not expose Google browser-account or Sync actions.' "$src/chrome/browser/ui/toolbar/app_menu_model.cc"
+          grep -F 'command_updater_->UpdateCommandEnabled(IDC_TURN_ON_SYNC, false);' "$src/chrome/browser/ui/browser_command_controller.cc"
+          grep -F 'command_updater_->UpdateCommandEnabled(IDC_MANAGE_GOOGLE_ACCOUNT, false);' "$src/chrome/browser/ui/browser_command_controller.cc"
 
           git -C "$src" diff --check
           if git -C "$src" status --porcelain=v1 -- third_party | grep -q .; then
@@ -201,4 +215,4 @@ jobs:
             exit 1
           fi
 
-          echo 'Ghosium public-surface contract: browser-owned identity only; unowned Google/Chromium account, AI, mobile, customization and cloud-profile entry points are removed, hidden or unreachable.'
+          echo 'Ghosium public-surface contract: browser-owned identity only; unowned Google/Chromium account, Sync, AI, mobile, customization and cloud-profile entry points are removed, hidden or unreachable.'
