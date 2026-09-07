@@ -92,6 +92,11 @@ jobs:
           /chrome/app/theme/default_100_percent/chromium/
           /chrome/app/theme/default_200_percent/chromium/
           /chrome/browser/extensions/extension_ui_util.cc
+          /chrome/browser/resources/settings/settings_menu/
+          /chrome/browser/resources/settings/route.ts
+          /chrome/browser/ui/webui/settings/settings_ui.cc
+          /chrome/browser/resources/new_tab_page/app.html
+          /chrome/browser/ui/webui/new_tab_footer/footer_context_menu.cc
           /components/strings/
           /extensions/strings/
           EOF
@@ -142,27 +147,35 @@ jobs:
           grep -F 'About Ghosium Browser' "$src/chrome/app/settings_chromium_strings.grdp"
           grep -F 'Ghosium Support' "$src/chrome/app/settings_chromium_strings.grdp"
           grep -F 'Brendigo. Ghosium Browser. All rights reserved.' "$src/chrome/app/chromium_strings.grd"
-          grep -F 'name="IDS_SETTINGS_PEOPLE"' "$src/chrome/app/settings_strings.grdp"
-          grep -F 'Ghosium' "$src/chrome/app/settings_strings.grdp"
+          grep -F 'Customize Ghosium' "$src/chrome/app/chromium_strings.grd"
           grep -F 'app->id() == extensions::kWebStoreAppId' "$src/chrome/browser/extensions/extension_ui_util.cc"
+          grep -F 'return routes.PRIVACY;' "$src/chrome/browser/resources/settings/route.ts"
+          grep -F 'html_source->AddBoolean("showAiPage", false);' "$src/chrome/browser/ui/webui/settings/settings_ui.cc"
+          grep -F 'upstream Google account/sync entry intentionally hidden' "$src/chrome/browser/resources/settings/settings_menu/settings_menu.html"
+          grep -F 'upstream Google/Gemini AI entry intentionally hidden' "$src/chrome/browser/resources/settings/settings_menu/settings_menu.html"
+          grep -F 'upstream Chromium NTP customization entry intentionally removed' "$src/chrome/browser/resources/new_tab_page/app.html"
+          grep -F 'upstream Chromium NTP customization context-menu entry removed' "$src/chrome/browser/ui/webui/new_tab_footer/footer_context_menu.cc"
 
-          for legacy in \
-            'About Chromium' \
-            'Get help with Chromium' \
-            'AI in Chrome' \
-            'Chrome Colors' \
-            'Open Chrome Web Store' \
-            'You and Google'; do
-            if grep -F "$legacy" \
-              "$src/chrome/app/chromium_strings.grd" \
-              "$src/chrome/app/settings_chromium_strings.grdp" \
-              "$src/chrome/app/settings_strings.grdp" \
-              "$src/chrome/app/shared_settings_strings.grdp" \
-              "$src/chrome/app/glic_strings.grdp"; then
-              echo "Screenshot-visible legacy browser branding remains: $legacy" >&2
-              exit 1
-            fi
-          done
+          if grep -F 'id="people"' "$src/chrome/browser/resources/settings/settings_menu/settings_menu.html"; then
+            echo 'Google account entry is still public in Ghosium Settings.' >&2
+            exit 1
+          fi
+          if grep -F 'id="ai"' "$src/chrome/browser/resources/settings/settings_menu/settings_menu.html"; then
+            echo 'Google/Gemini AI entry is still public in Ghosium Settings.' >&2
+            exit 1
+          fi
+          if grep -F 'update.Set("showAiPage", true);' "$src/chrome/browser/ui/webui/settings/settings_ui.cc"; then
+            echo 'Google/Gemini AI Settings can still be dynamically re-enabled.' >&2
+            exit 1
+          fi
+          if grep -F '<ntp-customize-buttons id="customizeButtons"' "$src/chrome/browser/resources/new_tab_page/app.html"; then
+            echo 'Chromium New Tab customize button is still public.' >&2
+            exit 1
+          fi
+          if grep -F 'AddItemWithStringIdAndIcon(COMMAND_SHOW_CUSTOMIZE_CHROME' "$src/chrome/browser/ui/webui/new_tab_footer/footer_context_menu.cc"; then
+            echo 'Chromium New Tab footer customize action is still public.' >&2
+            exit 1
+          fi
 
           git -C "$src" diff --check
           if git -C "$src" status --porcelain=v1 -- third_party | grep -q .; then
@@ -170,4 +183,4 @@ jobs:
             exit 1
           fi
 
-          echo 'Pinned Ghosium public surface screenshot-regression contract: OK'
+          echo 'Pinned Ghosium public surface contract: Ghosium identity only; Chromium customization and Google-owned public surfaces removed.'
