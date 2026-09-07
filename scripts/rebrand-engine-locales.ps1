@@ -190,7 +190,8 @@ $publicSurfaceRequired = @(
   'chrome/browser/ui/webui/settings/settings_ui.cc',
   'chrome/browser/resources/new_tab_page/app.html',
   'chrome/browser/ui/webui/new_tab_footer/footer_context_menu.cc',
-  'chrome/browser/ui/browser_actions.cc'
+  'chrome/browser/ui/browser_actions.cc',
+  'components/desktop_to_mobile_promos/features.cc'
 )
 $completePublicSurfaceSource = $true
 foreach ($relative in $publicSurfaceRequired) {
@@ -209,6 +210,11 @@ if ($completePublicSurfaceSource) {
   & (Join-Path $PSScriptRoot 'rewrite-engine-upstream-public-actions.ps1') -SourceRoot $sourceRootResolved
   if ($LASTEXITCODE -ne 0) {
     throw 'Ghosium upstream Chromium/Google browser-action suppression failed.'
+  }
+
+  & (Join-Path $PSScriptRoot 'rewrite-engine-disable-unowned-promos.ps1') -SourceRoot $sourceRootResolved
+  if ($LASTEXITCODE -ne 0) {
+    throw 'Ghosium unowned Chromium mobile-promo suppression failed.'
   }
 } else {
   Write-Host 'Narrow sparse engine audit detected; complete public-surface source transform is delegated to Ghosium Public Surface Contract.'
@@ -243,6 +249,11 @@ if ($completePublicSurfaceSource) {
   if ($LASTEXITCODE -ne 0) {
     throw 'Ghosium upstream Chromium/Google browser-action verification failed.'
   }
+
+  & (Join-Path $PSScriptRoot 'verify-engine-disable-unowned-promos.ps1') -SourceRoot $sourceRootResolved
+  if ($LASTEXITCODE -ne 0) {
+    throw 'Ghosium unowned Chromium mobile-promo verification failed.'
+  }
 }
 
-Write-Host 'Ghosium supported locale branding verified; complete public surfaces and hidden upstream actions are independently verified whenever their source set is present.'
+Write-Host 'Ghosium supported locale branding verified; complete public surfaces, hidden upstream actions and unowned mobile promos are independently verified whenever their source set is present.'
