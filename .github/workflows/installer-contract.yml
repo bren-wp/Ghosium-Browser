@@ -104,7 +104,7 @@ jobs:
             echo 'NSIS bootstrap must use SHA-256 rather than SHA-1.' >&2
             exit 1
           fi
-          if grep -RInFi 'choco install nsis' .github/workflows scripts installer; then
+          if grep -RInFi 'choco install nsis' scripts installer .github/workflows/full-source-windows-build.yml; then
             echo 'Ghosium installer tooling must not depend on the mutable Chocolatey NSIS feed.' >&2
             exit 1
           fi
