@@ -46,6 +46,7 @@ if ($build -match '(?s)if \(is_win\).*?else \{\s*sources = \[ "version_updater_b
 }
 
 foreach ($required in @(
+  '#include <algorithm>',
   "kGhosiumCurrentProductVersion[] = `"$productVersion`"",
   'https://updates.ghosium.com/windows/stable.json',
   'url.host_piece() != kGhosiumUpdateHost',
@@ -63,6 +64,7 @@ foreach ($required in @(
   'base::HexEncode(digest)',
   'base::EqualsCaseInsensitiveASCII(actual_sha256, expected_sha256_)',
   'base::win::IsBinaryTrusted',
+  'true /* force_verify_in_dev_builds */',
   'AppendArgNative(L"/S")',
   'AppendArgNative(L"/UPDATE")',
   'AppendArgNative(L"/DELETESELF")',
@@ -83,7 +85,8 @@ foreach ($forbidden in @(
   'powershell.exe',
   'cmd.exe',
   'curl.exe',
-  'WINHTTP_ACCESS_TYPE_NO_PROXY'
+  'WINHTTP_ACCESS_TYPE_NO_PROXY',
+  'false /* force_verify_in_dev_builds */'
 )) {
   if ($source -match [regex]::Escape($forbidden)) {
     throw "Ghosium updater source contains a forbidden dependency or legacy path: $forbidden"
