@@ -38,24 +38,35 @@ if ($setupItem.Length -le 0 -or $setupItem.Length -gt 536870912) {
   throw "Update package size is outside the allowed range: $($setupItem.Length) bytes."
 }
 
-$versionInfo = $setupItem.VersionInfo
-if ([string]$versionInfo.ProductName -ne 'Ghosium Browser') {
-  throw "Update Setup ProductName must be Ghosium Browser; found '$($versionInfo.ProductName)'."
-}
-if ([string]$versionInfo.CompanyName -ne 'Brendigo') {
-  throw "Update Setup CompanyName must be Brendigo; found '$($versionInfo.CompanyName)'."
-}
-if ([string]$versionInfo.ProductVersion -notlike "$Version*") {
-  throw "Update Setup ProductVersion '$($versionInfo.ProductVersion)' does not match release version '$Version'."
+$runningOnWindows = [System.Environment]::OSVersion.Platform -eq [System.PlatformID]::Win32NT
+if ($RequireAuthenticode -and !$runningOnWindows) {
+  throw 'Production Authenticode manifest generation must run on Windows so PE identity and signature validation cannot be bypassed.'
 }
 
-$signature = Get-AuthenticodeSignature $resolvedSetup
-$signerSubject = if ($signature.SignerCertificate) {
-  [string]$signature.SignerCertificate.Subject
-} else {
-  ''
+# PE VersionInfo is a Windows release gate. Hosted Linux contract jobs still
+# exercise deterministic manifest hashing with a synthetic payload, so they do
+# not pretend to validate Windows PE metadata they cannot authoritatively read.
+if ($runningOnWindows) {
+  $versionInfo = $setupItem.VersionInfo
+  if ([string]$versionInfo.ProductName -ne 'Ghosium Browser') {
+    throw "Update Setup ProductName must be Ghosium Browser; found '$($versionInfo.ProductName)'."
+  }
+  if ([string]$versionInfo.CompanyName -ne 'Brendigo') {
+    throw "Update Setup CompanyName must be Brendigo; found '$($versionInfo.CompanyName)'."
+  }
+  if ([string]$versionInfo.ProductVersion -notlike "$Version*") {
+    throw "Update Setup ProductVersion '$($versionInfo.ProductVersion)' does not match release version '$Version'."
+  }
 }
+
+$signerSubject = ''
 if ($RequireAuthenticode) {
+  $signature = Get-AuthenticodeSignature $resolvedSetup
+  $signerSubject = if ($signature.SignerCertificate) {
+    [string]$signature.SignerCertificate.Subject
+  } else {
+    ''
+  }
   if ($signature.Status -ne [System.Management.Automation.SignatureStatus]::Valid -or
       !$signature.SignerCertificate) {
     throw "Production update manifest requires a Valid Authenticode Ghosium Setup signature; status='$($signature.Status)'."
