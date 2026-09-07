@@ -91,22 +91,26 @@ foreach ($path in @(
   Rewrite-GritMessageBodies -Path $path
 }
 
-Set-GritMessage `
-  -Path $chromiumStrings `
-  -MessageId 'IDS_ABOUT_VERSION_COMPANY_NAME' `
-  -Value 'Brendigo'
+# Key screenshot-facing identities are explicit instead of relying on an earlier
+# transform pass. This makes the public-surface patch independently testable on
+# pristine pinned Chromium source.
+Set-GritMessage -Path $chromiumStrings -MessageId 'IDS_PRODUCT_NAME' -Value 'Ghosium Browser'
+Set-GritMessage -Path $chromiumStrings -MessageId 'IDS_SHORT_PRODUCT_NAME' -Value 'Ghosium'
+Set-GritMessage -Path $chromiumStrings -MessageId 'IDS_ABOUT_VERSION_COMPANY_NAME' -Value 'Brendigo'
 Set-GritMessage `
   -Path $chromiumStrings `
   -MessageId 'IDS_ABOUT_VERSION_COPYRIGHT' `
   -Value 'Copyright <ph name="YEAR">{0,date,y}<ex>2026</ex></ph> Brendigo. Ghosium Browser. All rights reserved.'
+Set-GritMessage -Path $settingsChromiumStrings -MessageId 'IDS_SETTINGS_ABOUT_PROGRAM' -Value 'About Ghosium Browser'
+Set-GritMessage -Path $settingsChromiumStrings -MessageId 'IDS_SETTINGS_GET_HELP_USING_CHROME' -Value 'Ghosium Support'
 
 # Brand the top-level account/services section without pretending Ghosium owns
 # the Google Account service used by individual subfeatures.
-Set-GritMessage `
-  -Path $settingsStrings `
-  -MessageId 'IDS_SETTINGS_PEOPLE' `
-  -Value 'Ghosium'
+Set-GritMessage -Path $settingsStrings -MessageId 'IDS_SETTINGS_PEOPLE' -Value 'Ghosium'
 
+# The upstream Web Store component application must never appear as a Ghosium
+# New Tab/App Launcher tile. First-party Store navigation is handled separately
+# and points to https://store.ghosium.com/.
 if (!(Test-Path $extensionUiUtil -PathType Leaf)) {
   throw "Pinned source layout changed; extension UI target is missing: $extensionUiUtil"
 }
@@ -162,11 +166,18 @@ if ($peopleBodies.Count -lt 1 -or @($peopleBodies | Where-Object { !$_.Groups[1]
 }
 $chromiumText = [IO.File]::ReadAllText($chromiumStrings)
 foreach ($required in @(
+  'Ghosium Browser',
   'Brendigo',
   'Ghosium Browser. All rights reserved.'
 )) {
   if (!$chromiumText.Contains($required)) {
-    throw "Ghosium About publisher identity is missing: $required"
+    throw "Ghosium About/product identity is missing: $required"
+  }
+}
+$settingsChromiumText = [IO.File]::ReadAllText($settingsChromiumStrings)
+foreach ($required in @('About Ghosium Browser', 'Ghosium Support')) {
+  if (!$settingsChromiumText.Contains($required)) {
+    throw "Ghosium Settings/About identity is missing: $required"
   }
 }
 $extensionUiText = [IO.File]::ReadAllText($extensionUiUtil)
