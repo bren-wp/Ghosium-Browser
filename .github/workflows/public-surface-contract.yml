@@ -2,8 +2,7 @@ name: Ghosium Public Surface Contract
 
 on:
   pull_request:
-    branches:
-      - main
+    branches: [main]
     paths:
       - 'ENGINE_SOURCE_REVISION'
       - 'engine/branding/**'
@@ -17,13 +16,14 @@ on:
       - 'scripts/verify-engine-browser-signin.ps1'
       - 'scripts/rewrite-engine-local-profile-surfaces.ps1'
       - 'scripts/verify-engine-local-profile-surfaces.ps1'
+      - 'scripts/rewrite-engine-profile-picker-local-only.ps1'
+      - 'scripts/verify-engine-profile-picker-local-only.ps1'
       - 'scripts/rebrand-engine-locales.ps1'
       - 'scripts/verify-engine-locales.ps1'
       - 'scripts/generate-engine-brand-assets.py'
       - '.github/workflows/public-surface-contract.yml'
   push:
-    branches:
-      - main
+    branches: [main]
     paths:
       - 'ENGINE_SOURCE_REVISION'
       - 'engine/branding/**'
@@ -37,6 +37,8 @@ on:
       - 'scripts/verify-engine-browser-signin.ps1'
       - 'scripts/rewrite-engine-local-profile-surfaces.ps1'
       - 'scripts/verify-engine-local-profile-surfaces.ps1'
+      - 'scripts/rewrite-engine-profile-picker-local-only.ps1'
+      - 'scripts/verify-engine-profile-picker-local-only.ps1'
       - 'scripts/rebrand-engine-locales.ps1'
       - 'scripts/verify-engine-locales.ps1'
       - 'scripts/generate-engine-brand-assets.py'
@@ -48,7 +50,7 @@ permissions:
 
 jobs:
   public-surfaces:
-    name: Verify Ghosium public and local-profile identity
+    name: Verify Ghosium-owned public surfaces
     runs-on: ubuntu-latest
     timeout-minutes: 25
 
@@ -59,11 +61,11 @@ jobs:
           persist-credentials: false
           fetch-depth: 1
 
-      - name: Validate public-surface tooling syntax
+      - name: Validate transformation tooling
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          foreach ($path in @(
+          $scripts = @(
             'scripts/rewrite-engine-public-surfaces.ps1',
             'scripts/verify-engine-public-surfaces.ps1',
             'scripts/rewrite-engine-upstream-public-actions.ps1',
@@ -74,16 +76,16 @@ jobs:
             'scripts/verify-engine-browser-signin.ps1',
             'scripts/rewrite-engine-local-profile-surfaces.ps1',
             'scripts/verify-engine-local-profile-surfaces.ps1',
+            'scripts/rewrite-engine-profile-picker-local-only.ps1',
+            'scripts/verify-engine-profile-picker-local-only.ps1',
             'scripts/rebrand-engine-locales.ps1',
             'scripts/verify-engine-locales.ps1'
-          )) {
+          )
+          foreach ($path in $scripts) {
             $tokens = $null
             $errors = $null
             [void][System.Management.Automation.Language.Parser]::ParseFile(
-              (Resolve-Path $path),
-              [ref]$tokens,
-              [ref]$errors
-            )
+              (Resolve-Path $path), [ref]$tokens, [ref]$errors)
             if ($errors.Count -gt 0) {
               $errors | ForEach-Object { Write-Error $_.Message }
               throw "PowerShell parser errors found in $path"
@@ -94,7 +96,7 @@ jobs:
             throw 'Ghosium deterministic brand-asset generator has syntax errors.'
           }
 
-      - name: Sparse checkout pinned public Chromium surfaces
+      - name: Sparse checkout pinned Chromium public surfaces
         shell: bash
         run: |
           set -euo pipefail
@@ -131,6 +133,7 @@ jobs:
           /chrome/browser/resources/intro/sign_in_promo_refresh.ts
           /chrome/browser/ui/views/profiles/profile_menu_view.cc
           /chrome/browser/ui/profiles/profile_view_utils.cc
+          /chrome/browser/ui/webui/signin/profile_picker_ui.cc
           /components/desktop_to_mobile_promos/features.cc
           /components/subscription_eligibility/subscription_eligibility_service.cc
           /components/strings/
@@ -142,119 +145,60 @@ jobs:
           test "$(git -C "$src" rev-parse HEAD)" = "$revision"
           echo "PUBLIC_ENGINE_SRC=$src" >> "$GITHUB_ENV"
 
-      - name: Stage canonical Ghosium public logo assets
+      - name: Stage canonical Ghosium product assets
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $sourceLogo = Resolve-Path 'engine/branding/ghosium-mark.svg'
           $targetLogo = Join-Path $env:PUBLIC_ENGINE_SRC 'chrome/app/theme/chromium/product_logo.svg'
           New-Item -ItemType Directory -Force -Path (Split-Path -Parent $targetLogo) | Out-Null
-          Copy-Item $sourceLogo $targetLogo -Force
-
+          Copy-Item (Resolve-Path 'engine/branding/ghosium-mark.svg') $targetLogo -Force
           python3 ./scripts/generate-engine-brand-assets.py $env:PUBLIC_ENGINE_SRC
           if ($LASTEXITCODE -ne 0) {
             throw "Ghosium brand-asset generation failed with exit code $LASTEXITCODE"
           }
 
-      - name: Apply complete public account profile and locale branding twice
+      - name: Apply transformation twice and verify every contract
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-
           ./scripts/rebrand-engine-locales.ps1 -SourceRoot $env:PUBLIC_ENGINE_SRC
-          if ($LASTEXITCODE -ne 0) {
-            throw 'First Ghosium public-surface/locale transform failed.'
+          ./scripts/rebrand-engine-locales.ps1 -SourceRoot $env:PUBLIC_ENGINE_SRC
+
+          $verifiers = @(
+            'verify-engine-public-surfaces.ps1',
+            'verify-engine-upstream-public-actions.ps1',
+            'verify-engine-disable-unowned-promos.ps1',
+            'verify-engine-browser-signin.ps1',
+            'verify-engine-local-profile-surfaces.ps1',
+            'verify-engine-profile-picker-local-only.ps1',
+            'verify-engine-locales.ps1'
+          )
+          foreach ($script in $verifiers) {
+            & (Join-Path './scripts' $script) -SourceRoot $env:PUBLIC_ENGINE_SRC
+            if ($LASTEXITCODE -ne 0) {
+              throw "Ghosium verifier failed: $script"
+            }
           }
 
-          ./scripts/rebrand-engine-locales.ps1 -SourceRoot $env:PUBLIC_ENGINE_SRC
-          if ($LASTEXITCODE -ne 0) {
-            throw 'Second idempotent Ghosium public-surface/locale transform failed.'
-          }
-
-          ./scripts/verify-engine-public-surfaces.ps1 -SourceRoot $env:PUBLIC_ENGINE_SRC
-          ./scripts/verify-engine-upstream-public-actions.ps1 -SourceRoot $env:PUBLIC_ENGINE_SRC
-          ./scripts/verify-engine-disable-unowned-promos.ps1 -SourceRoot $env:PUBLIC_ENGINE_SRC
-          ./scripts/verify-engine-browser-signin.ps1 -SourceRoot $env:PUBLIC_ENGINE_SRC
-          ./scripts/verify-engine-local-profile-surfaces.ps1 -SourceRoot $env:PUBLIC_ENGINE_SRC
-          ./scripts/verify-engine-locales.ps1 -SourceRoot $env:PUBLIC_ENGINE_SRC
-
-      - name: Verify screenshot regression contract
+      - name: Final source smoke contract
         shell: bash
         run: |
           set -euo pipefail
           src="$PUBLIC_ENGINE_SRC"
 
           grep -F 'About Ghosium Browser' "$src/chrome/app/settings_chromium_strings.grdp"
-          grep -F 'Ghosium Support' "$src/chrome/app/settings_chromium_strings.grdp"
-          grep -F 'Brendigo. Ghosium Browser. All rights reserved.' "$src/chrome/app/chromium_strings.grd"
-          grep -F 'Customize Ghosium' "$src/chrome/app/chromium_strings.grd"
-          grep -F 'app->id() == extensions::kWebStoreAppId' "$src/chrome/browser/extensions/extension_ui_util.cc"
           grep -F 'return routes.PRIVACY;' "$src/chrome/browser/resources/settings/route.ts"
           grep -F 'html_source->AddBoolean("showAiPage", false);' "$src/chrome/browser/ui/webui/settings/settings_ui.cc"
-          grep -F 'upstream Google account/sync entry intentionally hidden' "$src/chrome/browser/resources/settings/settings_menu/settings_menu.html"
-          grep -F 'upstream Google/Gemini AI entry intentionally hidden' "$src/chrome/browser/resources/settings/settings_menu/settings_menu.html"
-          grep -F 'upstream Chromium NTP customization entry intentionally removed' "$src/chrome/browser/resources/new_tab_page/app.html"
-          grep -F 'upstream Chromium NTP customization context-menu entry removed' "$src/chrome/browser/ui/webui/new_tab_footer/footer_context_menu.cc"
-
-          if grep -F 'id="people"' "$src/chrome/browser/resources/settings/settings_menu/settings_menu.html"; then
-            echo 'Google account entry is still public in Ghosium Settings.' >&2
-            exit 1
-          fi
-          if grep -F 'id="ai"' "$src/chrome/browser/resources/settings/settings_menu/settings_menu.html"; then
-            echo 'Google/Gemini AI entry is still public in Ghosium Settings.' >&2
-            exit 1
-          fi
-          if grep -F 'update.Set("showAiPage", true);' "$src/chrome/browser/ui/webui/settings/settings_ui.cc"; then
-            echo 'Google/Gemini AI Settings can still be dynamically re-enabled.' >&2
-            exit 1
-          fi
-          if grep -F '<ntp-customize-buttons id="customizeButtons"' "$src/chrome/browser/resources/new_tab_page/app.html"; then
-            echo 'Chromium New Tab customize button is still public.' >&2
-            exit 1
-          fi
-          if grep -F 'AddItemWithStringIdAndIcon(COMMAND_SHOW_CUSTOMIZE_CHROME' "$src/chrome/browser/ui/webui/new_tab_footer/footer_context_menu.cc"; then
-            echo 'Chromium New Tab footer customize action is still public.' >&2
-            exit 1
-          fi
-
-          # Browser-level Google/GAIA sign-in is not a Ghosium account service.
-          grep -A3 -F 'bool IsBrowserSigninAllowedByCommandLine() {' "$src/chrome/browser/signin/account_consistency_mode_manager.cc" | grep -F 'return false;'
-          grep -F 'RegisterBooleanPref(prefs::kSigninAllowedOnNextStartup, false);' "$src/chrome/browser/signin/account_consistency_mode_manager.cc"
-          grep -F 'const int title_id = IDS_FRE_WELCOME_TITLE;' "$src/chrome/browser/ui/webui/intro/intro_ui.cc"
-          grep -F 'this.benefitCards_ = [];' "$src/chrome/browser/resources/intro/sign_in_promo.ts"
-          grep -F 'this.benefitCards_ = [];' "$src/chrome/browser/resources/intro/sign_in_promo_refresh.ts"
-          if grep -F 'id="acceptSignInButton"' \
-            "$src/chrome/browser/resources/intro/sign_in_promo.html.ts" \
-            "$src/chrome/browser/resources/intro/sign_in_promo_refresh.html.ts"; then
-            echo 'Google/GAIA browser sign-in CTA remains public in Ghosium first-run.' >&2
-            exit 1
-          fi
-
-          # Migrated profiles stay usable as local profiles but do not surface
-          # Google account/sync/cloud/AI promotion. Sign out remains available.
+          grep -F 'return false;' "$src/chrome/browser/signin/account_consistency_mode_manager.cc" >/dev/null
           grep -F 'Ghosium profile identity is local-first.' "$src/chrome/browser/ui/views/profiles/profile_menu_view.cc"
-          grep -F 'Ghosium has no Google AI-subscription profile decoration.' "$src/chrome/browser/ui/profiles/profile_view_utils.cc"
           grep -F 'Ghosium does not consume Google AI subscription entitlements.' "$src/components/subscription_eligibility/subscription_eligibility_service.cc"
-          grep -F 'BuildAutofillSettingsButton();' "$src/chrome/browser/ui/views/profiles/profile_menu_view.cc"
-          grep -F 'MaybeBuildSignoutButton();' "$src/chrome/browser/ui/views/profiles/profile_menu_view.cc"
-
-          # Three upstream action registrations are intentionally retained for
-          # Chromium-internal compatibility, but the independent PowerShell
-          # verifier above requires every one of them to be permanently hidden.
-          grep -F 'SidePanelEntryId::kCustomizeChrome' "$src/chrome/browser/ui/browser_actions.cc"
-          grep -F 'SidePanelEntryId::kGeic' "$src/chrome/browser/ui/browser_actions.cc"
-          grep -F 'SidePanelEntryId::kGlic' "$src/chrome/browser/ui/browser_actions.cc"
-
-          # Ghosium currently has no mobile browser distribution. The central
-          # Chromium desktop-to-mobile gates must remain compile-time source
-          # functions that unconditionally return false after transformation.
-          grep -A2 -F 'bool MobilePromoOnDesktopEnabled() {' "$src/components/desktop_to_mobile_promos/features.cc" | grep -F 'return false;'
-          grep -A2 -F 'bool IsMobileNTPPromoOnDesktopEnabled() {' "$src/components/desktop_to_mobile_promos/features.cc" | grep -F 'return false;'
+          grep -F 'html_source->AddBoolean("signInProfileCreationFlowSupported", false);' "$src/chrome/browser/ui/webui/signin/profile_picker_ui.cc"
+          grep -F 'html_source->AddBoolean("isBrowserSigninAllowed", false);' "$src/chrome/browser/ui/webui/signin/profile_picker_ui.cc"
 
           git -C "$src" diff --check
           if git -C "$src" status --porcelain=v1 -- third_party | grep -q .; then
-            echo 'Public-surface branding must never modify third_party source.' >&2
+            echo 'Ghosium public-surface transformation modified third_party source.' >&2
             exit 1
           fi
 
-          echo 'Pinned Ghosium public surface contract: Ghosium identity only; unowned Chromium/Google account, AI, customization, mobile and cloud-profile surfaces removed or permanently hidden.'
+          echo 'Ghosium public-surface contract: browser-owned identity only; unowned Google/Chromium account, AI, mobile, customization and cloud-profile entry points are removed, hidden or unreachable.'
