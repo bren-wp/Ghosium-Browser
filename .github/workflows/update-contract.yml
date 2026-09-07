@@ -129,7 +129,18 @@ jobs:
           fi
           grep -Fq '${GetOptions} $R0 "/UPDATE" $R1' installer/ghosium.nsi
           grep -Fq '${GetOptions} $R0 "/UNINSTALL" $R1' installer/ghosium.nsi
+          grep -Fq '${GetOptions} $R0 "/DELETESELF" $R1' installer/ghosium.nsi
+          grep -Fq '${GetOptions} $R0 "/CLEANUPDATE" $R1' installer/ghosium.nsi
+          grep -Fq '!define UPDATE_SETUP "$TEMP\Brendigo\Ghosium Browser Update\Ghosium-Browser-Setup.exe"' installer/ghosium.nsi
+          grep -Fq 'Exec '\''"$INSTDIR\${INSTALLED_SETUP}" /S /CLEANUPDATE'\''' installer/ghosium.nsi
+          grep -Fq 'Delete /REBOOTOK "${UPDATE_SETUP}"' installer/ghosium.nsi
+          grep -Fq 'RMDir /REBOOTOK "${UPDATE_DIR}"' installer/ghosium.nsi
           grep -Fq 'Ghosium-Browser-Setup.exe' installer/ghosium.nsi
+
+          if grep -Eqi '(^|[^A-Za-z])(powershell|cmd|curl)(\.exe)?' installer/ghosium.nsi; then
+            echo 'Installer update cleanup must not depend on a shell or curl helper.' >&2
+            exit 1
+          fi
 
       - name: Sparse checkout pinned Chromium update surface
         shell: bash
@@ -189,4 +200,4 @@ jobs:
             exit 1
           fi
 
-          echo 'Ghosium update contract: first-party HTTPS manifest, exact version/size/hash validation, mandatory Authenticode publisher verification, and same-Setup /UPDATE maintenance.'
+          echo 'Ghosium update contract: first-party HTTPS manifest, exact version/size/hash validation, mandatory Authenticode publisher verification, same-Setup /UPDATE maintenance, and same-Setup temporary package cleanup.'
