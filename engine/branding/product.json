@@ -31,6 +31,20 @@
     "https://ghosium.com/support",
     "https://ghosium.com/security"
   ],
+  "internalUi": {
+    "scheme": "ghost",
+    "untrustedScheme": "ghost-untrusted",
+    "routes": [
+      "ghost://newtab/",
+      "ghost://history/",
+      "ghost://bookmarks/",
+      "ghost://downloads/",
+      "ghost://settings/",
+      "ghost://profiles/",
+      "ghost://extensions/",
+      "ghost://passwords/"
+    ]
+  },
   "locales": {
     "default": "en-US",
     "required": "hr",
