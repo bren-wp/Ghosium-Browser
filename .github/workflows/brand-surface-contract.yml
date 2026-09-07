@@ -134,7 +134,7 @@ jobs:
             '--disable-features' \
             '--ignore-certificate-errors' \
             'L"Brendigo" / L"Ghosium" / L"User Data"'; do
-            grep -F "$required" "$launcher" >/dev/null || {
+            grep -F -- "$required" "$launcher" >/dev/null || {
               echo "Launcher hardening invariant missing: $required" >&2
               exit 1
             }
