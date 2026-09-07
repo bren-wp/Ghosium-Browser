@@ -34,7 +34,7 @@ function Force-BuilderActionHidden {
     return
   }
 
-  $pattern = '(?s)(' + $ActionPattern + ')\s*' + $LegacyVisibilityPattern
+  $pattern = '(?s)(' + $ActionPattern + ')\s*(' + $LegacyVisibilityPattern + ')'
   if (![regex]::IsMatch($text, $pattern)) {
     throw "Pinned Chromium action layout changed; unable to suppress $Description."
   }
@@ -44,7 +44,15 @@ function Force-BuilderActionHidden {
     $pattern,
     {
       param($match)
-      return $match.Groups[1].Value + "`n          .SetVisible(false)"
+      $replacement = $match.Groups[1].Value + "`n          .SetVisible(false)"
+      # The Customize block had no visibility setter: its matched legacy tail is
+      # the terminal .Build(). Re-add it after inserting SetVisible(false).
+      # GEIC/Glic match only their old visibility setter, so their .Build()
+      # remains outside the replacement and must not be duplicated.
+      if ($match.Groups[2].Value -match '\.Build\(\)') {
+        $replacement += "`n          .Build()"
+      }
+      return $replacement
     },
     1
   )
