@@ -50,25 +50,54 @@ function Assert-NoForbiddenVisibleBrand {
 
   $text = [IO.File]::ReadAllText($Path)
   $messages = [regex]::Matches($text, '(?s)<message\b[^>]*>(.*?)</message>')
+  $forbiddenPatterns = @(
+    'About Chromium(?!OS)',
+    'Get help with Chromium\b',
+    'Chromium is your default browser',
+    'Make Chromium the default browser',
+    'AI in Chrome',
+    'Gemini in Chromium',
+    'Gemini in Chrome',
+    'Chrome Colors',
+    'Open Chrome Web Store',
+    'You and Google',
+    'Customize Chromium',
+    'Personalize Chromium',
+    'Make Chromium Yours'
+  )
+
   foreach ($message in $messages) {
     $visible = [regex]::Replace($message.Groups[1].Value, '<[^>]+>', '')
     $visible = [System.Net.WebUtility]::HtmlDecode($visible)
-    foreach ($forbidden in @(
-      'About Chromium',
-      'Get help with Chromium',
-      'Chromium is your default browser',
-      'Make Chromium the default browser',
-      'AI in Chrome',
-      'Gemini in Chromium',
-      'Gemini in Chrome',
-      'Chrome Colors',
-      'Open Chrome Web Store',
-      'You and Google'
-    )) {
-      if ($visible.Contains($forbidden)) {
-        throw "Legacy public browser branding remains visible in ${Path}: $forbidden"
+    foreach ($pattern in $forbiddenPatterns) {
+      if ($visible -match $pattern) {
+        throw "Legacy public browser branding remains visible in ${Path}: $pattern"
       }
     }
+  }
+}
+
+function Assert-FileContains {
+  param(
+    [Parameter(Mandatory = $true)][string]$Path,
+    [Parameter(Mandatory = $true)][string]$Expected,
+    [Parameter(Mandatory = $true)][string]$Description
+  )
+
+  if (![IO.File]::ReadAllText($Path).Contains($Expected)) {
+    throw "$Description is missing from $Path"
+  }
+}
+
+function Assert-FileNotContains {
+  param(
+    [Parameter(Mandatory = $true)][string]$Path,
+    [Parameter(Mandatory = $true)][string]$Forbidden,
+    [Parameter(Mandatory = $true)][string]$Description
+  )
+
+  if ([IO.File]::ReadAllText($Path).Contains($Forbidden)) {
+    throw "$Description remains in $Path"
   }
 }
 
@@ -78,6 +107,12 @@ $settingsStrings = Join-Path $sourceRootResolved 'chrome/app/settings_strings.gr
 $sharedSettingsStrings = Join-Path $sourceRootResolved 'chrome/app/shared_settings_strings.grdp'
 $glicStrings = Join-Path $sourceRootResolved 'chrome/app/glic_strings.grdp'
 $extensionUiUtil = Join-Path $sourceRootResolved 'chrome/browser/extensions/extension_ui_util.cc'
+$settingsMenuHtml = Join-Path $sourceRootResolved 'chrome/browser/resources/settings/settings_menu/settings_menu.html'
+$settingsMenuTs = Join-Path $sourceRootResolved 'chrome/browser/resources/settings/settings_menu/settings_menu.ts'
+$settingsRouteTs = Join-Path $sourceRootResolved 'chrome/browser/resources/settings/route.ts'
+$settingsUiCc = Join-Path $sourceRootResolved 'chrome/browser/ui/webui/settings/settings_ui.cc'
+$ntpAppHtml = Join-Path $sourceRootResolved 'chrome/browser/resources/new_tab_page/app.html'
+$ntpFooterContextMenu = Join-Path $sourceRootResolved 'chrome/browser/ui/webui/new_tab_footer/footer_context_menu.cc'
 $productLogoSvg = Join-Path $sourceRootResolved 'chrome/app/theme/chromium/product_logo.svg'
 $productLogo32 = Join-Path $sourceRootResolved 'chrome/app/theme/chromium/product_logo_32.png'
 $productIcon = Join-Path $sourceRootResolved 'chrome/app/theme/chromium/win/chromium.ico'
@@ -90,6 +125,12 @@ foreach ($path in @(
   $sharedSettingsStrings,
   $glicStrings,
   $extensionUiUtil,
+  $settingsMenuHtml,
+  $settingsMenuTs,
+  $settingsRouteTs,
+  $settingsUiCc,
+  $ntpAppHtml,
+  $ntpFooterContextMenu,
   $productLogoSvg,
   $productLogo32,
   $productIcon,
@@ -106,7 +147,10 @@ Assert-MessageContains -Path $chromiumStrings -MessageId 'IDS_ABOUT_VERSION_COMP
 Assert-MessageContains -Path $chromiumStrings -MessageId 'IDS_ABOUT_VERSION_COPYRIGHT' -Expected 'Brendigo. Ghosium Browser. All rights reserved.'
 Assert-MessageContains -Path $settingsChromiumStrings -MessageId 'IDS_SETTINGS_ABOUT_PROGRAM' -Expected 'About Ghosium Browser'
 Assert-MessageContains -Path $settingsChromiumStrings -MessageId 'IDS_SETTINGS_GET_HELP_USING_CHROME' -Expected 'Ghosium Support'
-Assert-MessageContains -Path $settingsStrings -MessageId 'IDS_SETTINGS_PEOPLE' -Expected 'Ghosium'
+Assert-MessageContains -Path $settingsStrings -MessageId 'IDS_SETTINGS_PEOPLE' -Expected 'Profile'
+Assert-MessageContains -Path $chromiumStrings -MessageId 'IDS_NTP_CUSTOMIZE_BUTTON_LABEL' -Expected 'Customize Ghosium'
+Assert-MessageContains -Path $chromiumStrings -MessageId 'IDS_SIDE_PANEL_CUSTOMIZE_CHROME_TITLE' -Expected 'Customize Ghosium'
+Assert-MessageContains -Path $chromiumStrings -MessageId 'IDS_NTP_MODULES_SETUP_LIST_TITLE' -Expected 'Make Ghosium Yours'
 
 foreach ($path in @(
   $chromiumStrings,
@@ -117,6 +161,26 @@ foreach ($path in @(
 )) {
   Assert-NoForbiddenVisibleBrand -Path $path
 }
+
+# Google account/sync and Gemini/AI are not Ghosium-owned product sections.
+# They must not be first-class Settings navigation or the Settings landing page.
+Assert-FileNotContains -Path $settingsMenuHtml -Forbidden 'id="people"' -Description 'Google account Settings menu entry'
+Assert-FileNotContains -Path $settingsMenuHtml -Forbidden 'id="ai"' -Description 'Google/Gemini AI Settings menu entry'
+Assert-FileContains -Path $settingsMenuHtml -Expected 'upstream Google account/sync entry intentionally hidden' -Description 'Ghosium account-menu suppression marker'
+Assert-FileContains -Path $settingsMenuHtml -Expected 'upstream Google/Gemini AI entry intentionally hidden' -Description 'Ghosium AI-menu suppression marker'
+Assert-FileNotContains -Path $settingsMenuTs -Forbidden 'SettingsMenu_PeopleClicked' -Description 'Google account Settings public menu action'
+Assert-FileNotContains -Path $settingsMenuTs -Forbidden 'SettingsMenu_AiPageEntryPointClicked' -Description 'Google/Gemini AI Settings public menu action'
+Assert-FileNotContains -Path $settingsRouteTs -Forbidden 'return routes.PEOPLE;' -Description 'Google account default Settings route'
+Assert-FileContains -Path $settingsRouteTs -Expected 'return routes.PRIVACY;' -Description 'Ghosium privacy-first Settings landing route'
+Assert-FileContains -Path $settingsUiCc -Expected 'html_source->AddBoolean("showAiPage", false);' -Description 'Ghosium AI Settings backend disablement'
+Assert-FileNotContains -Path $settingsUiCc -Forbidden 'update.Set("showAiPage", true);' -Description 'dynamic Google/Gemini AI Settings re-enablement'
+
+# The Chromium New Tab customization UI was explicitly requested to be removed,
+# not simply relabeled. Both visible entry points are therefore forbidden.
+Assert-FileNotContains -Path $ntpAppHtml -Forbidden '<ntp-customize-buttons id="customizeButtons"' -Description 'Chromium New Tab customize button'
+Assert-FileContains -Path $ntpAppHtml -Expected 'upstream Chromium NTP customization entry intentionally removed' -Description 'Ghosium NTP customize-button suppression marker'
+Assert-FileNotContains -Path $ntpFooterContextMenu -Forbidden 'AddItemWithStringIdAndIcon(COMMAND_SHOW_CUSTOMIZE_CHROME' -Description 'Chromium New Tab footer customize action'
+Assert-FileContains -Path $ntpFooterContextMenu -Expected 'upstream Chromium NTP customization context-menu entry removed' -Description 'Ghosium NTP footer customize suppression marker'
 
 $sourceSvgHash = (Get-FileHash $productLogoSvg -Algorithm SHA256).Hash
 $canonicalSvgHash = (Get-FileHash $canonicalLogoSvg -Algorithm SHA256).Hash
@@ -171,4 +235,4 @@ if ($thirdPartyChanges) {
   throw 'Ghosium public-surface changes touched third_party source.'
 }
 
-Write-Host 'Ghosium public surfaces verified: Settings/About branding, canonical logo, and no upstream Web Store tile.'
+Write-Host 'Ghosium public surfaces verified: Ghosium identity retained; Chromium customization, Google account nav, Gemini/AI and Web Store tile are not public.'
