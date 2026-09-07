@@ -218,7 +218,7 @@ jobs:
           grep -Fq 'GHOSIUM-SOURCE-INSTALLER-SMOKE.json' "$workflow"
           grep -Fq 'Ghosium-Browser-Setup.exe' "$workflow"
           grep -Fq "\$expectedBrowserExecutable = 'Ghosium-Browser.exe'" "$smoke"
-          grep -Fq "-Filter \$expectedBrowserExecutable" "$smoke"
+          grep -Fq -- "-Filter \$expectedBrowserExecutable" "$smoke"
           grep -Fq 'publicExecutableIdentityComplete' "$smoke"
           grep -Fq 'installedBrowserExecutableName' "$smoke"
           grep -Fq "'--uninstall'" "$smoke"
