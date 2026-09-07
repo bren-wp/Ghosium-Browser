@@ -132,6 +132,7 @@ jobs:
           /chrome/browser/ui/views/profiles/profile_menu_view.cc
           /chrome/browser/ui/profiles/profile_view_utils.cc
           /components/desktop_to_mobile_promos/features.cc
+          /components/subscription_eligibility/subscription_eligibility_service.cc
           /components/strings/
           /extensions/strings/
           EOF
@@ -233,6 +234,7 @@ jobs:
           # Google account/sync/cloud/AI promotion. Sign out remains available.
           grep -F 'Ghosium profile identity is local-first.' "$src/chrome/browser/ui/views/profiles/profile_menu_view.cc"
           grep -F 'Ghosium has no Google AI-subscription profile decoration.' "$src/chrome/browser/ui/profiles/profile_view_utils.cc"
+          grep -F 'Ghosium does not consume Google AI subscription entitlements.' "$src/components/subscription_eligibility/subscription_eligibility_service.cc"
           grep -F 'BuildAutofillSettingsButton();' "$src/chrome/browser/ui/views/profiles/profile_menu_view.cc"
           grep -F 'MaybeBuildSignoutButton();' "$src/chrome/browser/ui/views/profiles/profile_menu_view.cc"
 
