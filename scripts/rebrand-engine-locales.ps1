@@ -198,6 +198,8 @@ $publicSurfaceRequired = @(
   'chrome/browser/resources/intro/sign_in_promo.ts',
   'chrome/browser/resources/intro/sign_in_promo_refresh.html.ts',
   'chrome/browser/resources/intro/sign_in_promo_refresh.ts',
+  'chrome/browser/ui/views/profiles/profile_menu_view.cc',
+  'chrome/browser/ui/profiles/profile_view_utils.cc',
   'components/desktop_to_mobile_promos/features.cc'
 )
 $completePublicSurfaceSource = $true
@@ -227,6 +229,11 @@ if ($completePublicSurfaceSource) {
   & (Join-Path $PSScriptRoot 'rewrite-engine-browser-signin.ps1') -SourceRoot $sourceRootResolved
   if ($LASTEXITCODE -ne 0) {
     throw 'Ghosium Google/GAIA browser sign-in suppression failed.'
+  }
+
+  & (Join-Path $PSScriptRoot 'rewrite-engine-local-profile-surfaces.ps1') -SourceRoot $sourceRootResolved
+  if ($LASTEXITCODE -ne 0) {
+    throw 'Ghosium local-only profile surface rewrite failed.'
   }
 } else {
   Write-Host 'Narrow sparse engine audit detected; complete public-surface source transform is delegated to Ghosium Public Surface Contract.'
@@ -271,6 +278,11 @@ if ($completePublicSurfaceSource) {
   if ($LASTEXITCODE -ne 0) {
     throw 'Ghosium Google/GAIA browser sign-in verification failed.'
   }
+
+  & (Join-Path $PSScriptRoot 'verify-engine-local-profile-surfaces.ps1') -SourceRoot $sourceRootResolved
+  if ($LASTEXITCODE -ne 0) {
+    throw 'Ghosium local-only profile surface verification failed.'
+  }
 }
 
-Write-Host 'Ghosium supported locale branding verified; complete public surfaces, hidden upstream actions, unowned mobile promos and browser-account entry points are independently verified whenever their source set is present.'
+Write-Host 'Ghosium supported locale branding verified; public surfaces are Ghosium-owned, while upstream account, AI, mobile and cloud profile promotions are removed or hidden.'
