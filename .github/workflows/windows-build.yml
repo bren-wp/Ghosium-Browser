@@ -14,8 +14,7 @@ concurrency:
   cancel-in-progress: true
 
 permissions:
-  contents: write
-  packages: write
+  contents: read
 
 jobs:
   verify-web:
@@ -25,7 +24,10 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+          fetch-depth: 1
 
       - name: Validate PHP and JSON
         shell: bash
@@ -86,7 +88,10 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+          fetch-depth: 1
 
       - name: Validate architecture and resolve version
         id: meta
@@ -405,7 +410,7 @@ jobs:
         run: ./scripts/smoke-test-windows-installer.ps1 -SetupPath 'artifacts/Ghosium-Browser-Setup.exe' -Version $env:GHOSIUM_VERSION
 
       - name: Upload verified public release executables
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: Ghosium-Browser-Windows-x64
           path: |
@@ -426,7 +431,7 @@ jobs:
 
     steps:
       - name: Download verified release executables
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
         with:
           name: Ghosium-Browser-Windows-x64
           path: artifacts
@@ -462,16 +467,19 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+          fetch-depth: 1
 
       - name: Download verified release executables
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
         with:
           name: Ghosium-Browser-Windows-x64
           path: package
 
       - name: Login to GitHub Container Registry
-        uses: docker/login-action@v3
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
