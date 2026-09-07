@@ -168,17 +168,18 @@ foreach ($root in $runtimeRoots) {
     $text = [IO.File]::ReadAllText($file.FullName)
     $updated = $text
 
-    # Handle the common adjacent-C++-literal form before normal URL matching,
-    # e.g. "https://support.google.com/" "chrome?p=...".
+    # Handle adjacent C/C++ string literals as one URL. Consume every adjacent
+    # fragment belonging to the same literal expression so a long wrapped URL
+    # cannot leave a stale tail appended to the Ghosium destination.
     $updated = [regex]::Replace(
       $updated,
-      'https://support\.google\.com/"\s*"(?:chrome|chromebook|chromecast)[^"\r\n]*',
-      'https://ghosium.com/support'
+      'https://support\.google\.com/"(?:\s*"[^";]*")*',
+      'https://ghosium.com/support"'
     )
     $updated = [regex]::Replace(
       $updated,
-      'https://(?:www\.)?google\.com/"\s*"chrome[^"\r\n]*',
-      'https://ghosium.com/'
+      'https://(?:www\.)?google\.com/"(?:\s*"[^";]*")*',
+      'https://ghosium.com/"'
     )
 
     foreach ($rewrite in $urlRewrites) {
