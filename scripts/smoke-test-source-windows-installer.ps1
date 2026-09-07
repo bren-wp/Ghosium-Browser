@@ -13,6 +13,22 @@ if ([System.Environment]::OSVersion.Platform -ne [System.PlatformID]::Win32NT) {
   throw 'The Ghosium source-built installer smoke test must run on Windows.'
 }
 
+$repoRoot = Split-Path -Parent $PSScriptRoot
+$productLicense = Join-Path $repoRoot 'LICENSE'
+$thirdPartyNotices = Join-Path $repoRoot 'THIRD_PARTY_NOTICES.md'
+foreach ($requiredLegal in @($productLicense, $thirdPartyNotices)) {
+  if (!(Test-Path $requiredLegal -PathType Leaf)) {
+    throw "Source-installer smoke is missing canonical repository legal input: $requiredLegal"
+  }
+}
+$expectedLicenseSha256 = (Get-FileHash $productLicense -Algorithm SHA256).Hash.ToLowerInvariant()
+$expectedNoticesSha256 = (Get-FileHash $thirdPartyNotices -Algorithm SHA256).Hash.ToLowerInvariant()
+$canonicalLicenseText = Get-Content $productLicense -Raw
+if (!$canonicalLicenseText.Contains('Proprietary Commercial Software License Agreement') -or
+    !$canonicalLicenseText.Contains('Open-source components remain governed by their respective licenses.')) {
+  throw 'Canonical Ghosium product license does not satisfy the source-installer legal contract.'
+}
+
 $miniInstaller = (Resolve-Path $MiniInstallerPath).Path
 $localAppData = [Environment]::GetFolderPath([Environment+SpecialFolder]::LocalApplicationData)
 if (!$localAppData) {
@@ -31,6 +47,8 @@ $installLog = Join-Path $smokeRoot 'install.log'
 $uninstallLog = Join-Path $smokeRoot 'uninstall.log'
 $pathTrimCharacters = [char[]]@('\', '/')
 $expectedBrowserExecutable = 'Ghosium-Browser.exe'
+$installedLicensePath = Join-Path $installRoot 'GHOSIUM-LICENSE.txt'
+$installedNoticesPath = Join-Path $installRoot 'THIRD_PARTY_NOTICES.md'
 
 New-Item -ItemType Directory -Force -Path $smokeRoot | Out-Null
 
@@ -149,6 +167,9 @@ $runtimeExitCode = $null
 $runtimeSmokePassed = $false
 $installedBrowserVersion = $null
 $installedBrowserExecutableName = $null
+$installedLicenseSha256 = $null
+$installedNoticesSha256 = $null
+$installedLegalPayloadVerified = $false
 $uninstallRegistryKey = $null
 $cleanupAttempted = $false
 $completed = $false
@@ -212,6 +233,29 @@ try {
     throw "Installed $expectedBrowserExecutable ProductVersion is empty."
   }
   $installedBrowserVersion = [string]$browserInfo.ProductVersion
+
+  # Legal material must be part of the actual installed application, not only
+  # a detached GitHub release attachment. Require byte-identical copies of the
+  # reviewed repository license and third-party notices.
+  foreach ($installedLegal in @($installedLicensePath, $installedNoticesPath)) {
+    if (!(Test-Path $installedLegal -PathType Leaf)) {
+      throw "Installed Ghosium legal payload is missing: $installedLegal"
+    }
+  }
+  $installedLicenseSha256 = (Get-FileHash $installedLicensePath -Algorithm SHA256).Hash.ToLowerInvariant()
+  $installedNoticesSha256 = (Get-FileHash $installedNoticesPath -Algorithm SHA256).Hash.ToLowerInvariant()
+  if ($installedLicenseSha256 -ne $expectedLicenseSha256) {
+    throw 'Installed GHOSIUM-LICENSE.txt does not match repository LICENSE.'
+  }
+  if ($installedNoticesSha256 -ne $expectedNoticesSha256) {
+    throw 'Installed THIRD_PARTY_NOTICES.md does not match repository notices.'
+  }
+  $installedLicenseText = Get-Content $installedLicensePath -Raw
+  if (!$installedLicenseText.Contains('Proprietary Commercial Software License Agreement') -or
+      !$installedLicenseText.Contains('Open-source components remain governed by their respective licenses.')) {
+    throw 'Installed Ghosium license lost the proprietary-product or third-party-rights contract.'
+  }
+  $installedLegalPayloadVerified = $true
 
   $entries = @(Get-GhosiumUninstallEntries)
   if ($entries.Count -ne 1) {
@@ -301,6 +345,9 @@ try {
   if (Test-Path $defaultUserDataRoot) {
     throw "Default Ghosium user-data directory remains after --delete-profile uninstall: $defaultUserDataRoot"
   }
+  if (Test-Path $installedLicensePath -PathType Leaf -or Test-Path $installedNoticesPath -PathType Leaf) {
+    throw 'Installed Ghosium legal payload remains after application uninstall.'
+  }
 
   if (!$ReportPath) {
     $ReportPath = Join-Path (Get-Location).Path 'GHOSIUM-SOURCE-INSTALLER-SMOKE.json'
@@ -313,7 +360,7 @@ try {
   }
 
   [ordered]@{
-    schemaVersion = 2
+    schemaVersion = 3
     product = 'Ghosium Browser'
     architecture = 'windows-x64'
     installMode = 'per-user'
@@ -323,6 +370,16 @@ try {
     installedBrowserProductVersion = $installedBrowserVersion
     installedBrowserProductName = 'Ghosium Browser'
     publisher = 'Brendigo'
+    legalPayload = [ordered]@{
+      installed = $installedLegalPayloadVerified
+      productLicense = 'Brendigo Proprietary Commercial Software License Agreement'
+      agreementVersion = '1.0'
+      licenseSha256 = $installedLicenseSha256
+      thirdPartyNoticesSha256 = $installedNoticesSha256
+      matchesRepository = ($installedLicenseSha256 -eq $expectedLicenseSha256 -and $installedNoticesSha256 -eq $expectedNoticesSha256)
+      removedWithApplication = (!(Test-Path $installedLicensePath) -and !(Test-Path $installedNoticesPath))
+      thirdPartyLicensesPreserved = $true
+    }
     uninstallRegistryKey = $uninstallRegistryKey
     installExitCode = $installExitCode
     installedRuntimeSmoke = [ordered]@{
@@ -344,12 +401,13 @@ try {
     }
     repositoryCommit = if ($env:GITHUB_SHA) { $env:GITHUB_SHA } else { $null }
     verifiedUtc = [DateTime]::UtcNow.ToString('o')
-  } | ConvertTo-Json -Depth 5 | Set-Content $ReportPath -Encoding utf8
+  } | ConvertTo-Json -Depth 6 | Set-Content $ReportPath -Encoding utf8
 
   $completed = $true
-  Write-Host 'Source-built Ghosium mini_installer -> installed Ghosium runtime -> registered setup.exe uninstall smoke test: OK'
+  Write-Host 'Source-built Ghosium mini_installer -> installed Ghosium runtime/legal payload -> registered setup.exe uninstall smoke test: OK'
   Write-Host "Installed Ghosium executable: $installedBrowserExecutableName"
   Write-Host "Installed browser file version: $installedBrowserVersion"
+  Write-Host 'Installed legal payload: repository-identical Ghosium license + third-party notices'
   Write-Host "Installer smoke provenance: $ReportPath"
 }
 finally {
