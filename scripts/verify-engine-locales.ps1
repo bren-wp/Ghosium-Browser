@@ -8,6 +8,7 @@ Set-StrictMode -Version Latest
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $config = Get-Content (Join-Path $repoRoot 'engine/branding/product.json') -Raw | ConvertFrom-Json
+$localeUi = Get-Content (Join-Path $repoRoot 'engine/branding/locale-ui.json') -Raw | ConvertFrom-Json
 $sourceRootResolved = (Resolve-Path $SourceRoot).Path
 
 $legalChromiumIds = @(
@@ -27,6 +28,23 @@ function Get-TranslationLocaleCode {
   }
 }
 
+function Get-LocalizedUiString {
+  param(
+    [Parameter(Mandatory = $true)][string]$Locale,
+    [Parameter(Mandatory = $true)][string]$Key
+  )
+
+  $keyProperty = $localeUi.strings.PSObject.Properties[$Key]
+  if (!$keyProperty) {
+    throw "Missing Ghosium localized UI key: $Key"
+  }
+  $localeProperty = $keyProperty.Value.PSObject.Properties[$Locale]
+  if (!$localeProperty -or [string]::IsNullOrWhiteSpace([string]$localeProperty.Value)) {
+    throw "Missing Ghosium localized UI value for ${Key}/${Locale}"
+  }
+  return [string]$localeProperty.Value
+}
+
 function Test-LegacyBrowserBrand {
   param([Parameter(Mandatory = $true)][string]$Text)
 
@@ -43,14 +61,15 @@ function Assert-XtbBundleBranding {
 
   $checked = 0
   foreach ($locale in @($config.locales.supported)) {
-    $fileLocale = Get-TranslationLocaleCode -Locale ([string]$locale)
+    $productLocale = [string]$locale
+    $fileLocale = Get-TranslationLocaleCode -Locale $productLocale
     if (!$fileLocale) {
       continue
     }
 
     $path = Join-Path $sourceRootResolved (Join-Path $Directory ($Prefix + $fileLocale + '.xtb'))
     if (!(Test-Path $path -PathType Leaf)) {
-      throw "Missing Ghosium translation bundle for supported locale ${locale}: $path"
+      throw "Missing Ghosium translation bundle for supported locale ${productLocale}: $path"
     }
 
     $text = [IO.File]::ReadAllText($path)
@@ -62,35 +81,54 @@ function Assert-XtbBundleBranding {
 
       if ($RequireSettingsRoot -and $id -eq $settingsPeopleTranslationId) {
         $settingsRootFound = $true
-        if ($body.Trim() -ne 'Profile') {
-          throw "Hidden upstream account Settings title is not neutralized in locale ${locale}: translation $id = '$($body.Trim())'"
+        $expectedProfile = Get-LocalizedUiString -Locale $productLocale -Key 'profile'
+        if ($body.Trim() -ne $expectedProfile) {
+          throw "Ghosium Profile title is not localized in ${productLocale}: expected '$expectedProfile', found '$($body.Trim())'"
         }
         continue
       }
 
       if ($AllowLegalChromiumProject -and $legalChromiumIds -contains $id) {
         if (!$body.Contains('Ghosium Browser') -or !$body.Contains('Chromium')) {
-          throw "Legal upstream attribution is malformed in locale ${locale}, translation $id"
+          throw "Required third-party legal attribution is malformed in locale ${productLocale}, translation $id"
         }
         continue
       }
 
       if (Test-LegacyBrowserBrand -Text $body) {
-        throw "Legacy Chromium/Chrome product branding remains in locale ${locale}: $path (translation $id)"
+        throw "Legacy browser product branding remains in locale ${productLocale}: $path (translation $id)"
       }
     }
 
     if ($RequireSettingsRoot -and !$settingsRootFound) {
-      throw "Settings root translation $settingsPeopleTranslationId is missing in locale ${locale}: $path"
+      throw "Ghosium Profile translation $settingsPeopleTranslationId is missing in locale ${productLocale}: $path"
     }
 
     $checked++
   }
 
-  if ($checked -ne 29) {
-    throw "Expected 29 translated bundles plus en-US source; checked $checked under $Directory/$Prefix"
+  $expectedTranslated = @($config.locales.supported).Count - 1
+  if ($checked -ne $expectedTranslated) {
+    throw "Expected $expectedTranslated translated bundles plus the en-US source; checked $checked under $Directory/$Prefix"
   }
   Write-Host "Verified $checked localized bundle(s) under $Directory/$Prefix"
+}
+
+if ([string]$config.locales.default -ne 'en-US') {
+  throw "English must remain the primary Ghosium locale; found '$($config.locales.default)'."
+}
+if ([string]$config.locales.required -ne 'hr') {
+  throw "Croatian must remain the required Ghosium locale; found '$($config.locales.required)'."
+}
+if (@($config.locales.supported).Count -lt 31) {
+  throw 'Ghosium Browser must support more than 30 product locales.'
+}
+if (@($config.locales.supported) -notcontains 'en-US' -or @($config.locales.supported) -notcontains 'hr') {
+  throw 'Ghosium locale contract must include both English and Croatian.'
+}
+
+foreach ($locale in @($config.locales.supported)) {
+  [void](Get-LocalizedUiString -Locale ([string]$locale) -Key 'profile')
 }
 
 Assert-XtbBundleBranding -Directory 'chrome/app/resources' -Prefix 'chromium_strings_' -AllowLegalChromiumProject $false
@@ -106,4 +144,4 @@ if ($thirdPartyChanges) {
   throw 'Locale audit detected third_party modifications.'
 }
 
-Write-Host 'Ghosium 30-locale browser branding audit: OK; hidden Google account root is neutral Profile copy.'
+Write-Host "Ghosium $(@($config.locales.supported).Count)-locale browser audit: OK; English is primary and Croatian is included with localized product UI."
