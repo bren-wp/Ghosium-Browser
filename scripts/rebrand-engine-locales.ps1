@@ -200,7 +200,8 @@ $publicSurfaceRequired = @(
   'chrome/browser/resources/intro/sign_in_promo_refresh.ts',
   'chrome/browser/ui/views/profiles/profile_menu_view.cc',
   'chrome/browser/ui/profiles/profile_view_utils.cc',
-  'components/desktop_to_mobile_promos/features.cc'
+  'components/desktop_to_mobile_promos/features.cc',
+  'components/subscription_eligibility/subscription_eligibility_service.cc'
 )
 $completePublicSurfaceSource = $true
 foreach ($relative in $publicSurfaceRequired) {
