@@ -72,6 +72,36 @@ function Replace-RequiredLiteral {
 $profileMenu = Join-Path $sourceRootResolved 'chrome/browser/ui/views/profiles/profile_menu_view.cc'
 $profileViewUtils = Join-Path $sourceRootResolved 'chrome/browser/ui/profiles/profile_view_utils.cc'
 
+$identityReplacement = @'
+  // Ghosium profile identity is local-first. Existing migrated account data may
+  // be shown as identity only; no Google browser-account CTA is exposed.
+  switch (signin_util::GetSignedInState(identity_manager)) {
+    case signin_util::SignedInState::kSignedOut:
+    case signin_util::SignedInState::kWebOnlySignedIn:
+      break;
+    case signin_util::SignedInState::kSignedIn:
+    case signin_util::SignedInState::kSyncing:
+    case signin_util::SignedInState::kSignInPending:
+    case signin_util::SignedInState::kSyncPaused:
+      params.email_subtitle = base::UTF8ToUTF16(primary_account_info.email);
+      break;
+  }
+
+  return params;
+'@.TrimEnd("`r", "`n")
+
+$featureButtonsReplacement = @'
+void ProfileMenuView::BuildFeatureButtons() {
+  CHECK(!profile().IsGuestSession());
+  BuildAutofillSettingsButton();
+  BuildCustomizeProfileButton();
+  MaybeBuildCloseBrowsersButton();
+  MaybeBuildSignoutButton();
+}
+
+#if BUILDFLAG(ENABLE_DICE_SUPPORT)
+'@.TrimEnd("`r", "`n")
+
 # Disable the Google AI-subscription avatar ring at its shared browser helper so
 # it cannot leak through the profile bubble, app menu, toolbar avatar or other
 # browser-owned profile surfaces.
@@ -106,23 +136,7 @@ Replace-RequiredLiteral `
 Replace-RequiredRegex `
   -Path $profileMenu `
   -Pattern '(?s)  ActionableItem button_type = ActionableItem::kSigninAccountButton;.*?\n  return params;' `
-  -Replacement @'
-  // Ghosium profile identity is local-first. Existing migrated account data may
-  // be shown as identity only; no Google browser-account CTA is exposed.
-  switch (signin_util::GetSignedInState(identity_manager)) {
-    case signin_util::SignedInState::kSignedOut:
-    case signin_util::SignedInState::kWebOnlySignedIn:
-      break;
-    case signin_util::SignedInState::kSignedIn:
-    case signin_util::SignedInState::kSyncing:
-    case signin_util::SignedInState::kSignInPending:
-    case signin_util::SignedInState::kSyncPaused:
-      params.email_subtitle = base::UTF8ToUTF16(primary_account_info.email);
-      break;
-  }
-
-  return params;
-'@ `
+  -Replacement $identityReplacement `
   -AlreadyPresent 'Ghosium profile identity is local-first.' `
   -Description 'profile identity account/sync CTA removal'
 
@@ -131,18 +145,8 @@ Replace-RequiredRegex `
 Replace-RequiredRegex `
   -Path $profileMenu `
   -Pattern '(?s)void ProfileMenuView::BuildFeatureButtons\(\) \{.*?\n\}\n\n#if BUILDFLAG\(ENABLE_DICE_SUPPORT\)' `
-  -Replacement @'
-void ProfileMenuView::BuildFeatureButtons() {
-  CHECK(!profile().IsGuestSession());
-  BuildAutofillSettingsButton();
-  BuildCustomizeProfileButton();
-  MaybeBuildCloseBrowsersButton();
-  MaybeBuildSignoutButton();
-}
-
-#if BUILDFLAG(ENABLE_DICE_SUPPORT)
-'@ `
-  -AlreadyPresent 'BuildAutofillSettingsButton();`n  BuildCustomizeProfileButton();`n  MaybeBuildCloseBrowsersButton();`n  MaybeBuildSignoutButton();' `
+  -Replacement $featureButtonsReplacement `
+  -AlreadyPresent 'Ghosium profile identity is local-first.' `
   -Description 'profile menu cloud/account feature removal'
 
 # Unlike upstream Chromium, a syncing migrated profile must still have an exit
