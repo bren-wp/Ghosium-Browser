@@ -84,6 +84,12 @@ FILE_ANCHORS: dict[str, tuple[str, ...]] = {
         '.pdf_prog_id_prefix = L"ChromiumPDF",',
         'L"Chromium PDF Document",',
     ),
+    "chrome/browser/ui/webui/version/version_ui.cc": (
+        '#include "chrome/common/url_constants.h"',
+        'html_source->AddString(version_ui::kVersion,',
+        'version_info::GetVersionNumber());',
+        'base::UTF8ToUTF16(version_info::GetVersionNumber()),',
+    ),
     "chrome/browser/ui/webui/side_panel/customize_chrome/customize_chrome_page_handler.cc": (
         'GURL("https://chromewebstore.google.com/category/themes")',
     ),
