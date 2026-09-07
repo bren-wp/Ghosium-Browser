@@ -6,12 +6,14 @@ on:
       - main
     paths:
       - 'ENGINE_SOURCE_REVISION'
+      - 'VERSION'
       - 'engine/branding/**'
       - 'engine/build/windows-x64.args.gn'
       - 'scripts/apply-engine-branding.ps1'
       - 'scripts/rewrite-engine-product-links.ps1'
       - 'scripts/rewrite-engine-default-search.ps1'
       - 'scripts/rewrite-engine-windows-identity.ps1'
+      - 'scripts/rewrite-engine-product-version.ps1'
       - 'scripts/rewrite-engine-internal-scheme.ps1'
       - 'scripts/rebrand-engine-locales.ps1'
       - 'scripts/verify-engine-locales.ps1'
@@ -25,12 +27,14 @@ on:
       - main
     paths:
       - 'ENGINE_SOURCE_REVISION'
+      - 'VERSION'
       - 'engine/branding/**'
       - 'engine/build/windows-x64.args.gn'
       - 'scripts/apply-engine-branding.ps1'
       - 'scripts/rewrite-engine-product-links.ps1'
       - 'scripts/rewrite-engine-default-search.ps1'
       - 'scripts/rewrite-engine-windows-identity.ps1'
+      - 'scripts/rewrite-engine-product-version.ps1'
       - 'scripts/rewrite-engine-internal-scheme.ps1'
       - 'scripts/rebrand-engine-locales.ps1'
       - 'scripts/verify-engine-locales.ps1'
@@ -66,6 +70,7 @@ jobs:
             'scripts/rewrite-engine-product-links.ps1',
             'scripts/rewrite-engine-default-search.ps1',
             'scripts/rewrite-engine-windows-identity.ps1',
+            'scripts/rewrite-engine-product-version.ps1',
             'scripts/rewrite-engine-internal-scheme.ps1',
             'scripts/rebrand-engine-locales.ps1',
             'scripts/verify-engine-locales.ps1',
