@@ -1,14 +1,1202 @@
-BSD 3-Clause License
+# GHOSIUM BROWSER
 
-Copyright (c) 2026, Brendigo
+## Proprietary Commercial Software License Agreement
+
+**Version 1.0**
+**Effective Date: September 7, 2026**
+
+Copyright © 2026 Brendigo. All rights reserved.
+
+**GHOSIUM** and **GHOSIUM Browser** are software products and brands owned, developed, maintained, and/or distributed by **Brendigo**.
+
+---
+
+## IMPORTANT NOTICE
+
+PLEASE READ THIS LICENSE AGREEMENT CAREFULLY BEFORE DOWNLOADING, INSTALLING, COPYING, ACCESSING, MODIFYING, DISTRIBUTING, OR USING GHOSIUM BROWSER.
+
+This Proprietary Commercial Software License Agreement ("Agreement", "License", or "EULA") is a legally binding agreement between **Brendigo** ("Brendigo", "Licensor", "we", "us", or "our") and the individual or legal entity accessing or using GHOSIUM Browser ("User", "Licensee", "you", or "your").
+
+By downloading, installing, activating, accessing, copying, or using GHOSIUM Browser, you acknowledge that you have read, understood, and agreed to be bound by this Agreement.
+
+If you do not agree to this Agreement, you must not install, access, copy, distribute, or use GHOSIUM Browser.
+
+If you are accepting this Agreement on behalf of a company, organization, government agency, or other legal entity, you represent and warrant that you have authority to bind that entity to this Agreement.
+
+---
+
+# 1. SOFTWARE COVERED BY THIS LICENSE
+
+"GHOSIUM Browser" or "Software" includes, where applicable:
+
+* the GHOSIUM Browser application;
+* proprietary source code;
+* compiled binaries;
+* executable files;
+* graphical user interfaces;
+* browser-specific features;
+* configuration systems;
+* installers;
+* update mechanisms;
+* security components;
+* extensions developed by Brendigo;
+* synchronization components developed by Brendigo;
+* documentation;
+* icons;
+* artwork;
+* branding;
+* designs;
+* APIs developed by Brendigo;
+* supporting libraries developed by Brendigo;
+* patches;
+* updates;
+* upgrades;
+* modifications officially published by Brendigo;
+* related software components distributed as part of GHOSIUM Browser.
+
+Third-party and open-source software components are excluded from Brendigo's proprietary ownership claims where those components are governed by their own licenses.
+
+---
+
+# 2. PROPRIETARY SOFTWARE
+
+GHOSIUM Browser is proprietary commercial software.
+
+The Software is **licensed, not sold**.
+
+Except for rights expressly granted by this Agreement, Brendigo retains all right, title, and interest in and to GHOSIUM Browser, including all applicable:
+
+* copyrights;
+* trademarks;
+* trade names;
+* software rights;
+* database rights;
+* design rights;
+* trade secrets;
+* confidential information;
+* intellectual property rights;
+* proprietary technologies;
+* source code;
+* graphical elements;
+* interfaces;
+* documentation;
+* branding.
+
+No ownership interest in GHOSIUM Browser is transferred to the User.
+
+All rights not expressly granted are reserved by Brendigo.
+
+---
+
+# 3. LICENSE GRANT
+
+Subject to compliance with this Agreement and payment of any applicable license fees, Brendigo grants you a limited, non-exclusive, non-transferable, non-sublicensable, and revocable license to install and use GHOSIUM Browser for lawful purposes.
+
+The permitted number of:
+
+* users;
+* installations;
+* devices;
+* organizations;
+* virtual machines;
+* endpoints;
+
+may depend on the applicable commercial license, subscription, order, invoice, license certificate, or separate written agreement.
+
+No right is granted except as expressly stated in this Agreement.
+
+---
+
+# 4. PERSONAL AND COMMERCIAL USE
+
+GHOSIUM Browser may be offered under one or more licensing models, including:
+
+* Personal License;
+* Professional License;
+* Commercial License;
+* Business License;
+* Enterprise License;
+* Per-User License;
+* Per-Device License;
+* Subscription License;
+* Perpetual License;
+* OEM License;
+* Volume License;
+* Educational License;
+* Developer License.
+
+Commercial use is permitted only where permitted by the applicable license purchased or granted to the User.
+
+---
+
+# 5. RESTRICTIONS
+
+Except where expressly permitted by Brendigo in writing or required by mandatory applicable law, you may not:
+
+1. copy the proprietary portions of GHOSIUM Browser except as reasonably necessary for lawful installation or backup;
+
+2. sell, rent, lease, sublicense, resell, assign, publish, or redistribute GHOSIUM Browser;
+
+3. make proprietary GHOSIUM Browser binaries or source code available through unauthorized download services;
+
+4. distribute GHOSIUM Browser as part of another software package without written authorization;
+
+5. bundle GHOSIUM Browser with hardware, software, operating systems, or other products without an applicable OEM or redistribution agreement;
+
+6. modify proprietary portions of GHOSIUM Browser and redistribute them as an official GHOSIUM product;
+
+7. create unauthorized derivative commercial products using proprietary GHOSIUM Browser code;
+
+8. remove, hide, modify, or falsify copyright notices, license notices, trademarks, attribution notices, or other legal notices;
+
+9. bypass or interfere with activation mechanisms, license verification systems, digital signatures, update authentication, security systems, or technical restrictions;
+
+10. use stolen, leaked, generated, duplicated, fraudulent, or unauthorized license credentials;
+
+11. distribute unauthorized license keys;
+
+12. falsely represent yourself or another product as being affiliated with, approved by, sponsored by, or officially distributed by Brendigo;
+
+13. use GHOSIUM or GHOSIUM Browser branding for an unauthorized fork;
+
+14. use the Software for unlawful activities.
+
+---
+
+# 6. REVERSE ENGINEERING
+
+Except to the extent expressly permitted by mandatory applicable law, you may not:
+
+* reverse engineer;
+* decompile;
+* disassemble;
+* decrypt;
+* decode;
+* reconstruct;
+* analyze proprietary implementation details;
+* attempt to derive proprietary source code;
+
+from proprietary portions of GHOSIUM Browser.
+
+Nothing in this Agreement limits rights that cannot lawfully be excluded, including rights that may exist under applicable law for interoperability, lawful backup, observation, study, or testing of a computer program.
+
+Any information lawfully obtained under such statutory rights may be used only for purposes permitted by applicable law.
+
+---
+
+# 7. SOURCE CODE
+
+Unless Brendigo expressly provides source code under a separate written source-code license, this Agreement does not grant access to or rights in proprietary GHOSIUM Browser source code.
+
+Possession of proprietary source code does not grant:
+
+* ownership;
+* redistribution rights;
+* sublicensing rights;
+* publication rights;
+* commercialization rights.
+
+Unauthorized publication or disclosure of proprietary source code may constitute a material breach of this Agreement and infringement of intellectual property rights.
+
+---
+
+# 8. OPEN-SOURCE SOFTWARE
+
+GHOSIUM Browser may incorporate software licensed under open-source licenses.
+
+Such licenses may include, depending on the actual components used:
+
+* BSD licenses;
+* MIT License;
+* Apache License;
+* Mozilla Public License;
+* LGPL;
+* GPL;
+* ISC License;
+* other open-source licenses.
+
+Open-source components remain governed by their respective licenses.
+
+Nothing in this Agreement is intended to remove, restrict, or override rights granted directly to users under an applicable open-source license.
+
+Where required, applicable copyright notices, license texts, attribution notices, and source-code obligations will be provided separately.
+
+See:
+
+**THIRD_PARTY_NOTICES.md**
+
+and any additional license documentation distributed with GHOSIUM Browser.
+
+---
+
+# 9. BROWSER ENGINE AND THIRD-PARTY TECHNOLOGY
+
+GHOSIUM Browser may incorporate or rely upon browser-engine technology, multimedia libraries, cryptographic libraries, networking components, certificate systems, APIs, codecs, or other technology developed by third parties.
+
+Such third-party technology is not claimed as proprietary intellectual property of Brendigo unless Brendigo independently owns the relevant rights.
+
+Third-party components remain subject to their respective licenses, copyright notices, and terms.
+
+---
+
+# 10. PRIVACY-FIRST DESIGN
+
+Privacy and security are fundamental design principles of GHOSIUM Browser.
+
+GHOSIUM Browser is designed to minimize unnecessary collection, transmission, retention, and processing of personal information.
+
+Brendigo intends, where reasonably and technically possible, to avoid collecting information about users merely because they use the browser.
+
+In particular, Brendigo does not intend to build GHOSIUM Browser around the commercial exploitation, sale, or profiling of a user's browsing activity.
+
+GHOSIUM Browser should not be interpreted as a guarantee of complete anonymity, however.
+
+Internet browsing necessarily involves communication with third-party systems.
+
+---
+
+# 11. DATA NOT INTENDED TO BE COLLECTED BY BRENDIGO
+
+Unless required for a specific optional feature, explicitly requested by the User, required for security, required for licensing, or otherwise disclosed in an applicable Privacy Policy, GHOSIUM Browser is designed so that Brendigo does not intentionally collect centrally:
+
+* complete browsing history;
+* websites visited by the User;
+* search queries entered into independent third-party search engines;
+* passwords stored locally in the browser;
+* local bookmarks;
+* locally stored cookies;
+* locally stored browser history;
+* locally stored form data;
+* locally stored autofill data;
+* contents of webpages visited by the User;
+* files downloaded by the User;
+* private browsing history;
+* personal communications made through websites;
+* payment card information entered into third-party websites.
+
+Information stored locally on a user's device is not considered information collected by Brendigo merely because GHOSIUM Browser stores or processes it locally.
+
+---
+
+# 12. LOCAL BROWSER DATA
+
+Like other web browsers, GHOSIUM Browser may store information locally on the User's device where required for normal browser functionality.
+
+This may include:
+
+* history;
+* cookies;
+* cache;
+* bookmarks;
+* site permissions;
+* session information;
+* download history;
+* saved passwords;
+* autofill information;
+* local storage;
+* IndexedDB;
+* extension data;
+* browser configuration.
+
+Such local processing does not necessarily mean that Brendigo receives or remotely stores that information.
+
+Users may be provided with settings allowing them to clear or manage local browser data.
+
+---
+
+# 13. THIRD-PARTY SERVICES
+
+GHOSIUM Browser may allow users to interact with third-party services.
+
+Examples may include:
+
+* Google;
+* Bing;
+* DuckDuckGo;
+* Yahoo;
+* search providers;
+* websites visited by the User;
+* DNS providers;
+* certificate authorities;
+* content delivery networks;
+* extension providers;
+* website analytics providers;
+* advertising networks;
+* authentication providers;
+* cloud services;
+* online APIs.
+
+When a User accesses or uses a third-party service, that third party may receive information directly from the User's device.
+
+Depending on the service, this information may include:
+
+* IP address;
+* search query;
+* browser headers;
+* user-agent information;
+* cookies;
+* device or network information;
+* language;
+* approximate location inferred from an IP address;
+* account identifiers;
+* information voluntarily submitted to the service.
+
+Such processing may occur directly between the User and the third-party service and may be outside Brendigo's control.
+
+---
+
+# 14. SEARCH ENGINES
+
+If a User chooses Google, Bing, DuckDuckGo, Yahoo, or another search provider, search queries may be transmitted to that provider.
+
+The provider may process such information under its own:
+
+* privacy policy;
+* terms of service;
+* cookie policy;
+* data-retention practices.
+
+Brendigo does not control the independent privacy practices of third-party search providers.
+
+Selection or availability of a search engine inside GHOSIUM Browser does not mean that Brendigo owns, operates, or controls that search engine.
+
+---
+
+# 15. WEBSITES VISITED BY THE USER
+
+Every website visited through a web browser may receive technical information necessary to establish an internet connection.
+
+This can include:
+
+* the User's IP address;
+* HTTP headers;
+* browser information;
+* device characteristics;
+* cookies;
+* referrer information where applicable;
+* information submitted by the User.
+
+GHOSIUM Browser cannot prevent all third-party websites from collecting information.
+
+Users are responsible for reviewing privacy policies and terms applicable to websites and services they use.
+
+---
+
+# 16. PRIVATE BROWSING
+
+If GHOSIUM Browser provides a Private Browsing, Private Window, Incognito, or similar feature, that feature primarily reduces certain information retained locally by the browser after the private session ends.
+
+Private Browsing does **not** make a User anonymous on the internet.
+
+Activity may still be visible or processed by:
+
+* websites;
+* employers;
+* schools;
+* network administrators;
+* internet service providers;
+* VPN providers;
+* proxy providers;
+* DNS providers;
+* search engines;
+* government or law-enforcement authorities where legally authorized;
+* other network intermediaries.
+
+Private Browsing should not be interpreted as a complete anonymity system.
+
+---
+
+# 17. OPTIONAL ONLINE FEATURES
+
+Certain GHOSIUM Browser features may require communication with Brendigo-operated or third-party infrastructure.
+
+Examples may include:
+
+* update checks;
+* license activation;
+* license validation;
+* synchronization;
+* cloud features;
+* account authentication;
+* security updates;
+* crash reporting;
+* optional diagnostics;
+* browser service APIs.
+
+Where such processing occurs, Brendigo will endeavor to minimize the information processed to what is reasonably necessary for the relevant purpose.
+
+Details should be described in the applicable Privacy Policy.
+
+---
+
+# 18. TELEMETRY AND DIAGNOSTICS
+
+GHOSIUM Browser is intended to minimize unnecessary telemetry.
+
+Where optional diagnostics, performance information, or crash reports are implemented, Brendigo should disclose:
+
+* what information is processed;
+* why it is processed;
+* whether it is optional;
+* how long it is retained;
+* whether it is shared with third parties.
+
+Where applicable law requires User consent for optional telemetry, acceptance of this License alone does not constitute that consent.
+
+---
+
+# 19. NO SALE OF PERSONAL DATA
+
+Brendigo does not intend to operate GHOSIUM Browser as a mechanism for selling users' browsing histories or personal data to advertisers or data brokers.
+
+Where the term "sale" or "sharing" has a specific meaning under applicable privacy law, Brendigo's applicable Privacy Policy shall govern the exact legal disclosure.
+
+---
+
+# 20. NO ADVERTISING PROFILE BY DEFAULT
+
+GHOSIUM Browser is designed not to require creation of a Brendigo-controlled advertising profile based on the User's browsing history merely in order to use the browser.
+
+This does not prevent independent websites, search engines, advertising networks, or other third parties from performing their own tracking or profiling where technically or legally permitted.
+
+---
+
+# 21. PRIVACY POLICY
+
+Detailed information concerning Brendigo's processing of personal data should be provided in a separate:
+
+**PRIVACY_POLICY.md**
+
+or equivalent Privacy Policy.
+
+The Privacy Policy may contain information concerning:
+
+* identity of the data controller;
+* categories of personal data;
+* purposes of processing;
+* legal bases;
+* retention periods;
+* processors and recipients;
+* international transfers;
+* security;
+* data-subject rights;
+* privacy requests;
+* applicable supervisory authorities.
+
+This License is not intended to replace a Privacy Policy.
+
+---
+
+# 22. COOKIES AND STORAGE USED BY WEBSITES
+
+Websites loaded through GHOSIUM Browser may use:
+
+* cookies;
+* local storage;
+* session storage;
+* IndexedDB;
+* cache storage;
+* fingerprinting techniques;
+* tracking pixels;
+* scripts;
+* other browser storage or tracking technologies.
+
+These may be controlled by third-party websites rather than Brendigo.
+
+GHOSIUM Browser may provide controls designed to help users manage such technologies, but cannot guarantee that every third-party tracking technique can always be detected or blocked.
+
+---
+
+# 23. EXTENSIONS
+
+GHOSIUM Browser may support browser extensions.
+
+Extensions may be developed by independent third parties.
+
+Depending on permissions granted by the User, an extension may potentially access:
+
+* webpages;
+* browsing activity;
+* tabs;
+* cookies;
+* downloads;
+* clipboard contents;
+* browser storage;
+* other browser functionality.
+
+Users should review extension permissions before installation.
+
+Brendigo is not responsible for independent third-party extensions except where such responsibility cannot legally be excluded.
+
+Brendigo may disable or block extensions that reasonably appear to create security, privacy, compatibility, or legal risks.
+
+---
+
+# 24. PASSWORDS AND CREDENTIALS
+
+GHOSIUM Browser may provide functionality for saving:
+
+* passwords;
+* passkeys;
+* usernames;
+* autofill information;
+* authentication data.
+
+Users remain responsible for securing:
+
+* their devices;
+* operating-system accounts;
+* GHOSIUM Browser profiles;
+* encryption credentials;
+* master passwords where applicable.
+
+No security mechanism can guarantee absolute protection against every attack.
+
+---
+
+# 25. SECURITY-FIRST DESIGN
+
+GHOSIUM Browser is designed with security as a core product objective.
+
+Brendigo may implement mechanisms intended to mitigate risks such as:
+
+* phishing;
+* malicious downloads;
+* unsafe certificates;
+* malware;
+* compromised websites;
+* malicious extensions;
+* insecure connections;
+* known browser vulnerabilities.
+
+However, no browser, security application, operating system, or network can guarantee absolute security.
+
+---
+
+# 26. NO GUARANTEE AGAINST MALWARE
+
+GHOSIUM Browser may provide security warnings or protective mechanisms, but Brendigo does not guarantee that the Software will identify, block, or prevent every:
+
+* virus;
+* Trojan;
+* ransomware attack;
+* phishing attack;
+* spyware application;
+* malicious script;
+* malicious extension;
+* zero-day vulnerability;
+* compromised website;
+* malicious download;
+* cyberattack.
+
+Users remain responsible for exercising reasonable security precautions.
+
+---
+
+# 27. SECURITY UPDATES
+
+Brendigo may provide updates necessary to protect GHOSIUM Browser against security vulnerabilities.
+
+Certain security updates may be automatically installed where technically appropriate and permitted by applicable law.
+
+Users are strongly encouraged to keep GHOSIUM Browser and their operating system updated.
+
+Use of unsupported or outdated versions may create security risks.
+
+---
+
+# 28. AUTOMATIC UPDATES
+
+GHOSIUM Browser may periodically communicate with update infrastructure to determine whether updates are available.
+
+Update requests may necessarily reveal limited technical information such as:
+
+* IP address;
+* application version;
+* operating-system type;
+* platform architecture;
+* update channel.
+
+Brendigo should minimize such information to what is reasonably necessary to deliver and secure the update service.
+
+---
+
+# 29. CERTIFICATE AUTHORITIES AND HTTPS
+
+GHOSIUM Browser may rely on operating-system or third-party certificate-authority infrastructure for HTTPS validation.
+
+Brendigo does not control all certificate authorities, website certificates, server configurations, or external public-key infrastructure.
+
+The presence of an HTTPS connection does not guarantee that a website itself is trustworthy.
+
+---
+
+# 30. USER RESPONSIBILITY
+
+Users are responsible for reasonable security practices, including:
+
+* maintaining operating-system updates;
+* protecting their device;
+* protecting account credentials;
+* verifying sensitive websites;
+* reviewing browser warnings;
+* avoiding suspicious downloads;
+* reviewing extension permissions;
+* keeping backups of important information.
+
+---
+
+# 31. INTERNET CONTENT
+
+GHOSIUM Browser provides access to content hosted by third parties.
+
+Brendigo does not automatically endorse, verify, publish, or control content merely because that content can be accessed through GHOSIUM Browser.
+
+Brendigo is not responsible for independent third-party:
+
+* websites;
+* products;
+* services;
+* statements;
+* advertisements;
+* files;
+* applications;
+* transactions.
+
+---
+
+# 32. THIRD-PARTY TRANSACTIONS
+
+Transactions conducted through websites accessed using GHOSIUM Browser are generally transactions between the User and the relevant third party.
+
+Brendigo is not a party to such transactions unless expressly identified as such.
+
+Brendigo is not responsible for:
+
+* merchant conduct;
+* product quality;
+* shipping;
+* refunds;
+* financial services;
+* independent subscription services;
+* website terms.
+
+---
+
+# 33. ARTIFICIAL INTELLIGENCE FEATURES
+
+If GHOSIUM Browser includes optional artificial-intelligence functionality, AI-generated output may be:
+
+* incorrect;
+* incomplete;
+* outdated;
+* misleading;
+* unsuitable for a particular purpose.
+
+Users must independently verify important AI-generated information.
+
+Unless expressly stated otherwise, AI-generated information is not professional:
+
+* legal advice;
+* medical advice;
+* financial advice;
+* investment advice;
+* tax advice.
+
+---
+
+# 34. BETA AND EXPERIMENTAL FEATURES
+
+Features identified as:
+
+* Beta;
+* Preview;
+* Experimental;
+* Nightly;
+* Developer;
+* Early Access;
+
+may be incomplete or unstable.
+
+They may:
+
+* change;
+* malfunction;
+* lose data;
+* be removed;
+* be incompatible with other software.
+
+They should not be relied upon as the sole platform for safety-critical or mission-critical operations.
+
+---
+
+# 35. AVAILABILITY
+
+Brendigo does not guarantee uninterrupted availability of online services related to GHOSIUM Browser.
+
+Availability may be affected by:
+
+* maintenance;
+* infrastructure outages;
+* security incidents;
+* internet failures;
+* third-party service failures;
+* legal requirements;
+* force majeure;
+* technical changes.
+
+---
+
+# 36. BACKUPS
+
+Users are responsible for maintaining appropriate backups of important information.
+
+GHOSIUM Browser should not be considered the sole permanent storage location for critical information unless expressly provided under a separate service agreement.
+
+---
+
+# 37. WARRANTY DISCLAIMER
+
+TO THE MAXIMUM EXTENT PERMITTED BY APPLICABLE LAW, GHOSIUM BROWSER IS PROVIDED:
+
+**"AS IS"**
+
+AND
+
+**"AS AVAILABLE".**
+
+BRENDiGO DISCLAIMS ALL WARRANTIES, EXPRESS, IMPLIED, OR STATUTORY, TO THE MAXIMUM EXTENT PERMITTED BY LAW, INCLUDING WARRANTIES OF:
+
+* MERCHANTABILITY;
+* FITNESS FOR A PARTICULAR PURPOSE;
+* NON-INFRINGEMENT;
+* AVAILABILITY;
+* RELIABILITY;
+* COMPATIBILITY;
+* SECURITY;
+* ACCURACY;
+* ERROR-FREE OPERATION.
+
+BRENDiGO DOES NOT WARRANT THAT GHOSIUM BROWSER WILL:
+
+* ALWAYS OPERATE WITHOUT INTERRUPTION;
+* BE COMPLETELY ERROR-FREE;
+* BE COMPLETELY VULNERABILITY-FREE;
+* BLOCK EVERY SECURITY THREAT;
+* BE COMPATIBLE WITH EVERY WEBSITE;
+* BE COMPATIBLE WITH EVERY EXTENSION;
+* SUPPORT EVERY DEVICE;
+* SUPPORT EVERY OPERATING SYSTEM;
+* PREVENT EVERY LOSS OF DATA.
+
+Nothing in this Agreement excludes warranties or statutory rights that cannot lawfully be excluded.
+
+---
+
+# 38. LIMITATION OF LIABILITY
+
+TO THE MAXIMUM EXTENT PERMITTED BY APPLICABLE LAW, BRENDiGO SHALL NOT BE LIABLE FOR INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, PUNITIVE, OR CONSEQUENTIAL DAMAGES ARISING OUT OF OR RELATING TO GHOSIUM BROWSER.
+
+This may include, where legally permitted:
+
+* loss of profits;
+* loss of revenue;
+* business interruption;
+* loss of opportunity;
+* loss of goodwill;
+* indirect data loss;
+* consequential commercial loss.
+
+For business Users, where legally permitted and unless a separate written agreement states otherwise, Brendigo's total aggregate contractual liability relating to a specific commercial license shall not exceed the amount actually paid to Brendigo for that license during the twelve (12) months preceding the event giving rise to the claim.
+
+Nothing in this Agreement excludes or limits liability that cannot legally be excluded or limited.
+
+In particular, nothing in this Agreement shall be interpreted as excluding liability where such exclusion is prohibited under applicable law, including liability arising from intentional misconduct or other categories of liability that mandatory law requires to remain available.
+
+---
+
+# 39. THIRD-PARTY LIABILITY
+
+Brendigo is not responsible merely because GHOSIUM Browser provided technical access to a third-party service.
+
+To the maximum extent permitted by law, Brendigo is not responsible for acts or omissions of independent:
+
+* search engines;
+* websites;
+* advertisers;
+* extension developers;
+* internet service providers;
+* DNS providers;
+* VPN providers;
+* cloud providers;
+* payment providers;
+* certificate authorities;
+* API providers.
+
+---
+
+# 40. DATA LOSS
+
+No software system can guarantee that data will never be lost or corrupted.
+
+Users should maintain appropriate backups.
+
+Nothing in this section excludes liability that cannot lawfully be excluded.
+
+---
+
+# 41. CYBERSECURITY DISCLAIMER
+
+Brendigo may implement commercially reasonable measures intended to improve the security of GHOSIUM Browser.
+
+Nevertheless, software security is an evolving field.
+
+No representation is made that GHOSIUM Browser will be immune from:
+
+* zero-day vulnerabilities;
+* supply-chain attacks;
+* credential theft;
+* malicious websites;
+* malicious extensions;
+* operating-system vulnerabilities;
+* network attacks;
+* attacks involving third-party dependencies.
+
+---
+
+# 42. PROHIBITED ILLEGAL USE
+
+GHOSIUM Browser must not be used for unlawful purposes.
+
+Prohibited uses include, where unlawful:
+
+* unauthorized access to computer systems;
+* malware distribution;
+* phishing;
+* credential theft;
+* computer fraud;
+* unlawful interception;
+* unauthorized surveillance;
+* intellectual property infringement.
+
+Technical capability does not constitute legal authorization.
+
+---
+
+# 43. TRADEMARKS
+
+The following names and marks are proprietary brands of Brendigo where applicable:
+
+**Brendigo**
+
+**GHOSIUM**
+
+**GHOSIUM Browser**
+
+Associated:
+
+* logos;
+* icons;
+* names;
+* graphics;
+* brand identities;
+* product artwork;
+
+may not be used in a manner that falsely suggests endorsement, affiliation, sponsorship, or official distribution.
+
+---
+
+# 44. UNAUTHORIZED FORKS
+
+You may not distribute a modified proprietary version of GHOSIUM Browser using:
+
+* the GHOSIUM name;
+* the GHOSIUM Browser name;
+* Brendigo branding;
+* GHOSIUM logos;
+* substantially confusing branding;
+
+without prior written permission from Brendigo.
+
+This restriction does not limit rights that may independently apply to separately licensed open-source components.
+
+---
+
+# 45. REDISTRIBUTION
+
+This standard License does not grant redistribution rights for proprietary GHOSIUM Browser components.
+
+Commercial redistribution, OEM installation, hardware bundling, preinstallation, white-label distribution, or third-party software bundling requires express written authorization from Brendigo.
+
+---
+
+# 46. LICENSE KEYS
+
+License keys, activation credentials, tokens, certificates, or similar credentials issued by Brendigo may not be:
+
+* publicly disclosed;
+* resold without authorization;
+* shared beyond applicable license limits;
+* duplicated;
+* forged;
+* generated without authorization;
+* used to circumvent licensing restrictions.
+
+Brendigo may disable licenses reasonably believed to be fraudulent, compromised, stolen, refunded, or materially misused.
+
+---
+
+# 47. TERMINATION
+
+Brendigo may terminate or suspend rights granted under this Agreement in the event of a material breach, subject to applicable law.
+
+Grounds may include:
+
+* software piracy;
+* fraudulent license acquisition;
+* unauthorized redistribution;
+* material intellectual-property infringement;
+* deliberate circumvention of licensing systems for unauthorized use;
+* unauthorized commercial distribution.
+
+Where the breach is reasonably capable of cure and applicable law requires an opportunity to cure, Brendigo will provide such opportunity.
+
+---
+
+# 48. EFFECT OF TERMINATION
+
+After termination of a license, the User must cease unauthorized use of copies for which valid license rights no longer exist.
+
+Sections that by their nature should survive termination shall remain effective, including provisions concerning:
+
+* intellectual property;
+* confidentiality;
+* liability;
+* warranty disclaimers;
+* dispute resolution;
+* accrued rights.
+
+---
+
+# 49. CONSUMER RIGHTS
+
+Nothing in this Agreement is intended to exclude, restrict, or waive mandatory consumer rights.
+
+Where applicable law grants a consumer mandatory rights concerning:
+
+* conformity;
+* digital content;
+* digital services;
+* security updates;
+* remedies;
+* refunds;
+* withdrawal rights;
+* modifications;
+* compatibility;
+* interoperability;
+
+those rights remain unaffected.
+
+If any provision of this Agreement conflicts with mandatory consumer law, mandatory law shall prevail to the extent required.
+
+---
+
+# 50. BUSINESS USERS
+
+A User acting primarily for purposes relating to their trade, business, craft, or profession may be treated as a business User to the extent permitted by applicable law.
+
+Consumer-specific statutory protections apply only where the User qualifies as a consumer under applicable law.
+
+---
+
+# 51. EXPORT AND SANCTIONS COMPLIANCE
+
+Users are responsible for compliance with applicable:
+
+* export-control laws;
+* import regulations;
+* economic sanctions;
+* technology-transfer restrictions;
+
+where relevant to their use or distribution of GHOSIUM Browser.
+
+---
+
+# 52. FORCE MAJEURE
+
+To the extent permitted by law, Brendigo shall not be responsible for failure or delay caused by extraordinary events outside its reasonable control.
+
+Examples may include:
+
+* natural disasters;
+* war;
+* major telecommunications outages;
+* large-scale infrastructure failures;
+* governmental restrictions;
+* widespread cyber incidents;
+* other recognized force-majeure events.
+
+---
+
+# 53. ASSIGNMENT
+
+The User may not assign or transfer proprietary license rights except where expressly permitted by the applicable license or mandatory law.
+
+Brendigo may transfer rights and obligations relating to GHOSIUM Browser in connection with:
+
+* a merger;
+* acquisition;
+* restructuring;
+* sale of business;
+* transfer of the relevant product or business unit;
+
+subject to applicable law.
+
+---
+
+# 54. SEVERABILITY
+
+If any provision of this Agreement is found invalid, unlawful, or unenforceable, that provision shall be limited or severed only to the extent necessary.
+
+The remaining provisions shall remain effective to the maximum extent permitted by law.
+
+---
+
+# 55. NO WAIVER
+
+Failure by Brendigo to enforce a provision of this Agreement does not constitute a permanent waiver of that provision or any other right.
+
+---
+
+# 56. ENTIRE AGREEMENT
+
+This Agreement, together with applicable:
+
+* license terms;
+* purchase terms;
+* Privacy Policy;
+* Third-Party Notices;
+* subscription terms;
+* enterprise agreements;
+* OEM agreements;
+
+constitutes the applicable contractual framework governing GHOSIUM Browser.
+
+Where a separately executed written Enterprise, OEM, Redistribution, or other agreement expressly conflicts with this License, that separate agreement shall control regarding the conflicting matter.
+
+---
+
+# 57. CHANGES TO THIS AGREEMENT
+
+Brendigo may update this Agreement for future releases, future purchases, or future contractual relationships.
+
+Changes affecting existing Users shall apply only to the extent permitted under applicable law and the applicable contractual relationship.
+
+---
+
+# 58. GOVERNING LAW
+
+Unless a separate written agreement provides otherwise, this Agreement shall be governed by the laws of the Republic of Croatia, without prejudice to mandatory rules of applicable law.
+
+For consumers located in another jurisdiction, this choice of law shall not deprive them of mandatory protections that cannot lawfully be waived.
+
+---
+
+# 59. JURISDICTION
+
+For disputes involving business Users, courts of competent jurisdiction in the Republic of Croatia shall have jurisdiction unless otherwise agreed in writing or required by mandatory law.
+
+Consumer jurisdiction rights under mandatory applicable law remain unaffected.
+
+---
+
+# 60. PRIVACY REGULATIONS
+
+Where Brendigo processes personal data, such processing shall be governed by applicable data-protection law and the GHOSIUM Browser Privacy Policy.
+
+Acceptance of this License does not by itself constitute consent for processing activities for which applicable law requires separate consent.
+
+---
+
+# 61. CONTACT INFORMATION
+
+**Licensor:**
+Brendigo
+
+**Product:**
+GHOSIUM Browser
+
+**Brand:**
+GHOSIUM
+
+Registered company name:
+[INSERT FULL LEGAL COMPANY NAME]
+
+Registered office:
+[INSERT REGISTERED ADDRESS]
+
+Company / registration number:
+[INSERT COMPANY NUMBER]
+
+VAT / tax identification number, where applicable:
+[INSERT NUMBER]
+
+Legal contact:
+[INSERT LEGAL EMAIL]
+
+Privacy contact:
+[INSERT PRIVACY EMAIL]
+
+Support:
+[INSERT SUPPORT EMAIL]
+
+Official website:
+[INSERT OFFICIAL WEBSITE]
+
+---
+
+# 62. COPYRIGHT
+
+Copyright © 2026 Brendigo.
+
 All rights reserved.
 
-Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:
+GHOSIUM Browser proprietary source code, executable software, original graphical elements, original documentation, original browser functionality, and original Brendigo-developed components are protected by applicable intellectual-property laws.
 
-1. Redistributions of source code must retain the above copyright notice, this list of conditions and the following disclaimer.
+Third-party and open-source components remain the property of their respective copyright holders.
 
-2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the following disclaimer in the documentation and/or other materials provided with the distribution.
+---
 
-3. Neither the name of the copyright holder nor the names of its contributors may be used to endorse or promote products derived from this software without specific prior written permission.
+# 63. RESERVATION OF RIGHTS
 
-THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+All rights not expressly granted under this Agreement are reserved by Brendigo.
+
+No license is granted by implication, estoppel, or otherwise except as required by applicable law.
+
+---
+
+# 64. FINAL NOTICE
+
+GHOSIUM Browser is proprietary commercial software developed and distributed by Brendigo.
+
+Privacy and security are core design objectives of the product.
+
+GHOSIUM Browser is designed to minimize unnecessary collection of personal information by Brendigo.
+
+However, no web browser can prevent all third parties from receiving information when the User voluntarily communicates with websites, search engines, online services, extensions, network providers, or other external systems.
+
+Brendigo does not control the independent data-processing practices of services such as Google, Bing, DuckDuckGo, websites visited by the User, internet service providers, DNS providers, extensions, or other third-party services.
+
+Users should review the privacy practices of the third-party services they choose to use.
+
+---
+
+**GHOSIUM BROWSER**
+
+**A Brendigo Product**
+
+Copyright © 2026 Brendigo. All rights reserved.
+
+**PROPRIETARY COMMERCIAL SOFTWARE**
+
+Unauthorized copying, proprietary-source redistribution, piracy, sublicensing, unauthorized commercial redistribution, circumvention of licensing mechanisms, or unauthorized exploitation of proprietary GHOSIUM Browser components is prohibited except where expressly authorized by Brendigo or permitted by mandatory applicable law.
