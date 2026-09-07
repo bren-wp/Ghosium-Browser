@@ -1,0 +1,12 @@
+{
+  "schema": 1,
+  "product": "Ghosium Browser",
+  "platform": "windows",
+  "channel": "stable",
+  "enabled": false,
+  "version": "0.1.1",
+  "url": "https://updates.ghosium.com/windows/Ghosium-Browser-Setup.exe",
+  "sha256": "",
+  "size": 0,
+  "release_notes": "https://ghosium.com/release-notes/0.1.1"
+}
