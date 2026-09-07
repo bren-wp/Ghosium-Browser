@@ -15,6 +15,8 @@ on:
       - 'scripts/verify-engine-disable-unowned-promos.ps1'
       - 'scripts/rewrite-engine-browser-signin.ps1'
       - 'scripts/verify-engine-browser-signin.ps1'
+      - 'scripts/rewrite-engine-local-profile-surfaces.ps1'
+      - 'scripts/verify-engine-local-profile-surfaces.ps1'
       - 'scripts/rebrand-engine-locales.ps1'
       - 'scripts/verify-engine-locales.ps1'
       - 'scripts/generate-engine-brand-assets.py'
@@ -33,6 +35,8 @@ on:
       - 'scripts/verify-engine-disable-unowned-promos.ps1'
       - 'scripts/rewrite-engine-browser-signin.ps1'
       - 'scripts/verify-engine-browser-signin.ps1'
+      - 'scripts/rewrite-engine-local-profile-surfaces.ps1'
+      - 'scripts/verify-engine-local-profile-surfaces.ps1'
       - 'scripts/rebrand-engine-locales.ps1'
       - 'scripts/verify-engine-locales.ps1'
       - 'scripts/generate-engine-brand-assets.py'
@@ -44,7 +48,7 @@ permissions:
 
 jobs:
   public-surfaces:
-    name: Verify Ghosium Settings About New Tab and account-free identity
+    name: Verify Ghosium public and local-profile identity
     runs-on: ubuntu-latest
     timeout-minutes: 25
 
@@ -68,6 +72,8 @@ jobs:
             'scripts/verify-engine-disable-unowned-promos.ps1',
             'scripts/rewrite-engine-browser-signin.ps1',
             'scripts/verify-engine-browser-signin.ps1',
+            'scripts/rewrite-engine-local-profile-surfaces.ps1',
+            'scripts/verify-engine-local-profile-surfaces.ps1',
             'scripts/rebrand-engine-locales.ps1',
             'scripts/verify-engine-locales.ps1'
           )) {
@@ -123,6 +129,8 @@ jobs:
           /chrome/browser/resources/intro/sign_in_promo.ts
           /chrome/browser/resources/intro/sign_in_promo_refresh.html.ts
           /chrome/browser/resources/intro/sign_in_promo_refresh.ts
+          /chrome/browser/ui/views/profiles/profile_menu_view.cc
+          /chrome/browser/ui/profiles/profile_view_utils.cc
           /components/desktop_to_mobile_promos/features.cc
           /components/strings/
           /extensions/strings/
@@ -147,7 +155,7 @@ jobs:
             throw "Ghosium brand-asset generation failed with exit code $LASTEXITCODE"
           }
 
-      - name: Apply complete Settings About New Tab account and locale branding twice
+      - name: Apply complete public account profile and locale branding twice
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
@@ -166,6 +174,7 @@ jobs:
           ./scripts/verify-engine-upstream-public-actions.ps1 -SourceRoot $env:PUBLIC_ENGINE_SRC
           ./scripts/verify-engine-disable-unowned-promos.ps1 -SourceRoot $env:PUBLIC_ENGINE_SRC
           ./scripts/verify-engine-browser-signin.ps1 -SourceRoot $env:PUBLIC_ENGINE_SRC
+          ./scripts/verify-engine-local-profile-surfaces.ps1 -SourceRoot $env:PUBLIC_ENGINE_SRC
           ./scripts/verify-engine-locales.ps1 -SourceRoot $env:PUBLIC_ENGINE_SRC
 
       - name: Verify screenshot regression contract
@@ -220,6 +229,13 @@ jobs:
             exit 1
           fi
 
+          # Migrated profiles stay usable as local profiles but do not surface
+          # Google account/sync/cloud/AI promotion. Sign out remains available.
+          grep -F 'Ghosium profile identity is local-first.' "$src/chrome/browser/ui/views/profiles/profile_menu_view.cc"
+          grep -F 'Ghosium has no Google AI-subscription profile decoration.' "$src/chrome/browser/ui/profiles/profile_view_utils.cc"
+          grep -F 'BuildAutofillSettingsButton();' "$src/chrome/browser/ui/views/profiles/profile_menu_view.cc"
+          grep -F 'MaybeBuildSignoutButton();' "$src/chrome/browser/ui/views/profiles/profile_menu_view.cc"
+
           # Three upstream action registrations are intentionally retained for
           # Chromium-internal compatibility, but the independent PowerShell
           # verifier above requires every one of them to be permanently hidden.
@@ -239,4 +255,4 @@ jobs:
             exit 1
           fi
 
-          echo 'Pinned Ghosium public surface contract: Ghosium identity only; unowned Chromium/Google account, AI, customization and mobile surfaces removed or permanently hidden.'
+          echo 'Pinned Ghosium public surface contract: Ghosium identity only; unowned Chromium/Google account, AI, customization, mobile and cloud-profile surfaces removed or permanently hidden.'
