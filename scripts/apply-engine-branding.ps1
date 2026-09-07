@@ -238,6 +238,13 @@ if ($LASTEXITCODE -ne 0) {
   throw 'Ghosium supported locale branding failed.'
 }
 
+# Convert the complete production WebUI namespace after all targeted branding
+# replacements have consumed their reviewed upstream anchors.
+& (Join-Path $PSScriptRoot 'rewrite-engine-internal-scheme.ps1') -SourceRoot $sourceRootResolved
+if ($LASTEXITCODE -ne 0) {
+  throw 'Ghosium ghost:// internal UI rebranding failed.'
+}
+
 $thirdPartyChanges = & git -C $sourceRootResolved status --porcelain=v1 -- third_party
 if ($LASTEXITCODE -ne 0) {
   throw 'Unable to verify third_party source status after branding.'
@@ -246,17 +253,12 @@ if ($thirdPartyChanges) {
   throw 'Branding operation modified third_party sources; refusing to continue.'
 }
 
-# Verify the established product/security contract before changing the canonical
-# internal WebUI scheme. This keeps the existing source-fork checks independent
-# from the final Ghosium-only internal URL namespace transformation.
+# Verify the final state, including Ghosium identity and the canonical ghost://
+# namespace, so the same verifier can safely be invoked again by the full-source
+# Windows workflow after apply-engine-branding.ps1 completes.
 & (Join-Path $PSScriptRoot 'verify-engine-fork.ps1') -SourceRoot $sourceRootResolved
 if ($LASTEXITCODE -ne 0) {
   throw 'Ghosium full-source verification failed after branding.'
 }
 
-& (Join-Path $PSScriptRoot 'rewrite-engine-internal-scheme.ps1') -SourceRoot $sourceRootResolved
-if ($LASTEXITCODE -ne 0) {
-  throw 'Ghosium ghost:// internal UI rebranding failed.'
-}
-
-Write-Host 'Source-level Ghosium branding, Search, Windows identity, first-party links, locales, product icons and ghost:// internal UI routing applied successfully.'
+Write-Host 'Source-level Ghosium branding, Search, Windows identity, first-party links, locales, product icons and ghost:// internal UI routing applied and verified successfully.'
