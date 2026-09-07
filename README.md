@@ -1,6 +1,6 @@
 # Ghosium Browser
 
-Ghosium Browser is a privacy-oriented Windows x64 browser distributed by **Brendigo**. Version **0.7.0** focuses on a Ghosium-only product experience, multilingual installation, lower background network activity, weak-PC optimization, Ghosium Search and the new Ghosium Store catalog.
+Ghosium Browser is a privacy-oriented Windows x64 browser distributed by **Brendigo**. Version **0.8.0** focuses on a Ghosium-only product experience, multilingual installation, lower background network activity, weak-PC optimization, Ghosium Search and the Ghosium Store catalog.
 
 ## Product identity
 
@@ -15,7 +15,22 @@ All Ghosium-controlled user-facing surfaces use the **Ghosium** brand. Product l
 - https://ghosium.com/support
 - https://ghosium.com/security
 
-Required third-party notices remain in `THIRD_PARTY_NOTICES.md` and the installed license material. Those notices are legal attribution, not Ghosium product branding.
+Required third-party notices remain isolated in `THIRD_PARTY_NOTICES.md` and installed license material. They are legal attribution, not product branding.
+
+## Ghosium internal pages
+
+The source-built Ghosium product uses the `ghost://` namespace for browser-owned internal pages:
+
+- `ghost://newtab/`
+- `ghost://history/`
+- `ghost://bookmarks/`
+- `ghost://downloads/`
+- `ghost://settings/`
+- `ghost://profiles/`
+- `ghost://extensions/`
+- `ghost://passwords/`
+
+`ghost://profiles/` routes to Ghosium profile settings and `ghost://passwords/` routes to the Ghosium password manager. The source branding pipeline also uses `ghost-untrusted://` for the corresponding restricted internal WebUI namespace.
 
 ## Desktop architecture
 
@@ -44,7 +59,7 @@ The source for the database-free shared-hosting service is included in `search-w
 
 The source for `https://store.ghosium.com/` is included in `store-web/`.
 
-The first Store release is a privacy-focused curated catalog with a JSON API and no database, analytics, remote fonts or third-party assets. Automatic public one-click extension installation will only be enabled after deeper engine integration can provide it without weakening extension security.
+The Store is a privacy-focused curated catalog with a JSON API and no database, analytics, remote fonts or third-party assets. Automatic public one-click extension installation is enabled only through reviewed engine integration that preserves package trust and extension security.
 
 ## Languages
 
@@ -87,7 +102,7 @@ The selected installer language is stored in `ghosium-language.txt`; the Ghosium
 
 ## Privacy defaults
 
-Ghosium disables browser sync, crash reporting, background browser mode, background networking subsystems, Domain Reliability reporting and hyperlink-auditing pings at launcher level. The bundled declarative privacy rules block selected third-party trackers and remove common campaign/click identifiers.
+Ghosium disables browser sync, crash reporting, background browser mode, unnecessary background networking, Domain Reliability reporting and hyperlink-auditing pings at launcher level. The bundled declarative privacy rules block selected third-party trackers and remove common campaign/click identifiers.
 
 Ghosium does not claim anonymity. Websites intentionally visited by the user still receive normal web requests and may use their own cookies or fingerprinting techniques subject to browser controls and Ghosium filtering.
 
@@ -139,10 +154,10 @@ The Setup EXE:
 - `docs/SHARED-HOSTING-STORE.md` — Store deployment
 - `docs/PERFORMANCE.md` — weak-PC strategy
 - `docs/PRIVACY-HARDENING.md` — privacy rationale
-- `docs/ENGINE-UPDATES.md` — upstream engine update process
+- `docs/ENGINE-UPDATES.md` — engine update process
 - `docs/RELEASE.md` — stable release procedure
-- `THIRD_PARTY_NOTICES.md` — required upstream attribution
+- `THIRD_PARTY_NOTICES.md` — required third-party attribution
 
 ## License
 
-Ghosium-authored source is licensed under the BSD 3-Clause License in `LICENSE`. Copyright holder/publisher: **Brendigo**. Upstream components keep their original licenses and required notices.
+Ghosium-authored source is licensed under the BSD 3-Clause License in `LICENSE`. Copyright holder/publisher: **Brendigo**. Third-party components keep their original licenses and required notices.
