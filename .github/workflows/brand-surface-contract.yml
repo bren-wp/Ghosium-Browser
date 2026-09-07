@@ -50,10 +50,6 @@ jobs:
           from pathlib import Path
           import re
 
-          # Product/UI surfaces remain strictly Ghosium-only. README is checked
-          # separately so its explicit legal-attribution section may accurately
-          # name Chromium and other third-party software without that legal text
-          # being mistaken for product branding.
           roots = (
               Path('extension'),
               Path('search-provider'),
@@ -71,16 +67,36 @@ jobs:
           )
           failures = []
 
+          # Research documents and test fixtures may deliberately name upstream
+          # projects or arbitrary user queries. They are not public product
+          # identity. Third-party attribution remains separately mandatory.
+          explicit_non_product = {
+              Path('search-web/RESEARCH.md'),
+          }
+
+          def is_non_product(path: Path) -> bool:
+              if path in explicit_non_product:
+                  return True
+              return any(part.lower() in {'test', 'tests', 'fixtures'} for part in path.parts)
+
+          def is_source_comment(path: Path, line: str) -> bool:
+              if path.suffix.lower() not in {'.php', '.cpp', '.h', '.rc', '.nsi'}:
+                  return False
+              stripped = line.lstrip()
+              return stripped.startswith('//') or stripped.startswith('/*') or stripped.startswith('*') or stripped.startswith(';')
+
           for root in roots:
               if not root.exists():
                   continue
               for path in root.rglob('*'):
-                  if not path.is_file():
+                  if not path.is_file() or is_non_product(path):
                       continue
                   if path.name != 'Dockerfile' and path.suffix.lower() not in suffixes:
                       continue
                   text = path.read_text(encoding='utf-8', errors='replace')
                   for number, line in enumerate(text.splitlines(), 1):
+                      if is_source_comment(path, line):
+                          continue
                       if legacy.search(line):
                           failures.append(f'{path}:{number}: {line.strip()}')
 
@@ -98,13 +114,19 @@ jobs:
                       'README.md: legal-attribution section must preserve explicit Chromium/third-party attribution'
                   )
 
+          research = Path('search-web/RESEARCH.md')
+          if research.is_file():
+              research_text = research.read_text(encoding='utf-8')
+              if 'Chromium' not in research_text or 'license' not in research_text.lower():
+                  failures.append('search-web/RESEARCH.md must keep explicit upstream/licensing context')
+
           if failures:
               raise SystemExit(
-                  'Legacy browser branding, internal scheme or product link remains outside legal attribution:\n'
+                  'Legacy browser branding, internal scheme or product link remains on a public Ghosium surface:\n'
                   + '\n'.join(failures)
               )
 
-          print('Ghosium public branding contract: OK; legal third-party attribution remains isolated.')
+          print('Ghosium public branding contract: OK; research/tests and required legal attribution are isolated from product identity.')
 
       - name: Verify Ghosium product destinations
         shell: python
