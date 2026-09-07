@@ -7,6 +7,7 @@ on:
     paths:
       - 'ENGINE_REVISION'
       - 'ENGINE_SOURCE_REVISION'
+      - 'VERSION'
       - 'engine/**'
       - 'scripts/*engine*.ps1'
       - 'scripts/generate-engine-brand-assets.py'
@@ -18,6 +19,7 @@ on:
     paths:
       - 'ENGINE_REVISION'
       - 'ENGINE_SOURCE_REVISION'
+      - 'VERSION'
       - 'engine/**'
       - 'scripts/*engine*.ps1'
       - 'scripts/generate-engine-brand-assets.py'
@@ -52,6 +54,7 @@ jobs:
             'scripts/rewrite-engine-product-links.ps1',
             'scripts/rewrite-engine-default-search.ps1',
             'scripts/rewrite-engine-windows-identity.ps1',
+            'scripts/rewrite-engine-product-version.ps1',
             'scripts/rewrite-engine-internal-scheme.ps1',
             'scripts/verify-engine-locales.ps1',
             'scripts/verify-engine-fork.ps1',
@@ -242,6 +245,7 @@ jobs:
           /chrome/installer/util/util_constants.h
           /chrome/browser/browser_about_handler.cc
           /chrome/browser/ui/chrome_pages.cc
+          /chrome/browser/ui/webui/version/version_ui.cc
           /chrome/browser/ui/webui/side_panel/customize_chrome/customize_chrome_page_handler.cc
           /chrome/browser/ui/webui/extensions/extensions_ui.cc
           /chrome/browser/resources/settings/about_page/about_page.ts
@@ -269,6 +273,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          product_version="$(tr -d '\r\n ' < VERSION)"
           git -C "$ENGINE_SRC" diff --check
           grep -F 'Customize Ghosium' "$ENGINE_SRC/chrome/app/chromium_strings.grd"
           grep -F 'alt="Ghosium logo"' "$ENGINE_SRC/chrome/browser/resources/signin/managed_user_profile_notice/managed_user_profile_notice_value_prop.html.ts"
@@ -282,6 +287,11 @@ jobs:
           grep -F '.base_app_name = L"Ghosium Browser"' "$ENGINE_SRC/chrome/install_static/chromium_install_modes.h"
           grep -F '.browser_prog_id_prefix = L"GhosiumHTM"' "$ENGINE_SRC/chrome/install_static/chromium_install_modes.h"
           grep -F '.direct_launch_url_scheme = "ghosium"' "$ENGINE_SRC/chrome/install_static/chromium_install_modes.h"
+
+          test -f "$ENGINE_SRC/chrome/common/ghosium_product_version.h"
+          grep -F "kProductVersion[] = \"${product_version}\"" "$ENGINE_SRC/chrome/common/ghosium_product_version.h"
+          grep -F '#include "chrome/common/ghosium_product_version.h"' "$ENGINE_SRC/chrome/browser/ui/webui/version/version_ui.cc"
+          test "$(grep -Fc 'ghosium::kProductVersion' "$ENGINE_SRC/chrome/browser/ui/webui/version/version_ui.cc")" -ge 2
 
           grep -F 'kChromeUIScheme[] = "ghost"' "$ENGINE_SRC/content/public/common/url_constants.h"
           grep -F 'kChromeUIUntrustedScheme[] = "ghost-untrusted"' "$ENGINE_SRC/content/public/common/url_constants.h"
