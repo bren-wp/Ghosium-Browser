@@ -90,21 +90,22 @@ jobs:
           if legacy.exists():
               raise SystemExit('Legacy snapshot-based stable release workflow must not return.')
 
-          forbidden = (
+          release_workflow = workflows / 'full-source-windows-build.yml'
+          text = release_workflow.read_text(encoding='utf-8')
+
+          forbidden_release_inputs = (
               'storage.googleapis.com/chromium-browser-snapshots',
               'chrome-win.zip',
           )
-          for path in sorted(workflows.glob('*.y*ml')):
-              text = path.read_text(encoding='utf-8')
-              for value in forbidden:
-                  if value in text:
-                      raise SystemExit(
-                          f'Production workflow {path} references precompiled snapshot input: {value}'
-                      )
+          for value in forbidden_release_inputs:
+              if value in text:
+                  raise SystemExit(
+                      f'Production source-built release workflow references precompiled snapshot input: {value}'
+                  )
 
-          release_workflow = workflows / 'full-source-windows-build.yml'
-          text = release_workflow.read_text(encoding='utf-8')
           required = (
+              'workflow_dispatch:',
+              'ghosium-source-builder',
               'ghosium-v',
               'GHOSIUM-SOURCE-BUILD.json',
               'GHOSIUM-SOURCE-INSTALLER-SMOKE.json',
@@ -113,23 +114,27 @@ jobs:
               'refusing to overwrite it',
               'autoninja -C out/Ghosium chrome mini_installer',
               '-RunRuntimeSmoke',
+              "if: github.ref == 'refs/heads/main'",
           )
           for value in required:
               if value not in text:
                   raise SystemExit(f'Full-source release invariant missing: {value}')
+
+          if '\n  pull_request:' in text or '\n  push:' in text:
+              raise SystemExit(
+                  'Heavy full-source build must remain an explicit manual/self-hosted workflow.'
+              )
 
           legacy_tag_fragments = (
               'tag="v$GHOSIUM_VERSION"',
               'tag="v$version"',
               'gh release create "v$',
           )
-          for path in sorted(workflows.glob('*.y*ml')):
-              text = path.read_text(encoding='utf-8')
-              for value in legacy_tag_fragments:
-                  if value in text:
-                      raise SystemExit(
-                          f'Legacy v0.x.y release namespace returned in {path}: {value}'
-                      )
+          for value in legacy_tag_fragments:
+              if value in text:
+                  raise SystemExit(
+                      f'Legacy v0.x.y release namespace returned in production release workflow: {value}'
+                  )
 
           print('Ghosium source-built release architecture: OK')
 
@@ -140,7 +145,8 @@ jobs:
           from pathlib import Path
 
           action = re.compile(r'^\s*uses:\s*([^\s#]+)', re.MULTILINE)
-          immutable = re.compile(r'^[^@]+@[0-9a-f]{40}$')
+          immutable = re.compile(r'^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+@[0-9a-f]{40}$')
+          docker_digest = re.compile(r'^docker://[^@\s]+@sha256:[0-9a-f]{64}$')
 
           for path in sorted(Path('.github/workflows').glob('*.y*ml')):
               text = path.read_text(encoding='utf-8')
@@ -148,7 +154,8 @@ jobs:
                   reference = match.group(1)
                   if reference.startswith('./'):
                       continue
-                  if not immutable.fullmatch(reference):
-                      raise SystemExit(f'Mutable GitHub Action reference in {path}: {reference}')
+                  if immutable.fullmatch(reference) or docker_digest.fullmatch(reference):
+                      continue
+                  raise SystemExit(f'Mutable GitHub Action reference in {path}: {reference}')
 
           print('Immutable GitHub Action references: OK')
