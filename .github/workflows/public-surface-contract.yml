@@ -11,6 +11,8 @@ on:
       - 'scripts/verify-engine-public-surfaces.ps1'
       - 'scripts/rewrite-engine-upstream-public-actions.ps1'
       - 'scripts/verify-engine-upstream-public-actions.ps1'
+      - 'scripts/rewrite-engine-disable-unowned-promos.ps1'
+      - 'scripts/verify-engine-disable-unowned-promos.ps1'
       - 'scripts/rebrand-engine-locales.ps1'
       - 'scripts/verify-engine-locales.ps1'
       - 'scripts/generate-engine-brand-assets.py'
@@ -25,6 +27,8 @@ on:
       - 'scripts/verify-engine-public-surfaces.ps1'
       - 'scripts/rewrite-engine-upstream-public-actions.ps1'
       - 'scripts/verify-engine-upstream-public-actions.ps1'
+      - 'scripts/rewrite-engine-disable-unowned-promos.ps1'
+      - 'scripts/verify-engine-disable-unowned-promos.ps1'
       - 'scripts/rebrand-engine-locales.ps1'
       - 'scripts/verify-engine-locales.ps1'
       - 'scripts/generate-engine-brand-assets.py'
@@ -56,6 +60,8 @@ jobs:
             'scripts/verify-engine-public-surfaces.ps1',
             'scripts/rewrite-engine-upstream-public-actions.ps1',
             'scripts/verify-engine-upstream-public-actions.ps1',
+            'scripts/rewrite-engine-disable-unowned-promos.ps1',
+            'scripts/verify-engine-disable-unowned-promos.ps1',
             'scripts/rebrand-engine-locales.ps1',
             'scripts/verify-engine-locales.ps1'
           )) {
@@ -104,6 +110,7 @@ jobs:
           /chrome/browser/resources/new_tab_page/app.html
           /chrome/browser/ui/webui/new_tab_footer/footer_context_menu.cc
           /chrome/browser/ui/browser_actions.cc
+          /components/desktop_to_mobile_promos/features.cc
           /components/strings/
           /extensions/strings/
           EOF
@@ -144,6 +151,7 @@ jobs:
 
           ./scripts/verify-engine-public-surfaces.ps1 -SourceRoot $env:PUBLIC_ENGINE_SRC
           ./scripts/verify-engine-upstream-public-actions.ps1 -SourceRoot $env:PUBLIC_ENGINE_SRC
+          ./scripts/verify-engine-disable-unowned-promos.ps1 -SourceRoot $env:PUBLIC_ENGINE_SRC
           ./scripts/verify-engine-locales.ps1 -SourceRoot $env:PUBLIC_ENGINE_SRC
 
       - name: Verify screenshot regression contract
@@ -192,10 +200,16 @@ jobs:
           grep -F 'SidePanelEntryId::kGeic' "$src/chrome/browser/ui/browser_actions.cc"
           grep -F 'SidePanelEntryId::kGlic' "$src/chrome/browser/ui/browser_actions.cc"
 
+          # Ghosium currently has no mobile browser distribution. The central
+          # Chromium desktop-to-mobile gates must remain compile-time source
+          # functions that unconditionally return false after transformation.
+          grep -A2 -F 'bool MobilePromoOnDesktopEnabled() {' "$src/components/desktop_to_mobile_promos/features.cc" | grep -F 'return false;'
+          grep -A2 -F 'bool IsMobileNTPPromoOnDesktopEnabled() {' "$src/components/desktop_to_mobile_promos/features.cc" | grep -F 'return false;'
+
           git -C "$src" diff --check
           if git -C "$src" status --porcelain=v1 -- third_party | grep -q .; then
             echo 'Public-surface branding must never modify third_party source.' >&2
             exit 1
           fi
 
-          echo 'Pinned Ghosium public surface contract: Ghosium identity only; Chromium customization and Google-owned public surfaces removed or permanently hidden.'
+          echo 'Pinned Ghosium public surface contract: Ghosium identity only; Chromium customization, Google-owned surfaces and unowned mobile promos removed or permanently hidden.'
