@@ -1,0 +1,77 @@
+{
+  "schemaVersion": 1,
+  "baseline": {
+    "productVersion": "0.8.0",
+    "releaseTag": "v0.8.0",
+    "setupSha256": "45815ec06c1e63954a29793cac756d6f91af44edaff569159c23fb9f1b8e6e50",
+    "workflowRunId": 34156958912,
+    "artifactId": 10031331806,
+    "artifactName": "ghosium-performance-baseline-v0.8.0",
+    "artifactSha256": "dea8492210acea8d9064ba34911efc15b76906681cba415d071d97a023d09f8d",
+    "capturedAtUtc": "2026-09-07T19:50:19.7347424Z"
+  },
+  "host": {
+    "runnerImage": "windows-2025-vs2026",
+    "os": "Microsoft Windows NT 10.0.26100.0",
+    "logicalProcessors": 4,
+    "totalPhysicalMemoryBytes": 17174360064
+  },
+  "methodology": {
+    "pageUrl": "https://example.com/",
+    "profileIsolation": "--ghosium-portable-profile",
+    "coldStartup": "Fresh isolated Ghosium profile with no running Ghosium processes. OS filesystem cache was not forcibly flushed.",
+    "warmStartup": "Same isolated profile reopened after a clean browser shutdown. OS filesystem cache remained intact.",
+    "usableWindow": "First Ghosium Browser or Ghosium Engine process exposing a non-zero MainWindowHandle.",
+    "idleCpuIntervalSeconds": 5,
+    "oneTabIdleSeconds": 60,
+    "gpuMemoryMeasured": false,
+    "networkBytesMeasured": false
+  },
+  "startup": {
+    "cold": {
+      "launchToUsableWindowMs": 867,
+      "processCount": 11,
+      "workingSetMiB": 551.6,
+      "privateMemoryMiB": 233.3
+    },
+    "warm": {
+      "launchToUsableWindowMs": 282,
+      "processCount": 11,
+      "workingSetMiB": 561.7,
+      "privateMemoryMiB": 232.1
+    }
+  },
+  "tabs": {
+    "1": {
+      "launchToUsableWindowMs": 231,
+      "processCount": 11,
+      "workingSetMiB": 563.5,
+      "privateMemoryMiB": 238.0,
+      "idleCpuPercent": 3.906,
+      "after60SecondsIdle": {
+        "processCount": 10,
+        "workingSetMiB": 500.0,
+        "privateMemoryMiB": 197.1
+      }
+    },
+    "5": {
+      "launchToUsableWindowMs": 276,
+      "processCount": 15,
+      "workingSetMiB": 808.0,
+      "privateMemoryMiB": 328.2,
+      "idleCpuPercent": 7.187
+    },
+    "10": {
+      "launchToUsableWindowMs": 269,
+      "processCount": 19,
+      "workingSetMiB": 1104.1,
+      "privateMemoryMiB": 425.1,
+      "idleCpuPercent": 2.812
+    }
+  },
+  "interpretation": {
+    "comparisonUse": "Reference only for Ghosium 0.1.x measurements executed with the same benchmark harness and materially comparable Windows runner conditions.",
+    "universalPerformanceClaim": false,
+    "sourceBuiltBaseline": false
+  }
+}
