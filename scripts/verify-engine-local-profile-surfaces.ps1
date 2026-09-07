@@ -17,10 +17,16 @@ if ($LASTEXITCODE -ne 0 -or $actualRevision -ne $expectedRevision) {
 
 $profileMenu = Join-Path $sourceRootResolved 'chrome/browser/ui/views/profiles/profile_menu_view.cc'
 $profileViewUtils = Join-Path $sourceRootResolved 'chrome/browser/ui/profiles/profile_view_utils.cc'
-foreach ($path in @($profileMenu, $profileViewUtils)) {
+$subscriptionService = Join-Path $sourceRootResolved 'components/subscription_eligibility/subscription_eligibility_service.cc'
+foreach ($path in @($profileMenu, $profileViewUtils, $subscriptionService)) {
   if (!(Test-Path $path -PathType Leaf)) {
     throw "Required Ghosium local-profile source is missing: $path"
   }
+}
+
+$subscriptionText = [IO.File]::ReadAllText($subscriptionService)
+if ($subscriptionText -notmatch '(?s)int32_t SubscriptionEligibilityService::GetAiSubscriptionTier\(\) const \{\s*// Ghosium does not consume Google AI subscription entitlements\.\s*return 0;\s*\}') {
+  throw 'Google AI subscription entitlement can still drive Ghosium browser UI.'
 }
 
 $utilsText = [IO.File]::ReadAllText($profileViewUtils)
@@ -107,4 +113,4 @@ if ($thirdPartyChanges) {
   throw 'Local-profile audit detected third_party modifications.'
 }
 
-Write-Host 'Ghosium local-profile audit: local profile controls remain; Google sign-in/sync/cloud/AI promotion is absent and migrated accounts retain Sign out.'
+Write-Host 'Ghosium local-profile audit: local controls remain; Google sign-in/sync/cloud/AI promotion and AI subscription entitlements are absent, with Sign out preserved for migrated accounts.'
