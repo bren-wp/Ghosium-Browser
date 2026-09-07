@@ -1,0 +1,114 @@
+name: Ghosium Brand Surface Contract
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'README.md'
+      - 'extension/**'
+      - 'search-provider/**'
+      - 'search-web/**'
+      - 'store-web/**'
+      - 'launcher/**'
+      - 'installer/**'
+      - 'packaging/**'
+      - '.github/workflows/brand-surface-contract.yml'
+  push:
+    branches:
+      - main
+    paths:
+      - 'README.md'
+      - 'extension/**'
+      - 'search-provider/**'
+      - 'search-web/**'
+      - 'store-web/**'
+      - 'launcher/**'
+      - 'installer/**'
+      - 'packaging/**'
+      - '.github/workflows/brand-surface-contract.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  brand-surface:
+    name: Verify Ghosium-only public surfaces
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Reject legacy browser branding and internal URLs
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          roots=(
+            README.md
+            extension
+            search-provider
+            search-web
+            store-web
+            launcher
+            installer
+            packaging
+          )
+
+          pattern='chromium|google[[:space:]]+chrome|chrome[[:space:]]+web[[:space:]]+store|chrome://|chrome-untrusted://|support\.google|chrome\.google|google\.com/chrome'
+          if grep -RInEi \
+            --include='*.md' \
+            --include='*.html' \
+            --include='*.php' \
+            --include='*.json' \
+            --include='*.cpp' \
+            --include='*.h' \
+            --include='*.rc' \
+            --include='*.nsi' \
+            --include='Dockerfile' \
+            "$pattern" "${roots[@]}"; then
+            echo 'Legacy browser branding, internal scheme or product link remains in a Ghosium-controlled public surface.' >&2
+            exit 1
+          fi
+
+      - name: Verify Ghosium product destinations
+        shell: python
+        run: |
+          from pathlib import Path
+          import re
+
+          files = (
+              Path('extension/newtab.html'),
+              Path('search-provider/manifest.json'),
+              Path('search-web/index.php'),
+              Path('store-web/index.php'),
+          )
+          allowed_hosts = {'ghosium.com', 'search.ghosium.com', 'store.ghosium.com'}
+          url_re = re.compile(r'https://([a-z0-9.-]+)(?:/[^\s"\'<>)]*)?', re.I)
+
+          for path in files:
+              text = path.read_text(encoding='utf-8')
+              for host in url_re.findall(text):
+                  host = host.lower()
+                  if host not in allowed_hosts:
+                      raise SystemExit(f'Non-Ghosium product URL in {path}: https://{host}')
+
+          print('Ghosium public product destinations: OK')
+
+      - name: Verify Ghost route contract is documented
+        shell: bash
+        run: |
+          set -euo pipefail
+          for route in \
+            'ghost://newtab/' \
+            'ghost://history/' \
+            'ghost://bookmarks/' \
+            'ghost://downloads/' \
+            'ghost://settings/' \
+            'ghost://profiles/' \
+            'ghost://extensions/' \
+            'ghost://passwords/'; do
+            grep -F "$route" README.md >/dev/null
+          done
