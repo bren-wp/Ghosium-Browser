@@ -19,6 +19,24 @@ $repoRoot = Split-Path -Parent $PSScriptRoot
 $expectedRevision = (Get-Content (Join-Path $repoRoot 'ENGINE_SOURCE_REVISION') -Raw).Trim()
 $ghosiumVersion = (Get-Content (Join-Path $repoRoot 'VERSION') -Raw).Trim()
 $productConfig = Get-Content (Join-Path $repoRoot 'engine/branding/product.json') -Raw | ConvertFrom-Json
+$licensePath = Join-Path $repoRoot 'LICENSE'
+$thirdPartyNoticesPath = Join-Path $repoRoot 'THIRD_PARTY_NOTICES.md'
+foreach ($legalPath in @($licensePath, $thirdPartyNoticesPath)) {
+  if (!(Test-Path $legalPath -PathType Leaf)) {
+    throw "Required Ghosium release legal file is missing: $legalPath"
+  }
+}
+$licenseText = [IO.File]::ReadAllText($licensePath)
+if (!$licenseText.Contains('Proprietary Commercial Software License Agreement') -or
+    !$licenseText.Contains('Open-source components remain governed by their respective licenses.')) {
+  throw 'Ghosium proprietary product license or third-party rights preservation contract is incomplete.'
+}
+if ((Get-Item $thirdPartyNoticesPath).Length -le 100) {
+  throw 'THIRD_PARTY_NOTICES.md is unexpectedly empty or incomplete.'
+}
+$licenseSha256 = (Get-FileHash $licensePath -Algorithm SHA256).Hash.ToLowerInvariant()
+$thirdPartyNoticesSha256 = (Get-FileHash $thirdPartyNoticesPath -Algorithm SHA256).Hash.ToLowerInvariant()
+
 $sourceRootResolved = (Resolve-Path $SourceRoot).Path
 $actualRevision = (& git -C $sourceRootResolved rev-parse HEAD).Trim()
 if ($LASTEXITCODE -ne 0 -or $actualRevision -ne $expectedRevision) {
@@ -288,7 +306,7 @@ if (!$ProvenancePath) {
 }
 
 $provenance = [ordered]@{
-  schemaVersion = 4
+  schemaVersion = 5
   product = 'Ghosium Browser'
   ghosiumVersion = $ghosiumVersion
   architecture = 'windows-x64'
@@ -300,6 +318,16 @@ $provenance = [ordered]@{
   engineProductName = [string]$engineInfo.ProductName
   setupProductName = [string]$setupInfo.ProductName
   installerProductName = [string]$installerInfo.ProductName
+  legal = [ordered]@{
+    productLicense = 'Brendigo Proprietary Commercial Software License Agreement'
+    agreementVersion = '1.0'
+    proprietaryProductCode = $true
+    thirdPartyLicensesPreserved = $true
+    copyrightNoticesPreserved = $true
+    attributionPreserved = $true
+    licenseSha256 = $licenseSha256
+    thirdPartyNoticesSha256 = $thirdPartyNoticesSha256
+  }
   internalUi = [ordered]@{
     scheme = 'ghost'
     untrustedScheme = 'ghost-untrusted'
@@ -327,6 +355,7 @@ $provenance | ConvertTo-Json -Depth 7 | Set-Content $ProvenancePath -Encoding ut
 Write-Host 'Ghosium full-source Windows binary verification: OK'
 Write-Host "Primary executable: $expectedBrowserExecutable"
 Write-Host "Engine file version: $($engineInfo.ProductVersion)"
+Write-Host "Legal provenance: proprietary product license + preserved third-party rights recorded."
 if ($RunRuntimeSmoke) {
   Write-Host "Runtime smoke: data URL plus all eight ghost:// routes passed without disabling the browser sandbox."
 }
