@@ -37,9 +37,6 @@ function Replace-ProductBrandingInBody {
     [Parameter(Mandatory = $true)][bool]$PreserveChromiumProject
   )
 
-  # The upstream Google account/sync Settings page is hidden from Ghosium's
-  # public menu. Keep a neutral internal route title rather than implying that
-  # Google account services are owned by Ghosium.
   if ($TranslationId -eq $settingsPeopleTranslationId) {
     return 'Profile'
   }
@@ -47,8 +44,6 @@ function Replace-ProductBrandingInBody {
   $updated = $Body
   $updated = $updated.Replace('Chrome Web Store', 'Ghosium Store')
   $updated = $updated.Replace('Chrome Colors', 'Ghosium Colors')
-  # Google/Gemini AI Settings are hidden from Ghosium. Shared localized strings
-  # that remain compiled are neutralized, never relabeled as a Ghosium AI service.
   $updated = $updated.Replace('AI in Chrome', 'AI features')
   $updated = $updated.Replace('Gemini in Chromium', 'Gemini')
   $updated = $updated.Replace('Gemini in Chrome', 'Gemini')
@@ -200,6 +195,7 @@ $publicSurfaceRequired = @(
   'chrome/browser/resources/intro/sign_in_promo_refresh.ts',
   'chrome/browser/ui/views/profiles/profile_menu_view.cc',
   'chrome/browser/ui/profiles/profile_view_utils.cc',
+  'chrome/browser/ui/webui/signin/profile_picker_ui.cc',
   'components/desktop_to_mobile_promos/features.cc',
   'components/subscription_eligibility/subscription_eligibility_service.cc'
 )
@@ -235,6 +231,11 @@ if ($completePublicSurfaceSource) {
   & (Join-Path $PSScriptRoot 'rewrite-engine-local-profile-surfaces.ps1') -SourceRoot $sourceRootResolved
   if ($LASTEXITCODE -ne 0) {
     throw 'Ghosium local-only profile surface rewrite failed.'
+  }
+
+  & (Join-Path $PSScriptRoot 'rewrite-engine-profile-picker-local-only.ps1') -SourceRoot $sourceRootResolved
+  if ($LASTEXITCODE -ne 0) {
+    throw 'Ghosium local-only Profile Picker rewrite failed.'
   }
 } else {
   Write-Host 'Narrow sparse engine audit detected; complete public-surface source transform is delegated to Ghosium Public Surface Contract.'
@@ -284,6 +285,11 @@ if ($completePublicSurfaceSource) {
   if ($LASTEXITCODE -ne 0) {
     throw 'Ghosium local-only profile surface verification failed.'
   }
+
+  & (Join-Path $PSScriptRoot 'verify-engine-profile-picker-local-only.ps1') -SourceRoot $sourceRootResolved
+  if ($LASTEXITCODE -ne 0) {
+    throw 'Ghosium local-only Profile Picker verification failed.'
+  }
 }
 
-Write-Host 'Ghosium supported locale branding verified; public surfaces are Ghosium-owned, while upstream account, AI, mobile and cloud profile promotions are removed or hidden.'
+Write-Host 'Ghosium supported locale branding verified; public surfaces and profile creation stay Ghosium-owned/local-only while upstream account, AI, mobile and cloud profile promotions are removed or hidden.'
