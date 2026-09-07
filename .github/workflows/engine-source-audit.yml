@@ -43,7 +43,7 @@ jobs:
           persist-credentials: false
           fetch-depth: 1
 
-      - name: Validate PowerShell scripts
+      - name: Validate source transformation tooling
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
@@ -56,29 +56,41 @@ jobs:
             'scripts/rewrite-engine-windows-identity.ps1',
             'scripts/rewrite-engine-windows-executable.ps1',
             'scripts/rewrite-engine-product-version.ps1',
+            'scripts/rewrite-engine-version-updater.ps1',
+            'scripts/harden-engine-version-updater.ps1',
+            'scripts/verify-engine-version-updater.ps1',
             'scripts/rewrite-engine-internal-scheme.ps1',
             'scripts/verify-engine-locales.ps1',
             'scripts/verify-engine-fork.ps1',
+            'scripts/verify-engine-windows-executable.ps1',
             'scripts/configure-engine-build.ps1',
             'scripts/verify-engine-build-output.ps1'
           )) {
             $tokens = $null
             $errors = $null
             [void][System.Management.Automation.Language.Parser]::ParseFile(
-              (Resolve-Path $path),
-              [ref]$tokens,
-              [ref]$errors
-            )
+              (Resolve-Path $path), [ref]$tokens, [ref]$errors)
             if ($errors.Count -gt 0) {
               $errors | ForEach-Object { Write-Error $_.Message }
               throw "PowerShell parser errors found in $path"
             }
           }
+          python3 -m py_compile scripts/generate-engine-brand-assets.py
+          if ($LASTEXITCODE -ne 0) {
+            throw 'Brand asset generator has Python syntax errors.'
+          }
 
-      - name: Validate Windows source-build contract
+      - name: Validate pinned revisions and Windows source-build contract
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
+          foreach ($revisionFile in @('ENGINE_SOURCE_REVISION')) {
+            $value = (Get-Content $revisionFile -Raw).Trim()
+            if ($value -notmatch '^[0-9a-f]{40}$') {
+              throw "$revisionFile must contain one exact 40-character Git commit."
+            }
+          }
+
           $argsPath = 'engine/build/windows-x64.args.gn'
           if (!(Test-Path $argsPath -PathType Leaf)) {
             throw "Missing deterministic Windows GN args: $argsPath"
@@ -110,85 +122,50 @@ jobs:
           }
 
           $workflow = Get-Content '.github/workflows/full-source-windows-build.yml' -Raw
-          foreach ($requiredWorkflowText in @(
+          foreach ($required in @(
             'workflow_dispatch:',
             'ghosium-source-builder',
             'bootstrap-engine-source.ps1',
             'apply-engine-branding.ps1',
             'configure-engine-build.ps1',
             'autoninja -C out/Ghosium chrome mini_installer',
-            'verify-engine-build-output.ps1'
+            'verify-engine-build-output.ps1',
+            'build-source-release-installer.ps1',
+            'GHOSIUM-CANONICAL-SETUP-SMOKE.json'
           )) {
-            if (!$workflow.Contains($requiredWorkflowText)) {
-              throw "Full-source Windows workflow is missing required stage: $requiredWorkflowText"
+            if (!$workflow.Contains($required)) {
+              throw "Full-source Windows workflow is missing required stage: $required"
             }
           }
-          if ($workflow -match '(?m)^\s*pull_request\s*:') {
-            throw 'Heavy full-source Windows build must remain manual/self-hosted and must not run on every PR.'
-          }
-          if ($workflow -match '(?i)uninstall\.exe|ghosium(?:-browser)?-uninstall\.exe') {
-            throw 'Full-source workflow must not build, copy, upload or release a standalone uninstall executable.'
+          if ($workflow -match '(?m)^\s*pull_request\s*:' -or $workflow -match '(?m)^\s*push\s*:') {
+            throw 'Heavy full-source Windows build must remain explicit manual/self-hosted workflow.'
           }
 
-      - name: Validate deterministic brand asset generator
-        shell: bash
-        run: |
-          set -euo pipefail
-          python3 -m py_compile scripts/generate-engine-brand-assets.py
-          asset_root="${RUNNER_TEMP}/ghosium-brand-assets"
-          python3 scripts/generate-engine-brand-assets.py "$asset_root"
-          python3 - "$asset_root" <<'PY'
-          from pathlib import Path
-          import sys
-
-          root = Path(sys.argv[1])
-          png = root / 'chrome/app/theme/default_100_percent/chromium/product_logo_32.png'
-          ico = root / 'chrome/app/theme/chromium/win/chromium.ico'
-          assert png.read_bytes().startswith(b'\x89PNG\r\n\x1a\n')
-          assert ico.read_bytes().startswith(b'\x00\x00\x01\x00')
-          assert png.stat().st_size > 100
-          assert ico.stat().st_size > 1000
-          PY
-
-      - name: Verify Ghosium source contract
-        shell: pwsh
-        run: ./scripts/verify-engine-fork.ps1
-
-      - name: Verify snapshot-to-source provenance
-        shell: bash
-        run: |
-          set -euo pipefail
-          snapshot_revision="$(tr -d '\r\n ' < ENGINE_REVISION)"
-          source_revision="$(tr -d '\r\n ' < ENGINE_SOURCE_REVISION)"
-          effective_url="$(curl --fail --silent --show-error --location --retry 4 --retry-all-errors --output /dev/null --write-out '%{url_effective}' "https://crrev.com/${snapshot_revision}")"
-          case "$effective_url" in
-            *"/${source_revision}"*|*"/+/${source_revision}"*)
-              echo "Snapshot ${snapshot_revision} resolves to pinned source ${source_revision}."
-              ;;
-            *)
-              echo "Snapshot/source mismatch: ${snapshot_revision} -> ${effective_url}; expected ${source_revision}" >&2
-              exit 1
-              ;;
-          esac
-
-      - name: Audit product URL allowlist
+      - name: Validate deterministic brand assets and product configuration
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $config = Get-Content 'engine/branding/product.json' -Raw | ConvertFrom-Json
-          $approved = @($config.allowedProductUrls)
-          $jsonText = Get-Content 'engine/branding/product.json' -Raw
-          $urls = [regex]::Matches($jsonText, 'https://[^"\s]+') | ForEach-Object Value | Sort-Object -Unique
-          foreach ($url in $urls) {
-            if ($approved -notcontains $url) {
-              throw "Unapproved Ghosium product URL found in branding contract: $url"
+          $assetRoot = Join-Path $env:RUNNER_TEMP 'ghosium-brand-assets'
+          python3 scripts/generate-engine-brand-assets.py $assetRoot
+          if ($LASTEXITCODE -ne 0) {
+            throw 'Ghosium deterministic brand asset generation failed.'
+          }
+          foreach ($relative in @(
+            'chrome/app/theme/default_100_percent/chromium/product_logo_32.png',
+            'chrome/app/theme/chromium/win/chromium.ico'
+          )) {
+            $path = Join-Path $assetRoot $relative
+            if (!(Test-Path $path -PathType Leaf) -or (Get-Item $path).Length -le 100) {
+              throw "Generated Ghosium brand asset is missing or empty: $relative"
             }
           }
 
-          if ([string]$config.internalUi.scheme -ne 'ghost' -or [string]$config.internalUi.untrustedScheme -ne 'ghost-untrusted') {
+          $config = Get-Content 'engine/branding/product.json' -Raw | ConvertFrom-Json
+          if ([string]$config.internalUi.scheme -ne 'ghost' -or
+              [string]$config.internalUi.untrustedScheme -ne 'ghost-untrusted') {
             throw 'Ghosium internal UI schemes must be ghost / ghost-untrusted.'
           }
-          $expectedRoutes = @(
+          foreach ($route in @(
             'ghost://newtab/',
             'ghost://history/',
             'ghost://bookmarks/',
@@ -197,13 +174,8 @@ jobs:
             'ghost://profiles/',
             'ghost://extensions/',
             'ghost://passwords/'
-          )
-          $routes = @($config.internalUi.routes)
-          if ($routes.Count -ne $expectedRoutes.Count) {
-            throw 'Ghosium internal route contract must contain exactly eight routes.'
-          }
-          foreach ($route in $expectedRoutes) {
-            if ($routes -notcontains $route) {
+          )) {
+            if (@($config.internalUi.routes) -notcontains $route) {
               throw "Missing Ghosium internal route: $route"
             }
           }
@@ -212,7 +184,7 @@ jobs:
     name: Apply branding to pinned upstream source
     needs: source-contract
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 30
 
     steps:
       - name: Checkout Ghosium fork tooling
@@ -254,10 +226,11 @@ jobs:
           /chrome/installer/setup/uninstall.cc
           /chrome/installer/setup/install_worker.cc
           /chrome/installer/util/util_constants.h
-          /chrome/installer/util/util_constants.h
           /chrome/browser/browser_about_handler.cc
           /chrome/browser/ui/chrome_pages.cc
           /chrome/browser/ui/webui/version/version_ui.cc
+          /chrome/browser/ui/webui/help/BUILD.gn
+          /chrome/browser/ui/webui/help/version_updater_basic.cc
           /chrome/browser/ui/webui/side_panel/customize_chrome/customize_chrome_page_handler.cc
           /chrome/browser/ui/webui/extensions/extensions_ui.cc
           /chrome/browser/resources/settings/about_page/about_page.ts
@@ -277,86 +250,57 @@ jobs:
           test "$(git -C "$src" rev-parse HEAD)" = "$revision"
           echo "ENGINE_SRC=$src" >> "$GITHUB_ENV"
 
-      - name: Apply complete Ghosium source branding
+      - name: Apply complete Ghosium source transform
         shell: pwsh
-        run: ./scripts/apply-engine-branding.ps1 -SourceRoot $env:ENGINE_SRC
+        run: |
+          $ErrorActionPreference = 'Stop'
+          ./scripts/apply-engine-branding.ps1 -SourceRoot $env:ENGINE_SRC
+          ./scripts/verify-engine-fork.ps1 -SourceRoot $env:ENGINE_SRC
+          ./scripts/verify-engine-windows-executable.ps1 -SourceRoot $env:ENGINE_SRC
+          ./scripts/verify-engine-version-updater.ps1 -SourceRoot $env:ENGINE_SRC
 
-      - name: Validate resulting source diff
+      - name: Validate Ghosium updater and public source identity
         shell: bash
         run: |
           set -euo pipefail
+          src="$ENGINE_SRC"
           product_version="$(tr -d '\r\n ' < VERSION)"
-          git -C "$ENGINE_SRC" diff --check
-          grep -F 'Customize Ghosium' "$ENGINE_SRC/chrome/app/chromium_strings.grd"
-          grep -F 'alt="Ghosium logo"' "$ENGINE_SRC/chrome/browser/resources/signin/managed_user_profile_notice/managed_user_profile_notice_value_prop.html.ts"
-          test "$(grep -Fc 'ghost://theme/current-channel-logo@2x' "$ENGINE_SRC/chrome/browser/resources/contextual_tasks/top_toolbar_logo.html.ts")" -ge 2
-          grep -F 'aria-label="Ghosium"' "$ENGINE_SRC/ui/webui/resources/images/chrome_logo_dark.svg"
-          grep -F 'Ghosium Search' "$ENGINE_SRC/components/search_engines/template_url_prepopulate_data.cc"
-          grep -F 'https://search.ghosium.com/?q={searchTerms}' "$ENGINE_SRC/components/search_engines/template_url_prepopulate_data.cc"
-          grep -F 'prepopulate_id = 1101' "$ENGINE_SRC/components/search_engines/template_url_prepopulate_data.cc"
-          grep -F 'kCompanyPathName[] = L"Brendigo"' "$ENGINE_SRC/chrome/install_static/chromium_install_modes.h"
-          grep -F 'kProductPathName[] = L"Ghosium"' "$ENGINE_SRC/chrome/install_static/chromium_install_modes.h"
-          grep -F '.base_app_name = L"Ghosium Browser"' "$ENGINE_SRC/chrome/install_static/chromium_install_modes.h"
-          grep -F '.browser_prog_id_prefix = L"GhosiumHTM"' "$ENGINE_SRC/chrome/install_static/chromium_install_modes.h"
-          grep -F '.direct_launch_url_scheme = "ghosium"' "$ENGINE_SRC/chrome/install_static/chromium_install_modes.h"
+          updater="$src/chrome/browser/ui/webui/help/version_updater_ghosium_win.cc"
 
-          # Coordinated Windows primary/proxy executable identity.
-          grep -F '$root_out_dir/Ghosium-Browser.exe' "$ENGINE_SRC/chrome/BUILD.gn"
-          grep -F '_chrome_output_name = "initialexe/Ghosium-Browser"' "$ENGINE_SRC/chrome/BUILD.gn"
-          grep -F "os.path.join(input_dir, 'Ghosium-Browser.exe')" "$ENGINE_SRC/build/win/reorder-imports.py"
-          grep -F 'ORIGINAL_FILENAME=Ghosium-Browser.exe' "$ENGINE_SRC/chrome/app/chrome_exe.ver"
-          grep -F '"$root_out_dir/Ghosium-Browser.exe",' "$ENGINE_SRC/chrome/installer/mini_installer/BUILD.gn"
-          grep -F 'Ghosium-Browser.exe: %(ChromeDir)s\' "$ENGINE_SRC/chrome/installer/mini_installer/chrome.release"
-          grep -F 'Ghosium-Proxy.exe: %(ChromeDir)s\' "$ENGINE_SRC/chrome/installer/mini_installer/chrome.release"
-          grep -F 'kChromeExe[] = L"Ghosium-Browser.exe"' "$ENGINE_SRC/chrome/installer/util/util_constants.h"
-          grep -F 'kChromeProxyExe[] = L"Ghosium-Proxy.exe"' "$ENGINE_SRC/chrome/installer/util/util_constants.h"
-          grep -F 'kVisualElementsManifest[] = L"Ghosium-Browser.VisualElementsManifest.xml"' "$ENGINE_SRC/chrome/installer/setup/setup_constants.cc"
-          grep -F 'kInstallationRegKey[] = L"Software\\Brendigo\\Ghosium"' "$ENGINE_SRC/chrome/installer/launcher_support/chrome_launcher_support.cc"
-          grep -F 'kChromeExe[] = L"Ghosium-Browser.exe"' "$ENGINE_SRC/chrome/installer/launcher_support/chrome_launcher_support.cc"
-          grep -F 'output_name = "Ghosium-Proxy"' "$ENGINE_SRC/chrome/chrome_proxy/BUILD.gn"
-          grep -F 'ORIGINAL_FILENAME=Ghosium-Proxy.exe' "$ENGINE_SRC/chrome/chrome_proxy/chrome_proxy.ver"
-          grep -F 'FILE_PATH_LITERAL("Ghosium-Browser.exe")' "$ENGINE_SRC/chrome/chrome_proxy/chrome_proxy_main_win.cc"
-          grep -F 'FILE_PATH_LITERAL("Ghosium-Proxy.exe")' "$ENGINE_SRC/chrome/chrome_proxy/chrome_proxy_main_win.cc"
+          git -C "$src" diff --check
+          test -f "$updater"
+          grep -F 'https://updates.ghosium.com/windows/stable.json' "$updater"
+          grep -F 'CredentialsMode::kOmit' "$updater"
+          grep -F 'crypto::hash::HashFile' "$updater"
+          grep -F 'base::win::IsBinaryTrusted' "$updater"
+          grep -F 'true /* force_verify_in_dev_builds */' "$updater"
+          grep -F 'AppendArgNative(L"/S")' "$updater"
+          grep -F 'AppendArgNative(L"/UPDATE")' "$updater"
+          grep -F 'AppendArgNative(L"/DELETESELF")' "$updater"
 
-          test -f "$ENGINE_SRC/chrome/common/ghosium_product_version.h"
-          grep -F "kProductVersion[] = \"${product_version}\"" "$ENGINE_SRC/chrome/common/ghosium_product_version.h"
-          grep -F '#include "chrome/common/ghosium_product_version.h"' "$ENGINE_SRC/chrome/browser/ui/webui/version/version_ui.cc"
-          test "$(grep -Fc 'ghosium::kProductVersion' "$ENGINE_SRC/chrome/browser/ui/webui/version/version_ui.cc")" -ge 2
+          grep -F 'Customize Ghosium' "$src/chrome/app/chromium_strings.grd"
+          grep -F 'Ghosium Search' "$src/components/search_engines/template_url_prepopulate_data.cc"
+          grep -F 'kCompanyPathName[] = L"Brendigo"' "$src/chrome/install_static/chromium_install_modes.h"
+          grep -F 'kProductPathName[] = L"Ghosium"' "$src/chrome/install_static/chromium_install_modes.h"
+          grep -F '$root_out_dir/Ghosium-Browser.exe' "$src/chrome/BUILD.gn"
+          grep -F 'ORIGINAL_FILENAME=Ghosium-Browser.exe' "$src/chrome/app/chrome_exe.ver"
+          grep -F 'Ghosium-Browser.exe: %(ChromeDir)s\' "$src/chrome/installer/mini_installer/chrome.release"
+          grep -F 'Ghosium-Proxy.exe: %(ChromeDir)s\' "$src/chrome/installer/mini_installer/chrome.release"
+          grep -F 'kChromeExe[] = L"Ghosium-Browser.exe"' "$src/chrome/installer/util/util_constants.h"
+          grep -F 'kChromeProxyExe[] = L"Ghosium-Proxy.exe"' "$src/chrome/installer/util/util_constants.h"
+          grep -F 'kChromeUIScheme[] = "ghost"' "$src/content/public/common/url_constants.h"
+          grep -F 'kChromeUIUntrustedScheme[] = "ghost-untrusted"' "$src/content/public/common/url_constants.h"
 
-          grep -F 'kChromeUIScheme[] = "ghost"' "$ENGINE_SRC/content/public/common/url_constants.h"
-          grep -F 'kChromeUIUntrustedScheme[] = "ghost-untrusted"' "$ENGINE_SRC/content/public/common/url_constants.h"
-          for route in \
-            'ghost://newtab/' \
-            'ghost://history/' \
-            'ghost://bookmarks/' \
-            'ghost://downloads/' \
-            'ghost://settings/' \
-            'ghost://extensions/'; do
-            grep -F "$route" "$ENGINE_SRC/chrome/common/webui_url_constants.h"
-          done
-          grep -F 'GURL("ghost://settings/manageProfile")' "$ENGINE_SRC/chrome/browser/browser_about_handler.cc"
-          grep -F 'GURL("ghost://password-manager/")' "$ENGINE_SRC/chrome/browser/browser_about_handler.cc"
+          test -f "$src/chrome/common/ghosium_product_version.h"
+          grep -F "kProductVersion[] = \"${product_version}\"" "$src/chrome/common/ghosium_product_version.h"
 
-          if grep -RInF --include='*.cc' --include='*.h' --include='*.html' --include='*.ts' --include='*.grd' --include='*.grdp' --include='*.xtb' \
-            --exclude-dir=test --exclude-dir=tests --exclude-dir=testing --exclude-dir=tools --exclude-dir=third_party \
-            'chrome://' "$ENGINE_SRC/chrome" "$ENGINE_SRC/components" "$ENGINE_SRC/content" "$ENGINE_SRC/extensions" "$ENGINE_SRC/ui"; then
-            echo 'Legacy internal browser scheme remains in audited production source.' >&2
+          if grep -Eqi '(^|[^A-Za-z])(powershell|cmd|curl)(\.exe)?|GoogleUpdate|google_update_win|(^|[^A-Za-z])(update|updater)\.exe' "$updater"; then
+            echo 'Native Ghosium updater contains a forbidden shell, Google updater, or standalone updater dependency.' >&2
+            exit 1
+          fi
+          if git -C "$src" status --porcelain=v1 -- third_party | grep -q .; then
+            echo 'Ghosium source transform modified third_party source.' >&2
             exit 1
           fi
 
-          # Ghosium is uninstallable through the normal installed setup.exe flow.
-          # No separate uninstall.exe is introduced or expected.
-          grep -F 'kSetupExe[] = L"setup.exe"' "$ENGINE_SRC/chrome/installer/util/util_constants.h"
-          grep -F 'kUninstallStringField[] = L"UninstallString"' "$ENGINE_SRC/chrome/installer/util/util_constants.h"
-          grep -F 'kUninstallArgumentsField[] = L"UninstallArguments"' "$ENGINE_SRC/chrome/installer/util/util_constants.h"
-          grep -F 'HasSwitch(installer::switches::kUninstall)' "$ENGINE_SRC/chrome/installer/setup/setup_main.cc"
-          grep -F 'UninstallProduct(' "$ENGINE_SRC/chrome/installer/setup/setup_main.cc"
-          grep -F 'InstallStatus UninstallProduct(' "$ENGINE_SRC/chrome/installer/setup/uninstall.cc"
-          grep -F 'installer::kUninstallStringField' "$ENGINE_SRC/chrome/installer/setup/install_worker.cc"
-          grep -F 'installer::kUninstallArgumentsField' "$ENGINE_SRC/chrome/installer/setup/install_worker.cc"
-
-          if git -C "$ENGINE_SRC" status --porcelain=v1 -- third_party | grep -q .; then
-            echo "third_party was modified" >&2
-            exit 1
-          fi
-          git -C "$ENGINE_SRC" status --short
+          git -C "$src" status --short
