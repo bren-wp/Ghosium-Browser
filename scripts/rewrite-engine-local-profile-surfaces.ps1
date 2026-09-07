@@ -88,7 +88,7 @@ $identityReplacement = @'
   }
 
   return params;
-'@.TrimEnd("`r", "`n")
+'@
 
 $featureButtonsReplacement = @'
 void ProfileMenuView::BuildFeatureButtons() {
@@ -100,7 +100,7 @@ void ProfileMenuView::BuildFeatureButtons() {
 }
 
 #if BUILDFLAG(ENABLE_DICE_SUPPORT)
-'@.TrimEnd("`r", "`n")
+'@
 
 # Disable the Google AI-subscription avatar ring at its shared browser helper so
 # it cannot leak through the profile bubble, app menu, toolbar avatar or other
