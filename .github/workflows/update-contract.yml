@@ -1,0 +1,192 @@
+name: Ghosium Native Update Contract
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'VERSION'
+      - 'ENGINE_SOURCE_REVISION'
+      - 'installer/**'
+      - 'updates-web/**'
+      - 'scripts/rewrite-engine-product-version.ps1'
+      - 'scripts/rewrite-engine-version-updater.ps1'
+      - 'scripts/harden-engine-version-updater.ps1'
+      - 'scripts/verify-engine-version-updater.ps1'
+      - 'scripts/generate-update-manifest.ps1'
+      - '.github/workflows/update-contract.yml'
+  push:
+    branches:
+      - main
+      - ghosium/0.1.1-public-branding
+    paths:
+      - 'VERSION'
+      - 'ENGINE_SOURCE_REVISION'
+      - 'installer/**'
+      - 'updates-web/**'
+      - 'scripts/rewrite-engine-product-version.ps1'
+      - 'scripts/rewrite-engine-version-updater.ps1'
+      - 'scripts/harden-engine-version-updater.ps1'
+      - 'scripts/verify-engine-version-updater.ps1'
+      - 'scripts/generate-update-manifest.ps1'
+      - '.github/workflows/update-contract.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  update-contract:
+    name: Verify native browser updater and release endpoint
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Validate PowerShell updater tooling
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          foreach ($path in @(
+            'scripts/rewrite-engine-product-version.ps1',
+            'scripts/rewrite-engine-version-updater.ps1',
+            'scripts/harden-engine-version-updater.ps1',
+            'scripts/verify-engine-version-updater.ps1',
+            'scripts/generate-update-manifest.ps1'
+          )) {
+            $tokens = $null
+            $errors = $null
+            [void][System.Management.Automation.Language.Parser]::ParseFile(
+              (Resolve-Path $path), [ref]$tokens, [ref]$errors)
+            if ($errors.Count -gt 0) {
+              $errors | ForEach-Object { Write-Error $_.Message }
+              throw "PowerShell parser errors found in $path"
+            }
+          }
+
+      - name: Validate shared-hosting update web
+        shell: bash
+        run: |
+          set -euo pipefail
+          php -l updates-web/index.php
+          php -l updates-web/health.php
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          manifest = json.loads(Path('updates-web/windows/stable.json').read_text(encoding='utf-8'))
+          assert manifest['schema'] == 1
+          assert manifest['product'] == 'Ghosium Browser'
+          assert manifest['platform'] == 'windows'
+          assert manifest['channel'] == 'stable'
+          assert manifest['enabled'] is False, 'repository baseline manifest must fail closed'
+          assert manifest['version'] == Path('VERSION').read_text(encoding='utf-8').strip()
+          assert manifest['url'] == 'https://updates.ghosium.com/windows/Ghosium-Browser-Setup.exe'
+          assert manifest['sha256'] == ''
+          assert manifest['size'] == 0
+          PY
+          grep -Fq 'Options -Indexes' updates-web/.htaccess
+          grep -Fq 'AddType application/json .json' updates-web/.htaccess
+          grep -Fq 'Disallow: /' updates-web/robots.txt
+
+      - name: Verify deterministic release manifest generation
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $dir = Join-Path $env:RUNNER_TEMP 'ghosium-update-manifest-test'
+          New-Item -ItemType Directory -Force -Path $dir | Out-Null
+          $setup = Join-Path $dir 'Ghosium-Browser-Setup.exe'
+          [IO.File]::WriteAllBytes($setup, [Text.Encoding]::UTF8.GetBytes('deterministic Ghosium setup test payload'))
+          $output = Join-Path $dir 'stable.json'
+          ./scripts/generate-update-manifest.ps1 -SetupPath $setup -OutputPath $output
+          $manifest = Get-Content $output -Raw | ConvertFrom-Json
+          $expectedHash = (Get-FileHash $setup -Algorithm SHA256).Hash.ToLowerInvariant()
+          if (!$manifest.enabled -or $manifest.schema -ne 1 -or
+              $manifest.version -ne (Get-Content VERSION -Raw).Trim() -or
+              $manifest.sha256 -ne $expectedHash -or
+              [int64]$manifest.size -ne (Get-Item $setup).Length) {
+            throw 'Generated update manifest failed deterministic verification.'
+          }
+
+      - name: Reject standalone maintenance executables
+        shell: bash
+        run: |
+          set -euo pipefail
+          if find . -type f \( \
+              -iname 'update.exe' -o \
+              -iname 'updater.exe' -o \
+              -iname 'ghosium-update.exe' -o \
+              -iname 'ghosium-updater.exe' -o \
+              -iname 'uninstall.exe' -o \
+              -iname 'ghosium-uninstall.exe' \
+            \) -print -quit | grep -q .; then
+            echo 'Ghosium must use Ghosium-Browser-Setup.exe for maintenance; standalone updater/uninstaller binaries are forbidden.' >&2
+            exit 1
+          fi
+          grep -Fq '${GetOptions} $R0 "/UPDATE" $R1' installer/ghosium.nsi
+          grep -Fq '${GetOptions} $R0 "/UNINSTALL" $R1' installer/ghosium.nsi
+          grep -Fq 'Ghosium-Browser-Setup.exe' installer/ghosium.nsi
+
+      - name: Sparse checkout pinned Chromium update surface
+        shell: bash
+        run: |
+          set -euo pipefail
+          src="${RUNNER_TEMP}/ghosium-updater-source"
+          revision="$(tr -d '\r\n ' < ENGINE_SOURCE_REVISION)"
+
+          git init "$src"
+          git -C "$src" remote add origin https://github.com/chromium/chromium.git
+          git -C "$src" config core.sparseCheckout true
+          mkdir -p "$src/.git/info"
+          cat > "$src/.git/info/sparse-checkout" <<'EOF'
+          /chrome/browser/ui/webui/help/BUILD.gn
+          /chrome/browser/ui/webui/help/version_updater_basic.cc
+          EOF
+          git -C "$src" fetch --depth=1 --filter=blob:none origin "$revision"
+          git -C "$src" checkout --detach FETCH_HEAD
+          test "$(git -C "$src" rev-parse HEAD)" = "$revision"
+          echo "GHOSIUM_UPDATER_SRC=$src" >> "$GITHUB_ENV"
+
+      - name: Apply native updater transform twice
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          ./scripts/rewrite-engine-version-updater.ps1 -SourceRoot $env:GHOSIUM_UPDATER_SRC
+          ./scripts/harden-engine-version-updater.ps1 -SourceRoot $env:GHOSIUM_UPDATER_SRC
+          ./scripts/rewrite-engine-version-updater.ps1 -SourceRoot $env:GHOSIUM_UPDATER_SRC
+          ./scripts/harden-engine-version-updater.ps1 -SourceRoot $env:GHOSIUM_UPDATER_SRC
+          ./scripts/verify-engine-version-updater.ps1 -SourceRoot $env:GHOSIUM_UPDATER_SRC
+
+      - name: Verify fail-closed updater source
+        shell: bash
+        run: |
+          set -euo pipefail
+          src="$GHOSIUM_UPDATER_SRC"
+          updater="$src/chrome/browser/ui/webui/help/version_updater_ghosium_win.cc"
+
+          grep -Fq '#include <algorithm>' "$updater"
+          grep -Fq 'CredentialsMode::kOmit' "$updater"
+          grep -Fq 'https://updates.ghosium.com/windows/stable.json' "$updater"
+          grep -Fq 'crypto::hash::HashFile' "$updater"
+          grep -Fq 'base::win::IsBinaryTrusted' "$updater"
+          grep -Fq 'true /* force_verify_in_dev_builds */' "$updater"
+          grep -Fq 'AppendArgNative(L"/S")' "$updater"
+          grep -Fq 'AppendArgNative(L"/UPDATE")' "$updater"
+          grep -Fq 'AppendArgNative(L"/DELETESELF")' "$updater"
+
+          if grep -Eqi '(^|[^A-Za-z])(powershell|cmd|curl)(\.exe)?|GoogleUpdate|google_update_win|update\.exe|updater\.exe' "$updater"; then
+            echo 'Native updater contains a forbidden shell, Google updater, or standalone updater dependency.' >&2
+            exit 1
+          fi
+
+          git -C "$src" diff --check
+          if git -C "$src" status --porcelain=v1 -- third_party | grep -q .; then
+            echo 'Native updater transformation modified third_party source.' >&2
+            exit 1
+          fi
+
+          echo 'Ghosium update contract: first-party HTTPS manifest, exact version/size/hash validation, mandatory Authenticode publisher verification, and same-Setup /UPDATE maintenance.'
