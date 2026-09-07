@@ -54,6 +54,7 @@ jobs:
             'scripts/rewrite-engine-product-links.ps1',
             'scripts/rewrite-engine-default-search.ps1',
             'scripts/rewrite-engine-windows-identity.ps1',
+            'scripts/rewrite-engine-windows-executable.ps1',
             'scripts/rewrite-engine-product-version.ps1',
             'scripts/rewrite-engine-internal-scheme.ps1',
             'scripts/verify-engine-locales.ps1',
@@ -232,16 +233,27 @@ jobs:
           git -C "$src" config core.sparseCheckout true
           mkdir -p "$src/.git/info"
           cat > "$src/.git/info/sparse-checkout" <<'EOF'
+          /build/win/reorder-imports.py
+          /chrome/BUILD.gn
+          /chrome/app/chrome_exe.ver
           /chrome/app/chromium_strings.grd
           /chrome/app/settings_chromium_strings.grdp
           /chrome/app/resources/
           /chrome/app/theme/chromium/
+          /chrome/chrome_proxy/BUILD.gn
+          /chrome/chrome_proxy/chrome_proxy.ver
+          /chrome/chrome_proxy/chrome_proxy_main_win.cc
           /chrome/common/url_constants.h
           /chrome/common/webui_url_constants.h
           /chrome/install_static/chromium_install_modes.h
+          /chrome/installer/launcher_support/chrome_launcher_support.cc
+          /chrome/installer/mini_installer/BUILD.gn
+          /chrome/installer/mini_installer/chrome.release
+          /chrome/installer/setup/setup_constants.cc
           /chrome/installer/setup/setup_main.cc
           /chrome/installer/setup/uninstall.cc
           /chrome/installer/setup/install_worker.cc
+          /chrome/installer/util/util_constants.h
           /chrome/installer/util/util_constants.h
           /chrome/browser/browser_about_handler.cc
           /chrome/browser/ui/chrome_pages.cc
@@ -287,6 +299,24 @@ jobs:
           grep -F '.base_app_name = L"Ghosium Browser"' "$ENGINE_SRC/chrome/install_static/chromium_install_modes.h"
           grep -F '.browser_prog_id_prefix = L"GhosiumHTM"' "$ENGINE_SRC/chrome/install_static/chromium_install_modes.h"
           grep -F '.direct_launch_url_scheme = "ghosium"' "$ENGINE_SRC/chrome/install_static/chromium_install_modes.h"
+
+          # Coordinated Windows primary/proxy executable identity.
+          grep -F '$root_out_dir/Ghosium-Browser.exe' "$ENGINE_SRC/chrome/BUILD.gn"
+          grep -F '_chrome_output_name = "initialexe/Ghosium-Browser"' "$ENGINE_SRC/chrome/BUILD.gn"
+          grep -F "os.path.join(input_dir, 'Ghosium-Browser.exe')" "$ENGINE_SRC/build/win/reorder-imports.py"
+          grep -F 'ORIGINAL_FILENAME=Ghosium-Browser.exe' "$ENGINE_SRC/chrome/app/chrome_exe.ver"
+          grep -F '"$root_out_dir/Ghosium-Browser.exe",' "$ENGINE_SRC/chrome/installer/mini_installer/BUILD.gn"
+          grep -F 'Ghosium-Browser.exe: %(ChromeDir)s\' "$ENGINE_SRC/chrome/installer/mini_installer/chrome.release"
+          grep -F 'Ghosium-Proxy.exe: %(ChromeDir)s\' "$ENGINE_SRC/chrome/installer/mini_installer/chrome.release"
+          grep -F 'kChromeExe[] = L"Ghosium-Browser.exe"' "$ENGINE_SRC/chrome/installer/util/util_constants.h"
+          grep -F 'kChromeProxyExe[] = L"Ghosium-Proxy.exe"' "$ENGINE_SRC/chrome/installer/util/util_constants.h"
+          grep -F 'kVisualElementsManifest[] = L"Ghosium-Browser.VisualElementsManifest.xml"' "$ENGINE_SRC/chrome/installer/setup/setup_constants.cc"
+          grep -F 'kInstallationRegKey[] = L"Software\\Brendigo\\Ghosium"' "$ENGINE_SRC/chrome/installer/launcher_support/chrome_launcher_support.cc"
+          grep -F 'kChromeExe[] = L"Ghosium-Browser.exe"' "$ENGINE_SRC/chrome/installer/launcher_support/chrome_launcher_support.cc"
+          grep -F 'output_name = "Ghosium-Proxy"' "$ENGINE_SRC/chrome/chrome_proxy/BUILD.gn"
+          grep -F 'ORIGINAL_FILENAME=Ghosium-Proxy.exe' "$ENGINE_SRC/chrome/chrome_proxy/chrome_proxy.ver"
+          grep -F 'FILE_PATH_LITERAL("Ghosium-Browser.exe")' "$ENGINE_SRC/chrome/chrome_proxy/chrome_proxy_main_win.cc"
+          grep -F 'FILE_PATH_LITERAL("Ghosium-Proxy.exe")' "$ENGINE_SRC/chrome/chrome_proxy/chrome_proxy_main_win.cc"
 
           test -f "$ENGINE_SRC/chrome/common/ghosium_product_version.h"
           grep -F "kProductVersion[] = \"${product_version}\"" "$ENGINE_SRC/chrome/common/ghosium_product_version.h"
