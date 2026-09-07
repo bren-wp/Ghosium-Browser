@@ -18,8 +18,9 @@ $expectedRevision = (Get-Content (Join-Path $repoRoot 'ENGINE_SOURCE_REVISION') 
 $argsTemplate = Join-Path $repoRoot 'engine/build/windows-x64.args.gn'
 $productLicense = Join-Path $repoRoot 'LICENSE'
 $thirdPartyNotices = Join-Path $repoRoot 'THIRD_PARTY_NOTICES.md'
+$legalPayloadRewrite = Join-Path $PSScriptRoot 'rewrite-engine-legal-payload.ps1'
 
-foreach ($requiredFile in @($argsTemplate, $productLicense, $thirdPartyNotices)) {
+foreach ($requiredFile in @($argsTemplate, $productLicense, $thirdPartyNotices, $legalPayloadRewrite)) {
   if (!(Test-Path $requiredFile -PathType Leaf)) {
     throw "Missing deterministic Ghosium source-build input: $requiredFile"
   }
@@ -42,6 +43,14 @@ if (!(Test-Path (Join-Path $sourceRootResolved '.git'))) {
 $actualRevision = (& git -C $sourceRootResolved rev-parse HEAD).Trim()
 if ($LASTEXITCODE -ne 0 -or $actualRevision -ne $expectedRevision) {
   throw "Chromium source must be detached at $expectedRevision; found $actualRevision"
+}
+
+# Integrate legal documents into the declared mini-installer source graph before
+# GN sees the target. This patch is source-revision pinned and order-independent
+# with the public executable rename.
+& $legalPayloadRewrite -SourceRoot $sourceRootResolved
+if ($LASTEXITCODE -ne 0) {
+  throw 'Ghosium source-built legal payload integration failed.'
 }
 
 $gn = Get-Command gn -ErrorAction SilentlyContinue
