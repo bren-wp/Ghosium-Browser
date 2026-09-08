@@ -3,6 +3,8 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/inc/search.php';
 require_once __DIR__ . '/inc/bangs.php';
+require_once __DIR__ . '/inc/ui.php';
+
 ghosium_headers(false);
 rate_limit_or_fail();
 
@@ -16,14 +18,8 @@ if (is_array($bang)) {
 }
 
 $results = $query !== '' ? ghosium_search($query) : [];
-$stats = $query === '' ? ghosium_search_stats() : [];
 if ($query !== '') {
     header('X-Robots-Tag: noindex, nofollow, noarchive');
-}
-
-function e(string $value): string
-{
-    return htmlspecialchars($value, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
 }
 ?><!doctype html>
 <html lang="en">
@@ -31,87 +27,97 @@ function e(string $value): string
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#111016">
   <meta name="referrer" content="no-referrer">
+  <meta name="application-name" content="Ghosium Search">
   <?php if ($query !== ''): ?><meta name="robots" content="noindex,nofollow,noarchive"><?php endif; ?>
-  <title><?= $query !== '' ? e($query) . ' — ' : '' ?>Ghosium Search</title>
+  <title><?= $query !== '' ? ghosium_escape($query) . ' — ' : '' ?>Ghosium Search</title>
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="preload" href="/assets/ghosium-mark.svg" as="image" type="image/svg+xml">
   <link rel="stylesheet" href="/assets/app.css">
 </head>
 <body class="<?= $query === '' ? 'home' : 'results-page' ?>">
-  <header class="topbar">
-    <a class="brand" href="/" aria-label="Ghosium Search home">
-      <img src="/assets/ghosium-mark.svg" alt="" width="34" height="34">
-      <span>Ghosium <strong>Search</strong></span>
-    </a>
-    <?php if ($query !== ''): ?>
-      <form class="top-search" method="get" action="/" role="search">
-        <label class="sr-only" for="top-q">Search the web</label>
-        <input id="top-q" name="q" type="search" value="<?= e($query) ?>" autocomplete="off" maxlength="180" spellcheck="false">
-        <button type="submit">Search</button>
-      </form>
-    <?php endif; ?>
+  <header class="browser-bar">
+    <div class="browser-bar__inner">
+      <?php ghosium_render_brand($query !== ''); ?>
+      <?php if ($query !== ''): ?>
+        <div class="browser-bar__search">
+          <?php ghosium_render_search_form($query, true); ?>
+        </div>
+      <?php endif; ?>
+      <nav class="browser-bar__nav" aria-label="Ghosium products">
+        <a href="https://ghosium.com/">Browser</a>
+        <a href="https://store.ghosium.com/">Store</a>
+        <a href="https://ghosium.com/support">Support</a>
+      </nav>
+    </div>
   </header>
 
-  <main>
-    <?php if ($query === ''): ?>
-      <section class="hero">
-        <img class="hero-mark" src="/assets/ghosium-mark.svg" alt="" width="88" height="88">
-        <p class="eyebrow">GHOSIUM SEARCH</p>
-        <h1>Search with <span>Ghosium</span></h1>
-        <p class="lead">A lightweight Ghosium-owned search surface for shared hosting, with a first-party index, optional server-side provider and no application advertising profile.</p>
-        <form class="hero-search" method="get" action="/" role="search">
-          <label class="sr-only" for="q">Ghosium Search</label>
-          <input id="q" name="q" type="search" autofocus autocomplete="off" maxlength="180" spellcheck="false" placeholder="Search the web">
-          <button type="submit">Search</button>
-        </form>
-        <div class="query-tools" aria-label="Advanced search examples">
-          <code>site:example.com</code>
-          <code>intitle:privacy</code>
-          <code>&quot;exact phrase&quot;</code>
-          <code>-exclude</code>
-          <code title="Explicit external shortcut">!gh query</code>
+  <?php if ($query === ''): ?>
+    <main class="home-main">
+      <section class="search-stage" aria-labelledby="search-title">
+        <div class="search-stage__mark" aria-hidden="true">
+          <img src="/assets/ghosium-mark.svg" alt="" width="92" height="92">
         </div>
-        <p class="privacy-note">No tracking cookies · no account required · external !bang shortcuts only when explicitly requested</p>
-        <div class="index-health" aria-label="Ghosium Search index status">
-          <span><strong><?= number_format((int)($stats['pages'] ?? 0)) ?></strong> indexed pages</span>
-          <span><strong><?= number_format((int)($stats['domains'] ?? 0)) ?></strong> domains</span>
-          <span><?= !empty($stats['provider_enabled']) ? 'Hybrid provider enabled' : 'First-party index mode' ?></span>
+        <div class="search-stage__identity">
+          <span>Ghosium</span>
+          <strong>Search</strong>
+        </div>
+        <h1 id="search-title">Search without the noise.</h1>
+        <p class="search-stage__lead">One focused search box, clear results and the same visual language as Ghosium Browser.</p>
+        <div class="search-stage__form">
+          <?php ghosium_render_search_form('', false, true); ?>
+        </div>
+        <div class="search-stage__signals" aria-label="Ghosium Search principles">
+          <span><i aria-hidden="true"></i> Focused interface</span>
+          <span><i aria-hidden="true"></i> Fast navigation</span>
+          <span><i aria-hidden="true"></i> No account required</span>
         </div>
       </section>
-    <?php else: ?>
-      <section class="results" aria-labelledby="results-title">
-        <p class="count" id="results-title"><?= count($results) ?> results for <strong><?= e($query) ?></strong></p>
-        <?php if ($results === []): ?>
-          <article class="empty">
-            <h2>No matching results in the current search sources.</h2>
-            <p>Try broader terms, remove a filter, add more indexed seed domains, or configure a compatible server-side search provider.</p>
-          </article>
-        <?php endif; ?>
-        <?php foreach ($results as $result):
-          $host = (string)(parse_url((string)$result['url'], PHP_URL_HOST) ?: '');
-        ?>
-          <article class="result">
-            <div class="result-host"><?= e($host) ?></div>
-            <h2><a href="<?= e((string)$result['url']) ?>" rel="noopener noreferrer"><?= e((string)$result['title']) ?></a></h2>
-            <?php if ((string)$result['description'] !== ''): ?><p><?= e((string)$result['description']) ?></p><?php endif; ?>
-          </article>
-        <?php endforeach; ?>
-      </section>
-    <?php endif; ?>
-  </main>
+    </main>
+  <?php else: ?>
+    <main class="results-main">
+      <section class="results-shell" aria-labelledby="results-title">
+        <div class="results-heading">
+          <div>
+            <p class="results-heading__eyebrow">Web results</p>
+            <h1 id="results-title"><?= ghosium_escape($query) ?></h1>
+          </div>
+          <span class="results-heading__count"><?= number_format(count($results)) ?> result<?= count($results) === 1 ? '' : 's' ?></span>
+        </div>
 
-  <footer>
-    <span>Ghosium Search</span>
-    <nav aria-label="Ghosium links">
-      <a href="https://ghosium.com/">Home</a>
-      <a href="https://store.ghosium.com/">Store</a>
-      <a href="https://ghosium.com/support">Support</a>
-      <a href="https://ghosium.com/security">Security</a>
-      <a href="https://ghosium.com/legal/terms">Terms</a>
-      <a href="https://ghosium.com/legal/privacy-policy">Privacy</a>
-      <a href="https://ghosium.com/legal/licenses">Licenses</a>
-      <a href="/health.php">Status</a>
-    </nav>
+        <?php if ($results === []): ?>
+          <article class="empty-state">
+            <div class="empty-state__icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" width="26" height="26" focusable="false">
+                <path d="m20 20-4.35-4.35m2.35-5.15a7.5 7.5 0 1 1-15 0 7.5 7.5 0 0 1 15 0Z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>
+              </svg>
+            </div>
+            <h2>No results found</h2>
+            <p>Try another search with fewer or different words.</p>
+          </article>
+        <?php else: ?>
+          <div class="results-list">
+            <?php foreach ($results as $result): ?>
+              <?php ghosium_render_result($result); ?>
+            <?php endforeach; ?>
+          </div>
+        <?php endif; ?>
+      </section>
+    </main>
+  <?php endif; ?>
+
+  <footer class="site-footer">
+    <div class="site-footer__inner">
+      <span>Ghosium Search</span>
+      <nav aria-label="Ghosium links">
+        <a href="https://ghosium.com/security">Security</a>
+        <a href="https://ghosium.com/legal/privacy-policy">Privacy</a>
+        <a href="https://ghosium.com/legal/terms">Terms</a>
+        <a href="https://ghosium.com/legal/licenses">Licenses</a>
+        <a href="/health.php">Status</a>
+      </nav>
+    </div>
   </footer>
 </body>
 </html>
