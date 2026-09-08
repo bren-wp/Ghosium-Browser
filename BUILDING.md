@@ -2,7 +2,7 @@
 
 ## Current development line
 
-The active product version is `0.1.3`. Ghosium Browser is built as a full-source Windows x64 product. A source audit, patch-only result, historical precompiled package, renamed technical installer or wrapper executable is not a production Ghosium release.
+The active product version is `0.1.4`. Ghosium Browser is built as a full-source Windows x64 product. A source audit, patch-only result, historical precompiled package, renamed technical installer or wrapper executable is not a production Ghosium release.
 
 The canonical production workflow is:
 
@@ -21,8 +21,8 @@ The release path is fail-closed:
 3. validate the controlled Windows builder and exact `DEPOT_TOOLS_REVISION`;
 4. validate revision-pinned transformation anchors;
 5. bootstrap/reset the source workspace to `ENGINE_SOURCE_REVISION`;
-6. apply Ghosium identity, branding, public-surface removal, localization, product version, `ghost://` routing, Search, Store/update destinations and Windows executable identity;
-7. verify the transformed source and prove Ghosium transformations did not edit `third_party/`;
+6. apply Ghosium identity, branding, public-surface removal, localization, product version, native `ghost://` routing, Search, Store/update destinations and Windows executable identity;
+7. verify the transformed source, including canonical native profile/password WebUI hosts, and prove Ghosium transformations did not edit `third_party/`;
 8. apply/verify native performance defaults;
 9. configure the reviewed Windows x64 GN arguments;
 10. compile the browser and technical packaging targets from source;
@@ -71,9 +71,17 @@ The technical source-runtime archive is retained only as workflow evidence. It i
 
 Do not globally rename an internal build target or DLL name without a coordinated migration that proves dependency resolution, process spawning, DLL loading, installer layout, sandbox/crash integration and runtime behavior.
 
+## Native internal WebUI hosts
+
+The product namespace is `ghost://` / `ghost-untrusted://`.
+
+`ghost://profiles/` is bound to the existing native profile-picker controller by changing the canonical host constant used by its WebUI config and data source. `ghost://passwords/` is bound the same way to the native password-manager controller. The source transform removes the old `browser_about_handler.cc` redirect aliases, and `verify-engine-fork.ps1` rejects their return.
+
+This preserves the maintained profile/password implementations while making the Ghosium URLs canonical product hosts instead of redirect shims.
+
 ## 38-language contract
 
-Ghosium 0.1.3 supports 38 locales. English (`en-US`) is the primary/default language and Croatian (`hr`) is mandatory.
+Ghosium 0.1.4 supports 38 locales. English (`en-US`) is the primary/default language and Croatian (`hr`) is mandatory.
 
 The browser and interactive Setup must expose the same locale set. CI verifies that contract and verifies the corresponding pinned source translation bundles before an expensive build.
 
@@ -83,7 +91,7 @@ A fresh install initializes the native browser locale from the Setup selection. 
 
 Performance work uses native engine mechanisms and must be benchmark-driven.
 
-The 0.1.3 Windows source configuration includes:
+The 0.1.4 Windows source configuration includes:
 
 ```text
 enable_background_mode = false
@@ -102,7 +110,7 @@ The following are forbidden performance shortcuts:
 - disabling extension or update trust verification;
 - applying a renderer-process cap solely to improve RAM numbers.
 
-Do not publish performance claims until the compiled source-built 0.1.3 binary is measured with the same benchmark methodology as the accepted baseline.
+Do not publish performance claims until the compiled source-built 0.1.4 binary is measured with the same benchmark methodology as the accepted baseline.
 
 The full-source workflow requires `GHOSIUM-PERFORMANCE.json` from the newly compiled runtime. Benchmark schema v2 records cold/warm first-usable-window startup, memory, process count, handles, CPU, process I/O, 1/5/10-tab scenarios, 60-second idle activity, best-effort per-process GPU memory and Ghosium-owned TCP/UDP endpoint activity. Unsupported GPU telemetry is reported as unavailable rather than as zero. Endpoint counts are not represented as byte-level network attribution.
 
@@ -166,12 +174,13 @@ Use repository scripts rather than ad-hoc source edits:
 ./scripts/verify-source-builder-host.ps1
 ./scripts/bootstrap-engine-source.ps1 -Destination <work-root>
 ./scripts/apply-engine-branding.ps1 -SourceRoot <work-root>\src
-./scripts/rewrite-engine-product-version.ps1 -SourceRoot <work-root>\src
 ./scripts/verify-engine-fork.ps1 -SourceRoot <work-root>\src
 ./scripts/verify-engine-windows-executable.ps1 -SourceRoot <work-root>\src
 ./scripts/verify-engine-version-updater.ps1 -SourceRoot <work-root>\src
 ./scripts/configure-engine-build.ps1 -SourceRoot <work-root>\src -OutDir out/Ghosium
 ```
+
+`apply-engine-branding.ps1` already invokes the product-version and internal-scheme rewrites; do not invoke those transforms a second time in the normal build sequence.
 
 The pinned build graph currently requires the technical targets:
 
