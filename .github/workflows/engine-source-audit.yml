@@ -220,6 +220,7 @@ jobs:
           /chrome/app/chrome_exe.ver
           /chrome/app/chromium_strings.grd
           /chrome/app/settings_chromium_strings.grdp
+          /chrome/app/settings_strings.grdp
           /chrome/app/resources/
           /chrome/app/theme/chromium/
           /chrome/chrome_proxy/BUILD.gn
