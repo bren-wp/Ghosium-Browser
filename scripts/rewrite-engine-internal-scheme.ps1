@@ -1,6 +1,9 @@
 param(
   [Parameter(Mandatory = $true)]
-  [string]$SourceRoot
+  [string]$SourceRoot,
+
+  [Parameter(Mandatory = $false)]
+  [switch]$RequireNoChanges
 )
 
 $ErrorActionPreference = 'Stop'
@@ -10,6 +13,7 @@ $repoRoot = Split-Path -Parent $PSScriptRoot
 $config = Get-Content (Join-Path $repoRoot 'engine/branding/product.json') -Raw | ConvertFrom-Json
 $expectedCommit = (Get-Content (Join-Path $repoRoot 'ENGINE_SOURCE_REVISION') -Raw).Trim()
 $sourceRootResolved = (Resolve-Path $SourceRoot).Path
+$mutationCount = 0
 
 $actualCommit = (& git -C $sourceRootResolved rev-parse HEAD).Trim()
 if ($LASTEXITCODE -ne 0 -or $actualCommit -ne $expectedCommit) {
@@ -37,6 +41,7 @@ function Replace-RequiredLiteral {
       $text.Replace($OldValue, $NewValue),
       [Text.UTF8Encoding]::new($false)
     )
+    $script:mutationCount++
     return
   }
   if (!$text.Contains($NewValue)) {
@@ -149,6 +154,7 @@ foreach ($root in $runtimeRoots) {
     if ($updated -ne $text) {
       [IO.File]::WriteAllText($file.FullName, $updated, [Text.UTF8Encoding]::new($false))
       $updatedFiles++
+      $mutationCount++
     }
   }
 }
@@ -251,4 +257,18 @@ if ($thirdPartyChanges) {
   throw 'Internal UI rebranding modified third_party sources; refusing to continue.'
 }
 
-Write-Host "Ghosium ghost:// routing applied with native profiles/passwords hosts; updated $updatedFiles production source file(s)."
+if ($RequireNoChanges -and $mutationCount -ne 0) {
+  throw "Ghosium internal UI rewrite is not idempotent; a no-change verification pass performed $mutationCount mutation(s)."
+}
+
+Write-Host "Ghosium ghost:// routing applied with native profiles/passwords hosts; updated $updatedFiles production source file(s); total mutations: $mutationCount."
+
+# Every normal transformation immediately proves its fixed point. The nested
+# pass is verification-only by contract: any required mutation fails the build.
+if (!$RequireNoChanges) {
+  & $PSCommandPath -SourceRoot $sourceRootResolved -RequireNoChanges
+  if ($LASTEXITCODE -ne 0) {
+    throw 'Ghosium ghost:// internal UI idempotence verification failed.'
+  }
+  Write-Host 'Ghosium ghost:// internal UI transform idempotence: OK'
+}
