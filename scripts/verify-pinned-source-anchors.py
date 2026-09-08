@@ -176,7 +176,11 @@ FILE_ANCHORS: dict[str, tuple[str, ...]] = {
         '"hostPermissionsLearnMoreLink"',
         "extension_permissions_constants::kRuntimeHostPermissionsHelpURL",
     ),
-    "chrome/browser/resources/settings/about_page/about_page.ts": ("requestUpdate()",),
+    "chrome/browser/resources/settings/about_page/about_page.ts": (
+        "export const ABOUT_PAGE_PRIVACY_POLICY_URL: string =",
+        "'https://policies.google.com/privacy';",
+        "OpenWindowProxyImpl.getInstance().openUrl(ABOUT_PAGE_PRIVACY_POLICY_URL);",
+    ),
     "chrome/installer/setup/setup_main.cc": ("SetupMain", "UninstallProduct"),
     "chrome/installer/setup/uninstall.cc": ("UninstallProduct",),
     "chrome/installer/setup/install_worker.cc": (
