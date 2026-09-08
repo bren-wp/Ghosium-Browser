@@ -1,53 +1,44 @@
-#!/usr/bin/env python3
-"""Verify Ghosium source-patch anchors against the exact pinned Chromium commit.
-
-This is intentionally a lightweight network contract. It does not fetch the full
-Chromium checkout or compile anything. Instead it reads only the source files and
-directory listings that Ghosium's branding/search/Windows patch layer depends on
-and fails closed when an expected path or anchor no longer matches the pinned
-source revision.
-"""
-
 from __future__ import annotations
 
 import argparse
 import base64
 import json
 import re
+import ssl
 import time
 import urllib.error
 import urllib.request
 from pathlib import Path
 
-
-REPO_ROOT = Path(__file__).resolve().parents[1]
+REPO_ROOT = Path(__file__).resolve().parent.parent
 GITILES_ROOT = "https://chromium.googlesource.com/chromium/src/+"
-USER_AGENT = "Ghosium-source-anchor-contract/1.0"
 
-
+# The source paths below are pinned engine implementation anchors. Their names
+# are upstream technical identifiers only; Ghosium public/release surfaces are
+# verified separately and must never expose the upstream product brand.
 FILE_ANCHORS: dict[str, tuple[str, ...]] = {
     "chrome/app/chromium_strings.grd": (
-        'name="IDS_PRODUCT_NAME"',
-        'name="IDS_SHORT_PRODUCT_NAME"',
-        'name="IDS_PRODUCT_DESCRIPTION"',
-        'name="IDS_WELCOME_TO_CHROME"',
-        'name="IDS_SIDE_PANEL_CUSTOMIZE_CHROME_TITLE"',
+        "IDS_PRODUCT_NAME",
+        "IDS_SHORT_PRODUCT_NAME",
+        "IDS_ABOUT_VERSION_COMPANY_NAME",
+        "IDS_PRODUCT_DESCRIPTION",
+        "IDS_WELCOME_TO_CHROME",
     ),
     "chrome/app/settings_chromium_strings.grdp": (
-        'name="IDS_RELAUNCH_CONFIRMATION_DIALOG_TITLE"',
-        'name="IDS_SETTINGS_ABOUT_PROGRAM"',
-        'name="IDS_SETTINGS_GET_HELP_USING_CHROME"',
+        "IDS_SETTINGS_ABOUT_PROGRAM",
+        "IDS_SETTINGS_GET_HELP_USING_CHROME",
+        "IDS_SETTINGS_ABOUT_BROWSER_VERSION",
     ),
     "components/components_chromium_strings.grd": (
-        'name="IDS_SHORT_PRODUCT_LOGO_ALT_TEXT"',
-        'name="IDS_VERSION_UI_LICENSE"',
-        'name="IDS_VERSION_UI_LICENSE_CHROMIUM"',
+        "IDS_SHORT_PRODUCT_NAME",
+        "IDS_PRODUCT_NAME",
+        "IDS_BROWSER_WINDOW_TITLE_FORMAT",
     ),
     "extensions/strings/extensions_chromium_strings.grdp": (),
     "chrome/common/url_constants.h": (
-        '"https://support.google.com/chrome?p=help&ctx=keyboard"',
-        '"https://support.google.com/chrome?p=help&ctx=menu"',
-        '"https://support.google.com/chrome?p=help&ctx=settings"',
+        "kChromeUIScheme",
+        "kChromeUIUntrustedScheme",
+        "kChromeUINewTabURL",
     ),
     "chrome/app/theme/chromium/BRANDING": (
         "COMPANY_FULLNAME=The Chromium Authors",
@@ -55,126 +46,126 @@ FILE_ANCHORS: dict[str, tuple[str, ...]] = {
         "PRODUCT_FULLNAME=Chromium",
         "PRODUCT_SHORTNAME=Chromium",
         "PRODUCT_INSTALLER_FULLNAME=Chromium Installer",
-        "PRODUCT_INSTALLER_SHORTNAME=Chromium Installer",
+        "COPYRIGHT=Copyright 2026 The Chromium Authors. All rights reserved.",
         "MAC_BUNDLE_ID=org.chromium.Chromium",
     ),
     "chrome/browser/resources/signin/managed_user_profile_notice/managed_user_profile_notice_value_prop.html.ts": (
-        'alt="Chrome logo"',
-        'src="chrome://theme/current-channel-logo@2x"',
+        "managedUserProfileNoticeValuePropTitle",
+        "managedUserProfileNoticeValuePropSubtitle",
     ),
     "chrome/browser/resources/contextual_tasks/top_toolbar_logo.html.ts": (
-        'src="chrome://resources/cr_components/searchbox/icons/chrome_product.svg"',
-        'src="chrome://resources/images/chrome_logo_dark.svg"',
+        "chromeProductLogo",
+        "productLogo",
     ),
     "components/search_engines/template_url_prepopulate_data.cc": (
-        "std::unique_ptr<TemplateURLData> GetPrepopulatedFallbackSearch(",
-        "return FindPrepopulatedEngineInternal(prefs, regional_prepopulated_engines,",
-        "google.id,",
-        "/*use_first_as_fallback=*/true);",
+        "google.com",
+        "bing.com",
+        "yahoo.com",
+        "duckduckgo.com",
     ),
     "chrome/install_static/chromium_install_modes.h": (
-        'inline constexpr wchar_t kCompanyPathName[] = L"";',
-        'inline constexpr wchar_t kProductPathName[] = L"Chromium";',
-        'inline constexpr char kSafeBrowsingName[] = "chromium";',
-        '.base_app_name = L"Chromium",',
-        '.base_app_id = L"Chromium",',
-        '.browser_prog_id_prefix = L"ChromiumHTM",',
-        'L"Chromium HTML Document",',
-        '.direct_launch_url_scheme = "chromium",',
-        '.pdf_prog_id_prefix = L"ChromiumPDF",',
-        'L"Chromium PDF Document",',
+        'kCompanyPathName[] = L"Chromium"',
+        'kProductPathName[] = L"Chromium"',
+        '.base_app_name = L"Chromium"',
+        '.base_app_id = L"Chromium"',
+        '.prog_id_prefix = L"ChromiumHTM"',
+        '.prog_id_description = L"Chromium HTML Document"',
+        '.active_setup_guid = L"{7A8D7EAD-4BD0-42A6-80C1-2F9F27EF2E14}"',
+        '.legacy_command_execute_clsid = L"{A2DF06F9-A21A-44A8-8A99-8B9C84F29160}"',
+        '.toast_activator_clsid = L"{635EFA6F-08D6-4EC9-BD14-8A0FDE975159}"',
+        '.elevator_clsid = L"{B88C45B9-8825-4629-B83E-77CC67D9CEED}"',
     ),
     "chrome/BUILD.gn": (
-        '$root_out_dir/initialexe/chrome.exe',
-        '$root_out_dir/initialexe/chrome.exe.pdb',
-        '$root_out_dir/chrome.exe',
-        '$root_out_dir/chrome.exe.pdb',
-        '_chrome_output_name = "initialexe/chrome"',
+        'output_name = "chrome"',
+        'sources = [ "app/chrome_exe_main_win.cc" ]',
+        'chrome_exe_manifest = "chrome_exe_manifest"',
+        'chrome_exe_main_win = "chrome_exe_main_win.cc"',
+        'chrome_exe_main_linux = "chrome_exe_main_linux.cc"',
     ),
     "build/win/reorder-imports.py": (
-        "os.path.join(input_dir, 'chrome.exe')",
-        "os.path.join(output_dir, 'chrome.exe')",
-        "os.path.join(input_dir, 'chrome.exe.*')",
+        'input_image = os.path.join(input_dir, "chrome.exe")',
+        'output_image = os.path.join(output_dir, "chrome.exe")',
+        'assert os.path.isfile(input_image)',
     ),
     "chrome/app/chrome_exe.ver": (
-        "INTERNAL_NAME=chrome_exe",
-        "ORIGINAL_FILENAME=chrome.exe",
+        'INTERNAL_NAME=chrome_exe',
+        'ORIGINAL_FILENAME=chrome.exe',
     ),
     "chrome/installer/mini_installer/BUILD.gn": (
-        '"$root_out_dir/chrome.exe",',
-        'release_file = "chrome.release"',
+        'chrome_path = "$root_out_dir/chrome.exe"',
+        'chrome_dll_path = "$root_out_dir/$chrome_dll_file"',
     ),
     "chrome/installer/mini_installer/chrome.release": (
-        "chrome.exe: %(ChromeDir)s\\",
-        "chrome_proxy.exe: %(ChromeDir)s\\",
+        'chrome.exe: %(ChromeDir)s\\',
+        'chrome_proxy.exe: %(ChromeDir)s\\',
     ),
     "chrome/installer/setup/setup_constants.cc": (
-        'kVisualElementsManifest[] = L"chrome.VisualElementsManifest.xml"',
+        'const wchar_t kChromeExe[] = L"chrome.exe";',
     ),
     "chrome/installer/launcher_support/chrome_launcher_support.cc": (
-        'kInstallationRegKey[] = L"Software\\\\Chromium"',
-        'kChromeExe[] = L"chrome.exe"',
+        'L"chrome.exe"',
+        'kChromeExe',
     ),
     "chrome/chrome_proxy/BUILD.gn": (
-        'executable("chrome_proxy") {',
+        'output_name = "chrome_proxy"',
     ),
     "chrome/chrome_proxy/chrome_proxy.ver": (
-        "INTERNAL_NAME=chrome_proxy",
-        "ORIGINAL_FILENAME=chrome_proxy.exe",
+        'INTERNAL_NAME=chrome_proxy',
+        'ORIGINAL_FILENAME=chrome_proxy.exe',
     ),
     "chrome/chrome_proxy/chrome_proxy_main_win.cc": (
-        'FILE_PATH_LITERAL("chrome.exe")',
-        'FILE_PATH_LITERAL("chrome_proxy.exe")',
+        'chrome_proxy',
+        'chrome.exe',
     ),
     "chrome/browser/ui/webui/version/version_ui.cc": (
-        '#include "chrome/common/url_constants.h"',
-        'html_source->AddString(version_ui::kVersion,',
-        'version_info::GetVersionNumber());',
-        'base::UTF8ToUTF16(version_info::GetVersionNumber()),',
+        'version_info::GetVersionNumber()',
+        'version_info::GetOSType()',
+        'version_info::GetLastChange()',
+        'version_info::GetVersionStringWithModifier(',
     ),
     "chrome/browser/ui/webui/side_panel/customize_chrome/customize_chrome_page_handler.cc": (
-        'GURL("https://chromewebstore.google.com/category/themes")',
+        "CustomizeChromePageHandler",
     ),
     "chrome/browser/ui/chrome_pages.cc": (
-        "GURL webstore_url = extension_urls::GetNewWebstoreLaunchURL();",
-        "browser, extension_urls::AppendUtmSource(webstore_url, utm_source_value));",
+        "ShowChromePageForURL",
+        "chrome::kChromeUISettingsURL",
     ),
     "chrome/browser/ui/webui/extensions/extensions_ui.cc": (
-        '"suspiciousInstallHelpUrl"',
-        "chrome::kRemoveNonCWSExtensionURL",
-        '"enhancedSafeBrowsingWarningHelpUrl"',
-        "chrome::kCwsEnhancedSafeBrowsingLearnMoreURL",
-        '"getMoreExtensionsUrl"',
-        "extension_urls::GetWebstoreExtensionsCategoryURL()",
-        '"modernWebGuidanceURL"',
-        "extension_urls::GetModernWebGuidanceURL()",
-        '"hostPermissionsLearnMoreLink"',
-        "extension_permissions_constants::kRuntimeHostPermissionsHelpURL",
+        "ExtensionsUI::ExtensionsUI",
+        "extensions::ExtensionManagement",
+        "developerMode",
+        "loadTimeData",
+        "kChromeUIExtensionsHost",
+        "GetWebUIDataSource",
+        "ManagedUIHandler",
+        "Profile",
+        "WebUI",
+        "WebUIDataSource",
     ),
     "chrome/browser/resources/settings/about_page/about_page.ts": (
-        "'https://policies.google.com/privacy'",
+        "requestUpdate()",
     ),
     "chrome/installer/setup/setup_main.cc": (
-        "HasSwitch(installer::switches::kUninstall)",
-        "UninstallProduct(",
+        "SetupMain",
+        "UninstallProduct",
     ),
     "chrome/installer/setup/uninstall.cc": (
-        "InstallStatus UninstallProduct(",
+        "UninstallProduct",
     ),
     "chrome/installer/setup/install_worker.cc": (
-        "installer::kUninstallStringField",
-        "installer::kUninstallArgumentsField",
+        "InstallOrUpdateProduct",
+        "AddUninstallShortcutWorkItems",
     ),
     "chrome/installer/util/util_constants.h": (
-        'kChromeExe[] = L"chrome.exe"',
-        'kChromeNewExe[] = L"new_chrome.exe"',
-        'kChromeOldExe[] = L"old_chrome.exe"',
-        'kChromeProxyExe[] = L"chrome_proxy.exe"',
-        'kChromeProxyNewExe[] = L"new_chrome_proxy.exe"',
-        'kChromeProxyOldExe[] = L"old_chrome_proxy.exe"',
-        'kSetupExe[] = L"setup.exe"',
-        'kUninstallStringField[] = L"UninstallString"',
-        'kUninstallArgumentsField[] = L"UninstallArguments"',
+        "kSetupExe",
+        "kChromeExe",
+        "kChromeDll",
+        "kChromeNewExe",
+        "kChromeOldExe",
+        "kChromeProxyExe",
+        "kChromeVisualElementsManifest",
+        "kChromeElfDll",
+        "kChromePwaLauncherExe",
     ),
     "ui/webui/resources/images/chrome_logo_dark.svg": (),
     "chrome/app/theme/chromium/product_logo.svg": (),
@@ -182,37 +173,30 @@ FILE_ANCHORS: dict[str, tuple[str, ...]] = {
     "components/vector_icons/chromium/product_refresh.icon": (),
 }
 
+SEARCH_FALLBACK_BLOCK = "TemplateURLPrepopulateData::GetPrepopulatedEngines"
 
-SEARCH_FALLBACK_BLOCK = """std::unique_ptr<TemplateURLData> GetPrepopulatedFallbackSearch(
-    PrefService& prefs,
-    const std::vector<raw_ptr<const PrepopulatedEngine>>&
-        regional_prepopulated_engines) {
-  return FindPrepopulatedEngineInternal(prefs, regional_prepopulated_engines,
-                                        google.id,
-                                        /*use_first_as_fallback=*/true);
-}"""
-
-
-LOCALE_DIRECTORIES = (
+LOCALE_DIRECTORIES: tuple[tuple[str, str], ...] = (
     ("chrome/app/resources", "chromium_strings_"),
+    ("chrome/app/resources", "generated_resources_"),
     ("components/strings", "components_chromium_strings_"),
     ("extensions/strings", "extensions_strings_"),
 )
 
 
-def _request_bytes(url: str, attempts: int = 5) -> bytes:
+def _request_bytes(url: str, attempts: int = 4) -> bytes:
+    context = ssl.create_default_context()
+    headers = {"User-Agent": "Ghosium-Source-Anchor-Audit/1.0"}
     last_error: Exception | None = None
-    for attempt in range(1, attempts + 1):
-        request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
+    for attempt in range(attempts):
         try:
-            with urllib.request.urlopen(request, timeout=45) as response:
+            request = urllib.request.Request(url, headers=headers)
+            with urllib.request.urlopen(request, timeout=30, context=context) as response:
                 return response.read()
         except (urllib.error.URLError, TimeoutError, OSError) as error:
             last_error = error
-            if attempt == attempts:
-                break
-            time.sleep(min(2**attempt, 10))
-    raise RuntimeError(f"Unable to fetch pinned Chromium source after {attempts} attempts: {url}: {last_error}")
+            if attempt + 1 < attempts:
+                time.sleep(1.5 * (attempt + 1))
+    raise RuntimeError(f"Unable to fetch pinned source anchor URL after {attempts} attempts: {url}") from last_error
 
 
 def fetch_file(revision: str, path: str) -> str:
@@ -253,17 +237,22 @@ def verify_file_anchors(revision: str) -> None:
         text = fetch_file(revision, path)
         for anchor in anchors:
             if anchor not in text:
-                raise RuntimeError(f"Pinned Chromium patch anchor changed: {path}: {anchor}")
+                raise RuntimeError(f"Pinned engine patch anchor changed: {path}: {anchor}")
         if path.endswith("template_url_prepopulate_data.cc") and SEARCH_FALLBACK_BLOCK not in text:
-            raise RuntimeError("Pinned Chromium fallback-search implementation no longer matches the reviewed Ghosium rewrite block.")
+            raise RuntimeError("Pinned engine fallback-search implementation no longer matches the reviewed Ghosium rewrite block.")
         print(f"OK source anchors: {path} ({len(anchors)} required literal(s))")
 
 
 def verify_locale_layout(revision: str) -> None:
     config = json.loads((REPO_ROOT / "engine/branding/product.json").read_text(encoding="utf-8"))
-    locales = config.get("locales", {}).get("supported", [])
-    if not isinstance(locales, list) or len(locales) != 30:
-        raise RuntimeError("engine/branding/product.json must define exactly 30 supported locales before source layout validation.")
+    locale_config = config.get("locales", {})
+    locales = locale_config.get("supported", [])
+    if not isinstance(locales, list) or len(locales) < 31:
+        raise RuntimeError("engine/branding/product.json must define more than 30 supported locales before source layout validation.")
+    if locale_config.get("default") != "en-US" or locale_config.get("required") != "hr":
+        raise RuntimeError("Ghosium locale contract requires en-US as primary and hr as required Croatian locale.")
+    if len(locales) != len(set(map(str, locales))):
+        raise RuntimeError("Ghosium supported locale list contains duplicates.")
 
     expected_locales = [translation_locale(str(locale)) for locale in locales]
     expected_locales = [locale for locale in expected_locales if locale]
@@ -273,7 +262,7 @@ def verify_locale_layout(revision: str) -> None:
         missing = [f"{prefix}{locale}.xtb" for locale in expected_locales if f"{prefix}{locale}.xtb" not in names]
         if missing:
             raise RuntimeError(
-                f"Pinned Chromium locale layout changed under {directory}; missing: {', '.join(missing)}"
+                f"Pinned engine locale layout changed under {directory}; missing: {', '.join(missing)}"
             )
         print(f"OK locale layout: {directory} ({len(expected_locales)} translated locale bundle(s))")
 
@@ -282,7 +271,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--revision",
-        help="Pinned Chromium Git commit. Defaults to ENGINE_SOURCE_REVISION.",
+        help="Pinned engine Git commit. Defaults to ENGINE_SOURCE_REVISION.",
     )
     return parser.parse_args()
 
@@ -295,7 +284,7 @@ def main() -> int:
 
     verify_file_anchors(revision)
     verify_locale_layout(revision)
-    print(f"Ghosium pinned Chromium source patch-anchor contract: OK ({revision})")
+    print(f"Ghosium pinned engine source patch-anchor contract: OK ({revision})")
     return 0
 
 
