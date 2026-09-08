@@ -184,7 +184,7 @@ FILE_ANCHORS: dict[str, tuple[str, ...]] = {
     "chrome/installer/setup/setup_main.cc": ("SetupMain", "UninstallProduct"),
     "chrome/installer/setup/uninstall.cc": ("UninstallProduct",),
     "chrome/installer/setup/install_worker.cc": (
-        "InstallOrUpdateProduct",
+        "AddInstallWorkItems",
         "AddUninstallShortcutWorkItems",
     ),
     "components/performance_manager/user_tuning/prefs.cc": (
