@@ -1,10 +1,10 @@
 # Ghosium Full-Source Windows Builder
 
-This document describes the controlled machine used by `.github/workflows/full-source-windows-build.yml`. The workflow builds the pinned browser engine from source, creates the canonical Ghosium Setup package, performs runtime/install/update/uninstall verification, and on production `main` requires Authenticode signing before release evidence is accepted.
+This document defines the controlled Windows x64 machine used by `.github/workflows/full-source-windows-build.yml`. The workflow builds the pinned engine source, applies the Ghosium fork, compiles the browser, measures the compiled runtime, builds the canonical Ghosium Setup package, performs install/update/uninstall verification and—on production `main`—requires Authenticode signing before an immutable release can be published.
 
-The workflow is intentionally manual and self-hosted. A full Windows browser source checkout and compile is too large and long-running to treat as an ordinary pull-request build.
+The heavyweight workflow is intentionally manual and self-hosted. A source audit or patch smoke is not a completed browser build.
 
-## Required GitHub Actions labels
+## Required runner labels
 
 Register a Windows x64 self-hosted runner with all four labels:
 
@@ -13,15 +13,17 @@ Register a Windows x64 self-hosted runner with all four labels:
 - `X64`
 - `ghosium-source-builder`
 
-Use GitHub repository **Settings → Actions → Runners → New self-hosted runner** to obtain the current registration command and short-lived registration token. **Do not commit runner tokens**, credentials, PATs, PFX files, private keys, signing passwords, service-account secrets or API keys to this repository.
+Use GitHub repository **Settings → Actions → Runners → New self-hosted runner** for the current registration command and short-lived registration token. **Do not commit runner tokens**, PATs, PFX files, private keys, signing passwords, service-account secrets or API keys.
 
-Install the runner as a Windows service. The service account must have read/write access to the source workspace, enough disk space, access to the required compiler/SDK, and—only for production signing—permission to use the configured code-signing certificate private key.
+### Interactive desktop requirement
 
-Keep the service account dedicated to Ghosium builds where practical. Installer smoke tests deliberately refuse unsafe pre-existing test state rather than silently overwriting an unrelated browser installation/profile.
+The production workflow now records cold/warm startup to the first usable Ghosium window. Therefore the `ghosium-source-builder` runner used for the release-candidate run must execute in a dedicated, logged-in **interactive Windows desktop session**. Do not run the measurement stage only in Windows Session 0/a non-interactive service desktop, because that environment cannot prove a first usable browser window.
 
-## Pinned Chromium host requirements
+A dedicated build account is recommended. Keep the machine locked down, keep credentials outside the repository, and restrict access to the account and signing material. The browser benchmark itself does not disable sandboxing, site isolation, certificate validation or GPU security.
 
-The current Ghosium source line pins browser-engine commit `fac978ddceaae0358a2bd69e20a5156ec8dc86ab`. The controlled Windows builder requires:
+## Pinned engine host requirements
+
+The current Ghosium source line pins engine commit `fac978ddceaae0358a2bd69e20a5156ec8dc86ab`. The controlled builder requires:
 
 - x86-64 Windows 10 or newer;
 - a 64-bit process on a genuine x64 host;
@@ -29,28 +31,28 @@ The current Ghosium source line pins browser-engine commit `fac978ddceaae0358a2b
 - NTFS for the source/build workspace;
 - at least 120 GiB free for a fresh workspace and 60 GiB when reusing a complete workspace;
 - Visual Studio 2026 (18.x or newer);
-- **Desktop development with C++** workload;
+- **Desktop development with C++**;
 - ATL/MFC support;
 - Windows 11 SDK `10.0.28000.2270`;
 - Windows SDK Debugging Tools `10.0.26100.3323` or newer;
 - current Git for Windows;
-- Chromium `depot_tools` at the front of `PATH`;
+- pinned `depot_tools` at the front of `PATH`;
 - `DEPOT_TOOLS_WIN_TOOLCHAIN=0`;
-- `DEPOT_TOOLS_UPDATE=0` during the reproducible workflow;
-- `GIT_TERMINAL_PROMPT=0` for unattended operation;
+- `DEPOT_TOOLS_UPDATE=0` during verified builds;
+- `GIT_TERMINAL_PROMPT=0`;
 - a short local source path without spaces.
 
 For practical compile times, 16 or more logical processors and a fast SSD are recommended.
 
 ## Pinned depot_tools revision
 
-`DEPOT_TOOLS_REVISION` must match the `src/third_party/depot_tools` entry from the **same pinned Chromium DEPS file**. For the current source revision it is:
+`DEPOT_TOOLS_REVISION` must match the `src/third_party/depot_tools` entry from the same pinned engine DEPS file. For the current source revision:
 
 ```text
 81577f19a8497ba7e41afac322e8f03553a863ec
 ```
 
-Install and pin it under a short path, for example:
+Example installation:
 
 ```powershell
 New-Item -ItemType Directory -Force C:\src | Out-Null
@@ -61,7 +63,7 @@ git -C C:\src\depot_tools checkout --detach $depotRevision
 git -C C:\src\depot_tools reset --hard $depotRevision
 ```
 
-Verify the exact commit and clean tracked-file state:
+Verify the exact revision and clean tracked-file state:
 
 ```powershell
 $expected = (Get-Content .\DEPOT_TOOLS_REVISION -Raw).Trim()
@@ -72,7 +74,7 @@ if (git -C C:\src\depot_tools status --porcelain=v1 --untracked-files=no) {
 }
 ```
 
-Put `C:\src\depot_tools` at the front of the runner service account's `PATH` and set:
+Put `C:\src\depot_tools` at the front of the build account's `PATH` and set:
 
 ```powershell
 [Environment]::SetEnvironmentVariable('DEPOT_TOOLS_WIN_TOOLCHAIN', '0', 'User')
@@ -80,11 +82,11 @@ Put `C:\src\depot_tools` at the front of the runner service account's `PATH` and
 [Environment]::SetEnvironmentVariable('GIT_TERMINAL_PROMPT', '0', 'User')
 ```
 
-Restart the runner service after changing its environment. If depot_tools initialization modifies the checkout, restore it to the exact `DEPOT_TOOLS_REVISION` and a clean tracked-file state before Ghosium preflight.
+Restart/relaunch the runner after changing its environment. If depot_tools initialization modifies tracked files, restore it to the exact `DEPOT_TOOLS_REVISION` before preflight.
 
 ## Git configuration
 
-Configure the runner service account:
+Configure the runner account:
 
 ```powershell
 git config --global core.autocrlf false
@@ -96,110 +98,134 @@ git config --global core.longpaths true
 
 The preflight requires `core.autocrlf=false`, `core.filemode=false`, `core.fscache=true`, and `core.longpaths=true`.
 
-## Persistent source workspace
+## Persistent Ghosium engine workspace
 
-The default persistent workspace is:
+The default workspace is:
 
 ```text
-C:\src\ghosium-chromium
+C:\src\ghosium-engine
 ```
 
 To use another local NTFS drive, configure `GHOSIUM_SOURCE_WORK`, for example:
 
 ```powershell
-[Environment]::SetEnvironmentVariable('GHOSIUM_SOURCE_WORK', 'D:\src\ghosium-chromium', 'User')
+[Environment]::SetEnvironmentVariable('GHOSIUM_SOURCE_WORK', 'D:\src\ghosium-engine', 'User')
 ```
 
-The workspace must be either completely empty or a complete reusable checkout containing both `src\.git` and the top-level `.gclient`. A non-empty partial checkout fails preflight. Do not use FAT32/exFAT, a network share, a path with spaces, or a temporary runner directory for the Chromium source workspace.
+The workspace must be completely empty or a complete reusable checkout containing both `src\.git` and the top-level `.gclient`. A non-empty partial checkout fails preflight. Do not use FAT32/exFAT, a network share, a path with spaces or a temporary runner directory for the engine source workspace.
 
 ## Production Authenticode signing
 
-The canonical Setup can be built unsigned for non-production structural/testing workflows, but a stable production `main` release is fail-closed and requires signing.
+The canonical Setup can be built unsigned for non-production structural/testing runs. A stable production `main` release is fail-closed and requires signing.
 
-Install or expose the Ghosium/Brendigo code-signing certificate to the runner service account in one of:
+Expose the Ghosium/Brendigo code-signing certificate to the build account under one of:
 
 ```text
 Cert:\CurrentUser\My
 Cert:\LocalMachine\My
 ```
 
-The certificate must:
+The certificate must have an accessible private key, be valid at build time and represent the intended Ghosium publisher identity.
 
-- have an accessible private key;
-- be within its validity period;
-- be usable by the runner service account;
-- have the publisher identity intended for Ghosium production binaries.
+Configure:
 
-Configure the repository/environment values used by the workflow:
-
-- GitHub Actions secret `GHOSIUM_SIGN_CERT_THUMBPRINT` — the 40-character certificate thumbprint selected for signing;
+- GitHub Actions secret `GHOSIUM_SIGN_CERT_THUMBPRINT` — certificate thumbprint;
 - GitHub Actions variable `GHOSIUM_TIMESTAMP_URL` — absolute HTTP(S) RFC3161 timestamp endpoint.
 
-The repository stores only the certificate selector/contract. It must never contain the signing private key or PFX password. If a certificate is imported from a PFX, provision that PFX securely outside the repository and restrict private-key permissions to the builder account.
-
-`build-source-release-installer.ps1 -RequireSigning` uses the pinned SDK `signtool.exe` with SHA-256 file digests and RFC3161 timestamping. It signs `Ghosium-Browser.exe`, `Ghosium-Proxy.exe`, then the final `Ghosium-Browser-Setup.exe`. It verifies each signature and requires the Setup publisher subject to match the signed browser publisher subject.
+The repository must never contain the private key or PFX password. `build-source-release-installer.ps1 -RequireSigning` signs the Ghosium browser/proxy and final `Ghosium-Browser-Setup.exe`, then verifies the signatures and publisher relationship.
 
 ## Builder preflight
 
-Run preflight from a Ghosium repository checkout:
+From a Ghosium repository checkout:
 
 ```powershell
 $env:DEPOT_TOOLS_WIN_TOOLCHAIN = '0'
 $env:DEPOT_TOOLS_UPDATE = '0'
 $env:GIT_TERMINAL_PROMPT = '0'
 .\scripts\verify-source-builder-host.ps1 `
-  -WorkRoot 'C:\src\ghosium-chromium' `
+  -WorkRoot 'C:\src\ghosium-engine' `
   -ReportPath '.\artifacts\full-source\GHOSIUM-BUILDER-READY.json'
 ```
 
 The script fails closed on architecture, Visual Studio/SDK, filesystem, disk, Git settings, exact depot_tools revision, workspace completeness or unattended-build invariants. It writes no credentials to the report.
 
-Before an expensive checkout/build, `scripts/verify-pinned-source-anchors.py` also validates the exact source anchors used by Ghosium transformations.
+Before the expensive source sync/build, `scripts/verify-pinned-source-anchors.py` validates the exact source anchors used by Ghosium transformations.
 
 ## Running the production full-source workflow
 
-Once the runner is **Online** with the `ghosium-source-builder` label:
+Once the interactive runner is online with the `ghosium-source-builder` label:
 
 1. Open **Actions**.
 2. Select **Ghosium Full-Source Windows Build**.
-3. Choose **Run workflow** on `main` for a production release candidate.
-4. Keep the controlled runner online until the workflow finishes.
+3. Choose **Run workflow** on the exact release-candidate commit/branch. Use `main` only when the commit is intended to pass production signing and release publication.
+4. Keep the controlled interactive runner online until the workflow completes.
 
-A successful workflow must complete all major stages below.
+A successful production run must complete every stage below.
 
-### 1. Build and verify the transformed source
+### 1. Build and verify transformed source
 
-The workflow resets/bootstraps the exact source revision, applies Ghosium transformations, configures the reviewed GN arguments, then compiles:
+The workflow resets/bootstraps the exact pinned source revision, applies Ghosium transformations, configures reviewed GN arguments, then compiles:
 
 ```text
 autoninja -C out/Ghosium chrome mini_installer
 ```
 
-The `chrome` and `mini_installer` names are technical upstream build-target names. The public executable produced by Ghosium's Windows identity transformation is `Ghosium-Browser.exe`.
+The target names are upstream technical build-system identifiers. They are not public Ghosium branding. The public Windows executable produced by the fork is `Ghosium-Browser.exe`.
 
-`verify-engine-build-output.ps1 -RunRuntimeSmoke` checks product identity, legal payload, install/uninstall source contracts, `ghost://` routes, source provenance and a sandbox-preserving **runtime smoke**.
+`verify-engine-build-output.ps1 -RunRuntimeSmoke` validates the compiled output and preserves the runtime sandbox.
 
-### 2. Technical source-built installer verification
+### 2. Measure the compiled Ghosium runtime
 
-The source-built installer smoke exercises the technical `mini_installer.exe` installation path because it is part of the upstream source build. It verifies installed runtime behavior and upstream setup-based uninstall behavior. Its evidence is written as:
+A successful candidate must run:
+
+```text
+scripts/benchmark-ghosium-windows.ps1
+```
+
+against the newly compiled `out/Ghosium/Ghosium-Browser.exe` with `-ProfileMode UserDataDir`.
+
+Evidence is written as:
+
+```text
+GHOSIUM-PERFORMANCE.json
+```
+
+The schema records:
+
+- cold startup to first usable window;
+- warm startup to first usable window;
+- RAM/private/paged memory;
+- 1, 5 and 10 tab scenarios;
+- process count and handles;
+- CPU activity;
+- process I/O deltas;
+- a 60-second one-tab idle interval;
+- best-effort Windows per-process GPU memory counters;
+- best-effort Ghosium-owned TCP/UDP endpoint activity.
+
+GPU fields are explicitly marked unavailable when the Windows/driver counter mapping is unavailable. TCP/UDP endpoint activity is not misrepresented as byte-level packet attribution.
+
+Performance work is benchmark-driven. Do not introduce renderer caps, `--no-sandbox`, GPU-sandbox disablement, site-isolation disablement or certificate bypasses to improve numbers.
+
+### 3. Technical source installer verification
+
+The source-built `mini_installer.exe` is exercised only as a technical build-system/install verification input. Its evidence is:
 
 ```text
 GHOSIUM-UPSTREAM-MINI-INSTALLER-SMOKE.json
 ```
 
-This technical mini-installer is not published as the public Ghosium Setup package.
+It is not the public Ghosium installer asset.
 
-### 3. Assemble the canonical Ghosium source stage
+### 4. Assemble canonical Ghosium source stage
 
-`scripts/assemble-source-release-stage.ps1` extracts the newly generated technical `chrome.7z` using the pinned Chromium 7za binary. It requires the archived `Ghosium-Browser.exe` hash to match the compiled browser output, rejects `chrome.exe`, rejects standalone updater/uninstaller executable names, preserves the required source-runtime layout, and adds the Ghosium license and third-party notices.
-
-Evidence:
+`scripts/assemble-source-release-stage.ps1` extracts the source-built runtime archive, verifies the archived `Ghosium-Browser.exe` against the compiled binary, rejects legacy public executable names, adds the Ghosium commercial license and required third-party notices, and writes:
 
 ```text
 GHOSIUM-SOURCE-STAGE.json
 ```
 
-### 4. Build and sign the canonical public Setup
+### 5. Build and sign canonical Setup
 
 `scripts/build-source-release-installer.ps1` builds:
 
@@ -207,30 +233,15 @@ GHOSIUM-SOURCE-STAGE.json
 Ghosium-Browser-Setup.exe
 ```
 
-from the verified source stage using `installer/ghosium.nsi` and pinned NSIS 3.12. It explicitly proves that the resulting Setup is not merely a renamed `mini_installer.exe`.
-
-On `main`, the workflow invokes the signing requirement and refuses release if Authenticode verification is not `Valid`.
-
-Evidence:
+from the verified stage and proves it is not merely a renamed technical mini-installer. Production `main` requires valid Authenticode evidence:
 
 ```text
 GHOSIUM-PUBLIC-SETUP.json
 ```
 
-### 5. Canonical install/update/uninstall round trip
+### 6. Canonical install/update/uninstall round trip
 
-`scripts/smoke-test-windows-installer.ps1` performs the actual public-package maintenance sequence:
-
-1. silent install of `Ghosium-Browser-Setup.exe`;
-2. verify installed browser, same-Setup maintenance copy, legal files, registry metadata and no standalone updater/uninstaller;
-3. installed browser runtime smoke;
-4. create an external profile sentinel;
-5. stage the exact canonical Setup in the native updater's private temporary update location;
-6. invoke `/S /UPDATE /DELETESELF`;
-7. verify downloaded-Setup cleanup, preserved language and preserved external profile;
-8. run the installed browser again;
-9. invoke the installed same Setup with `/S /UNINSTALL`;
-10. require application/registration removal while the normal external profile remains preserved.
+`scripts/smoke-test-windows-installer.ps1` performs the public package maintenance sequence: install, runtime verification, external-profile sentinel, same-Setup update, cleanup verification, language/profile preservation, runtime recheck and same-Setup uninstall.
 
 Evidence:
 
@@ -238,7 +249,7 @@ Evidence:
 GHOSIUM-CANONICAL-SETUP-SMOKE.json
 ```
 
-### 6. Production update manifest
+### 7. Production update manifest
 
 On `main`, `scripts/generate-update-manifest.ps1 -RequireAuthenticode` creates:
 
@@ -246,11 +257,9 @@ On `main`, `scripts/generate-update-manifest.ps1 -RequireAuthenticode` creates:
 GHOSIUM-UPDATE-MANIFEST.json
 ```
 
-The manifest is bound to the exact canonical `Ghosium-Browser-Setup.exe` version, SHA-256 and byte size. Production manifest generation requires Windows Authenticode validation first.
+The manifest is bound to the exact canonical Setup version, SHA-256 and byte size. The checked-in update manifest remains fail-closed until an independently verified deployment publishes the exact signed package.
 
-The checked-in `updates-web/windows/stable.json` remains a disabled baseline until an independently verified deployment step publishes a production manifest and Setup to the Ghosium update host.
-
-### 7. Release evidence and immutable release
+### 8. Immutable release evidence
 
 The verified artifact set includes:
 
@@ -258,6 +267,7 @@ The verified artifact set includes:
 Ghosium-Browser-Setup.exe
 GHOSIUM-BUILDER-READY.json
 GHOSIUM-SOURCE-BUILD.json
+GHOSIUM-PERFORMANCE.json
 GHOSIUM-UPSTREAM-MINI-INSTALLER-SMOKE.json
 GHOSIUM-SOURCE-STAGE.json
 GHOSIUM-PUBLIC-SETUP.json
@@ -269,17 +279,17 @@ THIRD_PARTY_NOTICES.md
 SHA256SUMS.txt
 ```
 
-The raw technical source runtime archive may exist as an internal workflow artifact for diagnosis/provenance, but it is not published as the stable end-user GitHub release asset.
+The technical source runtime archive may exist as an internal workflow artifact for provenance/diagnosis but is not a stable end-user release asset.
 
-The release job refuses to overwrite an existing `ghosium-v0.x.y` release and independently checks that the update manifest's hash/size match `GHOSIUM-PUBLIC-SETUP.json` before publication.
+The release job refuses to overwrite an existing `ghosium-v0.x.y` release and verifies the Setup/update/performance evidence before publication.
 
-## Security and reproducibility notes
+## Security and reproducibility rules
 
 - Do not commit runner tokens, PATs, signing keys, PFX files, passwords or product API credentials.
-- The Ghosium checkout uses `persist-credentials: false` on the persistent builder.
-- Keep `DEPOT_TOOLS_REVISION` synchronized with the pinned Chromium DEPS entry.
-- Keep `DEPOT_TOOLS_UPDATE=0` during verified builds so the toolchain cannot silently float.
-- Keep `GIT_TERMINAL_PROMPT=0` so unattended jobs cannot hang for credentials.
-- Do not weaken sandboxing, site isolation, certificate validation, update signature verification or publisher verification to make a build pass.
-- `third_party/` source, notices and applicable third-party licenses must remain intact.
-- A configured workflow is not evidence of a successful binary release. Production status requires a real successful full-source Windows run and its generated evidence.
+- GitHub checkout on the builder uses `persist-credentials: false`.
+- Keep `DEPOT_TOOLS_REVISION` synchronized with the pinned source DEPS entry.
+- Keep `DEPOT_TOOLS_UPDATE=0` for verified builds.
+- Keep `GIT_TERMINAL_PROMPT=0` for unattended source/build operations.
+- Use an interactive desktop only because the release gate measures first usable browser window; do not weaken Windows or browser security to make the benchmark run.
+- Keep third-party source/notices/licenses intact where required.
+- A configured workflow, successful source audit or passing hosted CI is not evidence of a completed source-built release. Production status requires a real successful full-source Windows compile and its generated evidence for the exact commit.
