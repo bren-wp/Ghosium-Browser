@@ -6,6 +6,7 @@ on:
       - ghosium/release/0.1.9
     paths:
       - .release/ghosium-v0.1.9.readme-screenshots
+      - .github/workflows/0.1.9-readme-screenshots.yml
 
 permissions:
   contents: write
@@ -58,7 +59,6 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           $chrome = (Resolve-Path 'downloads/engine/chrome-win/chrome.exe').Path
-          $extension = (Resolve-Path 'extension').Path
           $profile = Join-Path $env:RUNNER_TEMP 'ghosium-readme-profile'
           $images = Join-Path $PWD 'docs/images'
           Remove-Item $profile -Recurse -Force -ErrorAction SilentlyContinue
@@ -67,48 +67,44 @@ jobs:
           $common = @(
             '--headless=new',
             '--disable-gpu',
+            '--disable-javascript',
+            '--allow-file-access-from-files',
             '--no-first-run',
             '--no-default-browser-check',
             '--disable-background-networking',
             '--disable-sync',
             '--disable-component-update',
             '--metrics-recording-only',
+            '--hide-scrollbars',
             '--window-size=1440,900',
-            "--user-data-dir=$profile",
-            "--disable-extensions-except=$extension",
-            "--load-extension=$extension"
+            "--user-data-dir=$profile"
           )
+
+          function Convert-ToFileUrl([string]$Path) {
+            $absolute = (Resolve-Path $Path).Path
+            return ([System.Uri]::new($absolute)).AbsoluteUri
+          }
 
           function Assert-GhosiumPage([string]$Url, [string]$Output, [string]$Needle) {
             $domPath = Join-Path $env:RUNNER_TEMP ([IO.Path]::GetFileNameWithoutExtension($Output) + '.html')
-            & $chrome @common '--dump-dom' $Url 1> $domPath 2>$null
-            if ($LASTEXITCODE -ne 0) { throw "DOM render failed for $Url" }
+            $stderrPath = Join-Path $env:RUNNER_TEMP ([IO.Path]::GetFileNameWithoutExtension($Output) + '.stderr.txt')
+            & $chrome @common '--dump-dom' $Url 1> $domPath 2> $stderrPath
+            if ($LASTEXITCODE -ne 0) {
+              if (Test-Path $stderrPath) { Get-Content $stderrPath | Write-Host }
+              throw "DOM render failed for $Url with exit code $LASTEXITCODE"
+            }
             $dom = Get-Content $domPath -Raw
             if (!$dom.Contains($Needle)) { throw "Rendered page is not the expected Ghosium surface: $Url" }
-            & $chrome @common "--screenshot=$Output" $Url | Out-Null
+            & $chrome @common "--screenshot=$Output" $Url 2> $stderrPath | Out-Null
             if ($LASTEXITCODE -ne 0 -or !(Test-Path $Output -PathType Leaf) -or (Get-Item $Output).Length -lt 10000) {
+              if (Test-Path $stderrPath) { Get-Content $stderrPath | Write-Host }
               throw "Screenshot generation failed or produced an invalid image: $Output"
             }
           }
 
-          $newTabShot = Join-Path $images 'ghosium-new-tab.png'
-          Assert-GhosiumPage 'chrome://newtab/' $newTabShot 'Ghosium'
-
-          $preferences = Join-Path $profile 'Default/Preferences'
-          if (!(Test-Path $preferences -PathType Leaf)) { throw 'Chromium profile preferences were not created; cannot resolve the loaded Ghosium extension id.' }
-          $prefs = Get-Content $preferences -Raw | ConvertFrom-Json
-          $extensionId = $null
-          foreach ($property in $prefs.extensions.settings.PSObject.Properties) {
-            $entry = $property.Value
-            if ($entry.manifest -and [string]$entry.manifest.name -eq 'Ghosium Privacy') {
-              $extensionId = [string]$property.Name
-              break
-            }
-          }
-          if (!$extensionId -or $extensionId -notmatch '^[a-p]{32}$') { throw "Unable to resolve deterministic runtime extension id: '$extensionId'" }
-
-          Assert-GhosiumPage "chrome-extension://$extensionId/options.html" (Join-Path $images 'ghosium-options.png') 'Customize Ghosium'
-          Assert-GhosiumPage "chrome-extension://$extensionId/popup.html" (Join-Path $images 'ghosium-privacy.png') 'Ghosium Privacy'
+          Assert-GhosiumPage (Convert-ToFileUrl 'extension/newtab.html') (Join-Path $images 'ghosium-new-tab.png') 'Ghosium'
+          Assert-GhosiumPage (Convert-ToFileUrl 'extension/options.html') (Join-Path $images 'ghosium-options.png') 'Make Ghosium yours'
+          Assert-GhosiumPage (Convert-ToFileUrl 'extension/popup.html') (Join-Path $images 'ghosium-privacy.png') 'Ghosium Privacy'
 
           $provenance = [ordered]@{
             schemaVersion = 1
@@ -117,9 +113,11 @@ jobs:
             repositoryCommit = $env:GITHUB_SHA
             engineSnapshotRevision = (Get-Content ENGINE_REVISION -Raw).Trim()
             renderer = 'pinned Chromium Windows x64 snapshot'
+            renderingMode = 'checked-in Ghosium surface files rendered with relative CSS/SVG assets'
+            javascriptEnabled = $false
             surfaces = @('extension/newtab.html','extension/options.html','extension/popup.html')
             fullSourceBrowserShellScreenshot = $false
-            note = 'These images are actual rendered Ghosium-owned surfaces. They do not claim to show the canonical full-source native browser chrome.'
+            note = 'These images are actual Chromium-rendered checked-in Ghosium-owned UI surfaces, not design mockups. They do not claim to show the canonical full-source native browser chrome.'
           }
           $provenance | ConvertTo-Json -Depth 5 | Set-Content (Join-Path $images 'GHOSIUM-SCREENSHOTS.json') -Encoding utf8
 
@@ -145,7 +143,7 @@ jobs:
 
           marker = '## Product contract\n'
           if '## Actual Ghosium interface' not in text:
-              section = '''## Actual Ghosium interface\n\nThe images below are generated by GitHub Actions from the checked-in **0.1.9** Ghosium UI running in the pinned Windows preview engine. They are real rendered Ghosium-owned surfaces, not design mockups. They intentionally do **not** claim to show the canonical full-source native browser chrome until the controlled full-source build produces that evidence.\n\n### New Tab\n\n<p align="center">\n  <img src="docs/images/ghosium-new-tab.png" alt="Ghosium Browser 0.1.9 New Tab" width="100%">\n</p>\n\n### Customize Ghosium\n\n<p align="center">\n  <img src="docs/images/ghosium-options.png" alt="Ghosium Browser 0.1.9 customization options" width="100%">\n</p>\n\n### Ghosium Privacy\n\n<p align="center">\n  <img src="docs/images/ghosium-privacy.png" alt="Ghosium Privacy 0.1.9" width="720">\n</p>\n\nScreenshot provenance is recorded in `docs/images/GHOSIUM-SCREENSHOTS.json`.\n\n'''
+              section = '''## Actual Ghosium interface\n\nThe images below are generated by GitHub Actions from the checked-in **0.1.9** Ghosium UI and rendered by the pinned Windows Chromium engine. They are real rendered Ghosium-owned surfaces, not design mockups. They intentionally do **not** claim to show the canonical full-source native browser chrome until the controlled full-source build produces that evidence.\n\n### New Tab\n\n<p align="center">\n  <img src="docs/images/ghosium-new-tab.png" alt="Ghosium Browser 0.1.9 New Tab" width="100%">\n</p>\n\n### Customize Ghosium\n\n<p align="center">\n  <img src="docs/images/ghosium-options.png" alt="Ghosium Browser 0.1.9 customization options" width="100%">\n</p>\n\n### Ghosium Privacy\n\n<p align="center">\n  <img src="docs/images/ghosium-privacy.png" alt="Ghosium Privacy 0.1.9" width="720">\n</p>\n\nScreenshot provenance is recorded in `docs/images/GHOSIUM-SCREENSHOTS.json`.\n\n'''
               text = text.replace(marker, section + marker, 1)
 
           path.write_text(text, encoding='utf-8')
