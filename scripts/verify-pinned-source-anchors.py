@@ -30,9 +30,9 @@ FILE_ANCHORS: dict[str, tuple[str, ...]] = {
         "IDS_SETTINGS_UPGRADE_UP_TO_DATE",
     ),
     "components/components_chromium_strings.grd": (
-        "IDS_SHORT_PRODUCT_NAME",
-        "IDS_PRODUCT_NAME",
-        "IDS_BROWSER_WINDOW_TITLE_FORMAT",
+        "IDS_SHORT_PRODUCT_LOGO_ALT_TEXT",
+        "IDS_VERSION_UI_LICENSE",
+        "IDS_VERSION_UI_LICENSE_CHROMIUM",
     ),
     "extensions/strings/extensions_chromium_strings.grdp": (),
     "chrome/common/url_constants.h": (
