@@ -17,6 +17,8 @@ on:
       - 'scripts/rewrite-engine-legal-payload.ps1'
       - 'scripts/rewrite-engine-product-version.ps1'
       - 'scripts/rewrite-engine-internal-scheme.ps1'
+      - 'scripts/rewrite-engine-performance-defaults.ps1'
+      - 'scripts/verify-engine-performance-defaults.ps1'
       - 'scripts/rebrand-engine-locales.ps1'
       - 'scripts/verify-engine-locales.ps1'
       - 'scripts/verify-engine-fork.ps1'
@@ -41,6 +43,8 @@ on:
       - 'scripts/rewrite-engine-legal-payload.ps1'
       - 'scripts/rewrite-engine-product-version.ps1'
       - 'scripts/rewrite-engine-internal-scheme.ps1'
+      - 'scripts/rewrite-engine-performance-defaults.ps1'
+      - 'scripts/verify-engine-performance-defaults.ps1'
       - 'scripts/rebrand-engine-locales.ps1'
       - 'scripts/verify-engine-locales.ps1'
       - 'scripts/verify-engine-fork.ps1'
@@ -56,7 +60,7 @@ permissions:
 
 jobs:
   source-patch-contract:
-    name: Verify pinned upstream patch compatibility
+    name: Verify pinned engine patch compatibility
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
@@ -80,6 +84,8 @@ jobs:
             'scripts/rewrite-engine-legal-payload.ps1',
             'scripts/rewrite-engine-product-version.ps1',
             'scripts/rewrite-engine-internal-scheme.ps1',
+            'scripts/rewrite-engine-performance-defaults.ps1',
+            'scripts/verify-engine-performance-defaults.ps1',
             'scripts/rebrand-engine-locales.ps1',
             'scripts/verify-engine-locales.ps1',
             'scripts/verify-engine-fork.ps1',
@@ -121,11 +127,13 @@ jobs:
               r'(?m)^\s*is_official_build\s*=\s*false\s*$',
               r'(?m)^\s*is_chrome_branded\s*=\s*false\s*$',
               r'(?m)^\s*target_cpu\s*=\s*"x64"\s*$',
+              r'(?m)^\s*enable_background_mode\s*=\s*false\s*$',
               r'(?m)^\s*use_remoteexec\s*=\s*false\s*$',
           )
           forbidden = (
               r'(?im)^\s*is_chrome_branded\s*=\s*true\s*$',
               r'(?im)^\s*is_official_build\s*=\s*true\s*$',
+              r'(?im)^\s*enable_background_mode\s*=\s*true\s*$',
               r'(?im)^\s*use_remoteexec\s*=\s*true\s*$',
               r'(?im)google_api_key\s*=',
               r'(?im)google_default_client_id\s*=',
@@ -139,7 +147,7 @@ jobs:
                   raise SystemExit(f'Forbidden GN configuration detected: {pattern}')
           print('Ghosium Windows x64 GN patch contract: OK')
 
-      - name: Verify pinned upstream source patch anchors
+      - name: Verify pinned engine source patch anchors
         shell: bash
         run: |
           set -euo pipefail
@@ -175,4 +183,4 @@ jobs:
           test "$(grep -Fc 'GHOSIUM-LICENSE.txt: %(ChromeDir)s\' "$src/chrome/installer/mini_installer/chrome.release")" -eq 1
           test "$(grep -Fc 'THIRD_PARTY_NOTICES.md: %(ChromeDir)s\' "$src/chrome/installer/mini_installer/chrome.release")" -eq 1
 
-          echo 'Ghosium legal payload patch against pristine pinned Chromium: OK'
+          echo 'Ghosium legal payload patch against pristine pinned source: OK'

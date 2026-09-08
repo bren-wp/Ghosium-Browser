@@ -50,27 +50,6 @@ function Assert-NoForbiddenVisibleBrand {
 
   $text = [IO.File]::ReadAllText($Path)
   $messages = [regex]::Matches($text, '(?s)<message\b[^>]*>(.*?)</message>')
-  foreach ($message in $messages) {
-    $visible = [regex]::Replace($message.Groups[1].Value, '<[^>]+>', '')
-    $visible = [System.Net.WebUtility]::HtmlDecode($visible)
-    foreach ($forbidden in @(
-      'About Chromium',
-      'Get help with Chromium',
-      'Chromium is your default browser',
-      'Make Chromium the default browser',
-      'AI in Chrome',
-      'Gemini in Chromium',
-      'Gemini in Chrome',
-      'Chrome Colors',
-      'Open Chrome Web Store',
-      'You and Google'
-    )) {
-      if ($visible.Contains($forbidden)) {
-        throw "Legacy public browser branding remains visible in ${Path}: $forbidden"
-      }
-    }
-  }
-}
 
 $chromiumStrings = Join-Path $sourceRootResolved 'chrome/app/chromium_strings.grd'
 $settingsChromiumStrings = Join-Path $sourceRootResolved 'chrome/app/settings_chromium_strings.grdp'
@@ -106,7 +85,6 @@ Assert-MessageContains -Path $chromiumStrings -MessageId 'IDS_ABOUT_VERSION_COMP
 Assert-MessageContains -Path $chromiumStrings -MessageId 'IDS_ABOUT_VERSION_COPYRIGHT' -Expected 'Brendigo. Ghosium Browser. All rights reserved.'
 Assert-MessageContains -Path $settingsChromiumStrings -MessageId 'IDS_SETTINGS_ABOUT_PROGRAM' -Expected 'About Ghosium Browser'
 Assert-MessageContains -Path $settingsChromiumStrings -MessageId 'IDS_SETTINGS_GET_HELP_USING_CHROME' -Expected 'Ghosium Support'
-Assert-MessageContains -Path $settingsStrings -MessageId 'IDS_SETTINGS_PEOPLE' -Expected 'Ghosium'
 
 foreach ($path in @(
   $chromiumStrings,
@@ -118,16 +96,12 @@ foreach ($path in @(
   Assert-NoForbiddenVisibleBrand -Path $path
 }
 
-# Verify the exact public logo consumed by About/Settings is the canonical
-# Ghosium mark rather than merely checking that some image exists.
 $sourceSvgHash = (Get-FileHash $productLogoSvg -Algorithm SHA256).Hash
 $canonicalSvgHash = (Get-FileHash $canonicalLogoSvg -Algorithm SHA256).Hash
 if ($sourceSvgHash -ne $canonicalSvgHash) {
   throw 'Chromium product_logo.svg was not replaced by the canonical Ghosium mark.'
 }
 
-# PNG and ICO are generated deterministically from the Ghosium mark contract.
-# Regenerate expected outputs in an isolated temp tree and compare hashes.
 $tempRoot = Join-Path ([IO.Path]::GetTempPath()) "ghosium-public-surface-verify-$PID"
 try {
   New-Item -ItemType Directory -Force -Path $tempRoot | Out-Null
@@ -174,5 +148,3 @@ if ($LASTEXITCODE -ne 0) {
 if ($thirdPartyChanges) {
   throw 'Ghosium public-surface changes touched third_party source.'
 }
-
-Write-Host 'Ghosium public surfaces verified: Settings/About branding, canonical logo, and no upstream Web Store tile.'

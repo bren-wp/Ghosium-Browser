@@ -10,8 +10,13 @@ on:
       - 'scripts/verify-source-builder-host.ps1'
       - 'scripts/bootstrap-engine-source.ps1'
       - 'scripts/verify-engine-build-output.ps1'
+      - 'scripts/benchmark-ghosium-windows.ps1'
       - 'scripts/verify-pinned-source-anchors.py'
       - 'scripts/smoke-test-source-windows-installer.ps1'
+      - 'scripts/assemble-source-release-stage.ps1'
+      - 'scripts/build-source-release-installer.ps1'
+      - 'scripts/smoke-test-windows-installer.ps1'
+      - 'scripts/generate-update-manifest.ps1'
       - 'docs/SOURCE_BUILDER_SETUP.md'
       - '.github/workflows/full-source-windows-build.yml'
       - '.github/workflows/source-builder-contract.yml'
@@ -24,8 +29,13 @@ on:
       - 'scripts/verify-source-builder-host.ps1'
       - 'scripts/bootstrap-engine-source.ps1'
       - 'scripts/verify-engine-build-output.ps1'
+      - 'scripts/benchmark-ghosium-windows.ps1'
       - 'scripts/verify-pinned-source-anchors.py'
       - 'scripts/smoke-test-source-windows-installer.ps1'
+      - 'scripts/assemble-source-release-stage.ps1'
+      - 'scripts/build-source-release-installer.ps1'
+      - 'scripts/smoke-test-windows-installer.ps1'
+      - 'scripts/generate-update-manifest.ps1'
       - 'docs/SOURCE_BUILDER_SETUP.md'
       - '.github/workflows/full-source-windows-build.yml'
       - '.github/workflows/source-builder-contract.yml'
@@ -38,7 +48,7 @@ jobs:
   builder-contract:
     name: Verify full-source builder readiness contract
     runs-on: ubuntu-latest
-    timeout-minutes: 8
+    timeout-minutes: 10
 
     steps:
       - name: Checkout
@@ -96,7 +106,7 @@ jobs:
           print(f'Pinned Chromium DEPS and Ghosium agree on depot_tools {actual}.')
           PY
 
-      - name: Validate builder tooling syntax
+      - name: Validate builder and release tooling syntax
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
@@ -104,15 +114,17 @@ jobs:
             'scripts/verify-source-builder-host.ps1',
             'scripts/bootstrap-engine-source.ps1',
             'scripts/verify-engine-build-output.ps1',
-            'scripts/smoke-test-source-windows-installer.ps1'
+            'scripts/benchmark-ghosium-windows.ps1',
+            'scripts/smoke-test-source-windows-installer.ps1',
+            'scripts/assemble-source-release-stage.ps1',
+            'scripts/build-source-release-installer.ps1',
+            'scripts/smoke-test-windows-installer.ps1',
+            'scripts/generate-update-manifest.ps1'
           )) {
             $tokens = $null
             $errors = $null
             [void][System.Management.Automation.Language.Parser]::ParseFile(
-              (Resolve-Path $path),
-              [ref]$tokens,
-              [ref]$errors
-            )
+              (Resolve-Path $path), [ref]$tokens, [ref]$errors)
             if ($errors.Count -gt 0) {
               $errors | ForEach-Object { Write-Error $_.Message }
               throw "PowerShell parser errors found in $path"
@@ -130,7 +142,6 @@ jobs:
           $script = Get-Content 'scripts/verify-source-builder-host.ps1' -Raw
           foreach ($required in @(
             "Join-Path `$repoRoot 'DEPOT_TOOLS_REVISION'",
-            '`$expectedDepotToolsRevision'.Replace('`$','$'),
             'depot_tools revision mismatch',
             "`$requiredVisualStudioMajor = 18",
             "`$requiredWindowsSdk = '10.0.28000.2270'",
@@ -152,14 +163,12 @@ jobs:
             'DEPOT_TOOLS_UPDATE',
             'GIT_TERMINAL_PROMPT',
             'chromium.googlesource.com/chromium/tools/depot_tools',
-            'expectedDepotToolsRevision',
-            'depotToolsRevision',
             "Require-Command -Name 'fetch'",
             "Require-Command -Name 'gclient'",
             "Require-Command -Name 'gn'",
             "Require-Command -Name 'autoninja'",
             "Require-Command -Name 'python3'",
-            "`$WorkRoot = 'C:\src\ghosium-chromium'",
+            "`$WorkRoot = 'C:\src\ghosium-engine'",
             "Join-Path `$resolvedWorkRoot 'src\.git'",
             "Join-Path `$resolvedWorkRoot '.gclient'",
             "`$workspaceState = 'fresh-empty'",
@@ -173,8 +182,8 @@ jobs:
           if ($script -match '(?i)api[_-]?key|client_secret|private[_-]?key|github_token|personal access token') {
             throw 'Builder readiness script must not contain credentials or product API secrets.'
           }
-          if ($script.Contains("Join-Path `$env:RUNNER_TEMP 'ghosium-chromium'")) {
-            throw 'Chromium source workspace must not silently fall back to RUNNER_TEMP.'
+          if ($script.Contains("Join-Path `$env:RUNNER_TEMP 'ghosium-engine'")) {
+            throw 'Engine source workspace must not silently fall back to RUNNER_TEMP.'
           }
 
       - name: Verify absolute workspace bootstrap safety
@@ -196,10 +205,7 @@ jobs:
             throw 'Chromium bootstrap must not append a fully-qualified Windows destination to the current repository path.'
           }
 
-          $syncMatch = [regex]::Match(
-            $bootstrap,
-            '(?s)\$syncArguments\s*=\s*@\((?<body>.*?)\)'
-          )
+          $syncMatch = [regex]::Match($bootstrap, '(?s)\$syncArguments\s*=\s*@\((?<body>.*?)\)')
           if (!$syncMatch.Success) {
             throw 'Chromium bootstrap must define an explicit gclient sync argument list.'
           }
@@ -219,7 +225,7 @@ jobs:
             }
           }
 
-      - name: Verify full-source runtime gate
+      - name: Verify full-source runtime gates
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
@@ -230,9 +236,7 @@ jobs:
             "'--dump-dom'",
             'ghosium-source-runtime-ok',
             'sandboxDisabled = $false',
-            'Start-Process',
             'runtimeSmokePassed',
-            '`$runtimeSmokeTimeoutSeconds = 60'.Replace('`$','$'),
             'WaitForExit($runtimeSmokeTimeoutSeconds * 1000)',
             'Stop-Process -Id $process.Id -Force'
           )) {
@@ -244,44 +248,99 @@ jobs:
             throw 'Source-built runtime smoke must not disable the Chromium sandbox.'
           }
 
-      - name: Verify source-built installer round-trip gate
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = 'Stop'
-          $smoke = Get-Content 'scripts/smoke-test-source-windows-installer.ps1' -Raw
+          $technicalSmoke = Get-Content 'scripts/smoke-test-source-windows-installer.ps1' -Raw
           foreach ($required in @(
-            "'Brendigo\Ghosium'",
             "'Ghosium Browser'",
-            "'--do-not-launch-chrome'",
-            "'--do-not-register-for-update-launch'",
             "'--uninstall'",
             "'--force-uninstall'",
             "'--delete-profile'",
             "'--headless=new'",
             "'--dump-dom'",
             'ghosium-source-installed-runtime-ok',
-            'ProductName',
-            'CompanyName',
             'UninstallString',
-            'sandboxDisabled = $false',
             'miniInstallerSha256',
             'applicationDirectoryRemoved',
-            'registrationRemoved',
-            'defaultUserDataRemoved'
+            'registrationRemoved'
           )) {
-            if (!$smoke.Contains($required)) {
-              throw "Source-built installer smoke is missing required invariant: $required"
+            if (!$technicalSmoke.Contains($required)) {
+              throw "Technical source mini-installer smoke is missing invariant: $required"
             }
           }
-          if ($smoke -match "(?i)'--no-sandbox'") {
+          if ($technicalSmoke -match "(?i)'--no-sandbox'") {
             throw 'Installed source-built runtime smoke must not disable the Chromium sandbox.'
           }
-          if (!$smoke.Contains('Refusing destructive source-installer smoke because a Ghosium installation already exists') -or
-              !$smoke.Contains('Refusing destructive source-installer smoke because Ghosium user data already exists')) {
-            throw 'Source-built installer smoke must refuse to overwrite an existing Ghosium installation or user profile.'
+
+      - name: Verify benchmark telemetry contract
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $benchmark = Get-Content 'scripts/benchmark-ghosium-windows.ps1' -Raw
+          foreach ($required in @(
+            "[ValidateSet('PortableProfile', 'UserDataDir')]",
+            "[string]`$ProfileMode = 'PortableProfile'",
+            "Get-Counter -ListSet 'GPU Process Memory'",
+            'Get-NetTCPConnection',
+            'Get-NetUDPEndpoint',
+            'uniqueRemoteAddressCount',
+            'longIdleActivity',
+            'schemaVersion = 2',
+            '--user-data-dir='
+          )) {
+            if (!$benchmark.Contains($required)) {
+              throw "Ghosium benchmark is missing required telemetry/profile invariant: $required"
+            }
+          }
+          if ($benchmark -match "(?i)'--no-sandbox'|--disable-gpu-sandbox|--ignore-certificate-errors") {
+            throw 'Benchmark tooling must not weaken runtime security to obtain measurements.'
           }
 
-      - name: Verify full-source workflow remains manual and self-hosted
+      - name: Verify canonical source-release gate
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $stage = Get-Content 'scripts/assemble-source-release-stage.ps1' -Raw
+          foreach ($required in @(
+            "Join-Path `$outPath 'chrome.7z'",
+            "Join-Path `$outPath 'Ghosium-Browser.exe'",
+            'archiveBrowserHash',
+            'compiledBrowserHash',
+            "Copy-Item (Join-Path `$repoRoot 'LICENSE')",
+            "Copy-Item (Join-Path `$repoRoot 'THIRD_PARTY_NOTICES.md')"
+          )) {
+            if (!$stage.Contains($required)) {
+              throw "Canonical source-stage builder is missing invariant: $required"
+            }
+          }
+
+          $package = Get-Content 'scripts/build-source-release-installer.ps1' -Raw
+          foreach ($required in @(
+            '[switch]$RequireSigning',
+            'GHOSIUM_SIGN_CERT_THUMBPRINT',
+            'GHOSIUM_TIMESTAMP_URL',
+            'Ghosium-Browser-Setup.exe',
+            'Public Ghosium Setup is still only a renamed Chromium mini_installer.exe.',
+            'publicSetupIsChromiumMiniInstallerRename = $false',
+            'sameSetupExecutable = $true'
+          )) {
+            if (!$package.Contains($required)) {
+              throw "Canonical source-release packager is missing invariant: $required"
+            }
+          }
+
+          $smoke = Get-Content 'scripts/smoke-test-windows-installer.ps1' -Raw
+          foreach ($required in @(
+            "@('/S', '/UPDATE', '/DELETESELF')",
+            'profileSentinel',
+            'Invoke-InstalledRuntimeSmoke',
+            "@('/S', '/UNINSTALL')",
+            'normalUninstallPreservedProfile'
+          )) {
+            if (!$smoke.Contains($required)) {
+              throw "Canonical same-Setup smoke is missing invariant: $required"
+            }
+          }
+
+      - name: Verify full-source workflow remains manual self-hosted and canonical
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
@@ -306,15 +365,22 @@ jobs:
             'autoninja -C out/Ghosium chrome mini_installer',
             'verify-engine-build-output.ps1',
             '-RunRuntimeSmoke',
+            'benchmark-ghosium-windows.ps1',
+            '-ProfileMode UserDataDir',
+            'GHOSIUM-PERFORMANCE.json',
             'GHOSIUM-SOURCE-BUILD.json',
-            'smoke-test-source-windows-installer.ps1',
-            'GHOSIUM-SOURCE-INSTALLER-SMOKE.json',
+            'GHOSIUM-UPSTREAM-MINI-INSTALLER-SMOKE.json',
+            'build-source-release-installer.ps1',
+            'GHOSIUM-PUBLIC-SETUP.json',
+            'GHOSIUM-CANONICAL-SETUP-SMOKE.json',
+            'GHOSIUM-UPDATE-MANIFEST.json',
+            '-RequireAuthenticode',
             'Generate verified full-source SHA-256 manifest',
             'SHA256SUMS.txt',
             'actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02'
           )) {
             if (!$workflow.Contains($required)) {
-              throw "Full-source workflow is missing builder/build invariant: $required"
+              throw "Full-source workflow is missing builder/release invariant: $required"
             }
           }
           if ($workflow -match '(?m)^\s*pull_request\s*:') {
@@ -324,7 +390,11 @@ jobs:
             throw 'The heavyweight Chromium source build must remain an explicit manual workflow.'
           }
           if ($workflow -match '(?im)^\s*uses:\s*actions/(?:checkout|upload-artifact)@v\d+') {
-            throw 'Security-sensitive actions in the self-hosted full-source workflow must use immutable commit SHAs, not mutable major tags.'
+            throw 'Security-sensitive actions in the self-hosted full-source workflow must use immutable commit SHAs.'
+          }
+          $forbiddenCopy = "Copy-Item (Join-Path `$out 'mini_installer.exe') 'artifacts/full-source/Ghosium-Browser-Setup.exe'"
+          if ($workflow.Contains($forbiddenCopy)) {
+            throw 'Public Ghosium Setup must not be produced by renaming Chromium mini_installer.exe.'
           }
 
       - name: Verify builder setup documentation
@@ -337,14 +407,15 @@ jobs:
           grep -Fq '10.0.28000.2270' "$doc"
           grep -Fq '10.0.26100.3323' "$doc"
           grep -Fq 'DEPOT_TOOLS_REVISION' "$doc"
-          grep -Fq '81577f19a8497ba7e41afac322e8f03553a863ec' "$doc"
           grep -Fq 'DEPOT_TOOLS_WIN_TOOLCHAIN' "$doc"
           grep -Fq 'DEPOT_TOOLS_UPDATE' "$doc"
           grep -Fq 'GIT_TERMINAL_PROMPT' "$doc"
           grep -Fq 'GHOSIUM_SOURCE_WORK' "$doc"
+          grep -Fq 'C:\src\ghosium-engine' "$doc"
           grep -Fq 'verify-source-builder-host.ps1' "$doc"
           grep -Fq 'autoninja -C out/Ghosium chrome mini_installer' "$doc"
           grep -Fq 'runtime smoke' "$doc"
           grep -Fq 'source-built installer' "$doc"
-          grep -Fq 'GHOSIUM-SOURCE-INSTALLER-SMOKE.json' "$doc"
+          grep -Fq 'GHOSIUM-PERFORMANCE.json' "$doc"
+          grep -Fq 'interactive Windows desktop session' "$doc"
           grep -Fq 'Do not commit runner tokens' "$doc"

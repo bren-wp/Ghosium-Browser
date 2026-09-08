@@ -1,0 +1,144 @@
+name: Ghosium Locale Contract
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'engine/branding/product.json'
+      - 'engine/branding/locale-ui.json'
+      - 'installer/ghosium.nsi'
+      - 'scripts/rebrand-engine-locales.ps1'
+      - 'scripts/verify-engine-locales.ps1'
+      - '.github/workflows/locale-contract.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'engine/branding/product.json'
+      - 'engine/branding/locale-ui.json'
+      - 'installer/ghosium.nsi'
+      - 'scripts/rebrand-engine-locales.ps1'
+      - 'scripts/verify-engine-locales.ps1'
+      - '.github/workflows/locale-contract.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  locale-contract:
+    name: Verify 38-language browser and Setup integration
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Validate locale configuration and localized Ghosium labels
+        shell: python
+        run: |
+          import json
+          from pathlib import Path
+
+          product = json.loads(Path('engine/branding/product.json').read_text(encoding='utf-8'))
+          locale_ui = json.loads(Path('engine/branding/locale-ui.json').read_text(encoding='utf-8'))
+          locales = product['locales']
+          supported = locales['supported']
+
+          if locales['default'] != 'en-US':
+              raise SystemExit('English en-US must remain the primary Ghosium locale.')
+          if locales['required'] != 'hr':
+              raise SystemExit('Croatian hr must remain a required Ghosium locale.')
+          if len(supported) < 31:
+              raise SystemExit(f'Ghosium must support more than 30 locales; found {len(supported)}.')
+          if len(supported) != len(set(supported)):
+              raise SystemExit('Duplicate locale exists in Ghosium supported locale list.')
+          if supported[0] != 'en-US' or 'hr' not in supported:
+              raise SystemExit('English must be first and Croatian must be selectable.')
+
+          profile = locale_ui.get('strings', {}).get('profile', {})
+          missing = [locale for locale in supported if not str(profile.get(locale, '')).strip()]
+          extra = sorted(set(profile) - set(supported))
+          if missing or extra:
+              raise SystemExit(f'Localized Profile map mismatch. missing={missing}, extra={extra}')
+
+          print(f'Ghosium locale metadata: OK ({len(supported)} locales, default=en-US, Croatian included).')
+
+      - name: Verify Setup language selector matches browser locale contract
+        shell: python
+        run: |
+          import json
+          import re
+          from pathlib import Path
+
+          product = json.loads(Path('engine/branding/product.json').read_text(encoding='utf-8'))
+          expected = product['locales']['supported']
+          text = Path('installer/ghosium.nsi').read_text(encoding='utf-8')
+
+          languages = re.findall(r'!insertmacro MUI_LANGUAGE "([^"]+)"', text)
+          mappings = dict(re.findall(
+              r'LangString GhosiumLocale \$\{LANG_([A-Z0-9]+)\} "([^"]+)"', text
+          ))
+          mapped_locales = list(mappings.values())
+
+          if len(languages) != len(expected):
+              raise SystemExit(
+                  f'Setup language count {len(languages)} does not match browser locale count {len(expected)}.'
+              )
+          if len(mapped_locales) != len(expected) or set(mapped_locales) != set(expected):
+              raise SystemExit(
+                  'Setup GhosiumLocale mappings do not exactly match engine/branding/product.json.'
+              )
+          if languages[0] != 'English':
+              raise SystemExit('English must be the first/default Setup language.')
+          if 'Croatian' not in languages or mappings.get('CROATIAN') != 'hr':
+              raise SystemExit('Croatian must be explicitly selectable in Ghosium Setup.')
+          if '!insertmacro MUI_LANGDLL_DISPLAY' not in text:
+              raise SystemExit('Interactive Ghosium Setup must display the language selector.')
+
+          print(f'Ghosium Setup selector: OK ({len(languages)} selectable languages).')
+
+      - name: Verify selected Setup language initializes native browser safely
+        shell: python
+        run: |
+          from pathlib import Path
+
+          text = Path('installer/ghosium.nsi').read_text(encoding='utf-8')
+          required = (
+              '!define USER_DATA_DIR "$LOCALAPPDATA\\Brendigo\\Ghosium\\User Data"',
+              'FileWrite $0 "$(GhosiumLocale)$\\r$\\n"',
+              'IfFileExists "${USER_DATA_DIR}\\Local State" language_ready 0',
+              '"app_locale$\\":$\\"$(GhosiumLocale)',
+              'StrCmp $GhosiumUpdateMode "1" language_ready',
+              'WriteRegStr HKCU "${UNINSTALL_KEY}" "InstallLanguage" "$(GhosiumLocale)"',
+          )
+          for needle in required:
+              if needle not in text:
+                  raise SystemExit(f'Setup locale persistence invariant is missing: {needle}')
+
+          region = text[text.index('StrCmp $GhosiumUpdateMode "1" language_ready'):text.index('language_ready:')]
+          if 'Delete' in region or 'RMDir /r' in region:
+              raise SystemExit('Locale initialization must not erase an existing Ghosium profile.')
+
+          print('Ghosium Setup locale persistence: OK; existing Local State is never overwritten.')
+
+      - name: Parse locale PowerShell tooling
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          foreach ($path in @(
+            'scripts/rebrand-engine-locales.ps1',
+            'scripts/verify-engine-locales.ps1'
+          )) {
+            $tokens = $null
+            $errors = $null
+            [void][System.Management.Automation.Language.Parser]::ParseFile(
+              (Resolve-Path $path), [ref]$tokens, [ref]$errors)
+            if ($errors.Count -gt 0) {
+              $errors | ForEach-Object { Write-Error $_.Message }
+              throw "PowerShell parser errors found in $path"
+            }
+          }

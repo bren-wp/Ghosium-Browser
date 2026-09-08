@@ -19,8 +19,17 @@ $argsTemplate = Join-Path $repoRoot 'engine/build/windows-x64.args.gn'
 $productLicense = Join-Path $repoRoot 'LICENSE'
 $thirdPartyNotices = Join-Path $repoRoot 'THIRD_PARTY_NOTICES.md'
 $legalPayloadRewrite = Join-Path $PSScriptRoot 'rewrite-engine-legal-payload.ps1'
+$performanceRewrite = Join-Path $PSScriptRoot 'rewrite-engine-performance-defaults.ps1'
+$performanceVerifier = Join-Path $PSScriptRoot 'verify-engine-performance-defaults.ps1'
 
-foreach ($requiredFile in @($argsTemplate, $productLicense, $thirdPartyNotices, $legalPayloadRewrite)) {
+foreach ($requiredFile in @(
+  $argsTemplate,
+  $productLicense,
+  $thirdPartyNotices,
+  $legalPayloadRewrite,
+  $performanceRewrite,
+  $performanceVerifier
+)) {
   if (!(Test-Path $requiredFile -PathType Leaf)) {
     throw "Missing deterministic Ghosium source-build input: $requiredFile"
   }
@@ -37,17 +46,29 @@ if ((Get-Item $thirdPartyNotices).Length -le 100) {
 
 $sourceRootResolved = (Resolve-Path $SourceRoot).Path
 if (!(Test-Path (Join-Path $sourceRootResolved '.git'))) {
-  throw "SourceRoot is not a Chromium Git checkout: $sourceRootResolved"
+  throw "SourceRoot is not the expected engine Git checkout: $sourceRootResolved"
 }
 
 $actualRevision = (& git -C $sourceRootResolved rev-parse HEAD).Trim()
 if ($LASTEXITCODE -ne 0 -or $actualRevision -ne $expectedRevision) {
-  throw "Chromium source must be detached at $expectedRevision; found $actualRevision"
+  throw "Engine source must be detached at $expectedRevision; found $actualRevision"
 }
 
-# Integrate legal documents into the declared mini-installer source graph before
-# GN sees the target. This patch is source-revision pinned and order-independent
-# with the public executable rename.
+# Apply only reviewed performance defaults that use native engine mechanisms.
+# This enables Memory Saver for new/default profiles while preserving explicit
+# user preferences and leaving sandbox/process-isolation behavior unchanged.
+& $performanceRewrite -SourceRoot $sourceRootResolved
+if ($LASTEXITCODE -ne 0) {
+  throw 'Ghosium native performance-default integration failed.'
+}
+& $performanceVerifier -SourceRoot $sourceRootResolved
+if ($LASTEXITCODE -ne 0) {
+  throw 'Ghosium native performance-default verification failed.'
+}
+
+# Integrate legal documents into the declared source archive graph before GN
+# sees the target. This patch is revision-pinned and order-independent with the
+# public executable rename.
 & $legalPayloadRewrite -SourceRoot $sourceRootResolved
 if ($LASTEXITCODE -ne 0) {
   throw 'Ghosium source-built legal payload integration failed.'
@@ -56,7 +77,7 @@ if ($LASTEXITCODE -ne 0) {
 $gn = Get-Command gn -ErrorAction SilentlyContinue
 $autoninja = Get-Command autoninja -ErrorAction SilentlyContinue
 if (!$gn -or !$autoninja) {
-  throw 'Chromium depot_tools must be installed and first on PATH; gn and autoninja are required.'
+  throw 'The pinned engine build tools must be installed and first on PATH; gn and autoninja are required.'
 }
 
 $argsText = [IO.File]::ReadAllText($argsTemplate)
@@ -66,6 +87,7 @@ $requiredArgs = @(
   '(?m)^\s*is_official_build\s*=\s*false\s*$',
   '(?m)^\s*is_chrome_branded\s*=\s*false\s*$',
   '(?m)^\s*target_cpu\s*=\s*"x64"\s*$',
+  '(?m)^\s*enable_background_mode\s*=\s*false\s*$',
   '(?m)^\s*use_remoteexec\s*=\s*false\s*$'
 )
 foreach ($pattern in $requiredArgs) {
@@ -77,13 +99,14 @@ foreach ($pattern in $requiredArgs) {
 foreach ($forbiddenPattern in @(
   '(?im)^\s*is_chrome_branded\s*=\s*true\s*$',
   '(?im)^\s*is_official_build\s*=\s*true\s*$',
+  '(?im)^\s*enable_background_mode\s*=\s*true\s*$',
   '(?im)^\s*use_remoteexec\s*=\s*true\s*$',
   '(?im)google_api_key\s*=',
   '(?im)google_default_client_id\s*=',
   '(?im)google_default_client_secret\s*='
 )) {
   if ($argsText -match $forbiddenPattern) {
-    throw "Forbidden Google/proprietary build configuration found in $argsTemplate"
+    throw "Forbidden proprietary or background-residency build configuration found in $argsTemplate"
   }
 }
 
@@ -94,7 +117,7 @@ $outPath = if ([IO.Path]::IsPathRooted($OutDir)) {
 }
 $sourcePrefix = $sourceRootResolved.TrimEnd('\', '/') + [IO.Path]::DirectorySeparatorChar
 if (!$outPath.StartsWith($sourcePrefix, [StringComparison]::OrdinalIgnoreCase)) {
-  throw "OutDir must stay inside the pinned Chromium checkout: $outPath"
+  throw "OutDir must stay inside the pinned engine checkout: $outPath"
 }
 
 New-Item -ItemType Directory -Force -Path $outPath | Out-Null
@@ -104,7 +127,7 @@ New-Item -ItemType Directory -Force -Path $outPath | Out-Null
   [Text.UTF8Encoding]::new($false)
 )
 
-# Stage the exact reviewed repository legal files as declared mini-installer
+# Stage the exact reviewed repository legal files as declared source-archive
 # inputs before GN generation. Hash equality makes local/self-hosted builds fail
 # closed if either staged file diverges from the repository contract.
 $stagedLicense = Join-Path $outPath 'GHOSIUM-LICENSE.txt'
@@ -143,5 +166,6 @@ try {
 }
 
 Write-Host "Ghosium full-source Windows build configuration ready: $outPath"
-Write-Host "Verified legal build inputs: GHOSIUM-LICENSE.txt + THIRD_PARTY_NOTICES.md"
+Write-Host 'Verified legal build inputs: GHOSIUM-LICENSE.txt + THIRD_PARTY_NOTICES.md'
+Write-Host 'Native Memory Saver defaults are enabled; legacy background-app keep-alive is disabled.'
 Write-Host "Build command: autoninja -C $relativeOut chrome mini_installer"

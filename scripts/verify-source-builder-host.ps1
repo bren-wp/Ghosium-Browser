@@ -146,7 +146,7 @@ if ([string]::IsNullOrWhiteSpace($WorkRoot)) {
   if (![string]::IsNullOrWhiteSpace($env:GHOSIUM_SOURCE_WORK)) {
     $WorkRoot = $env:GHOSIUM_SOURCE_WORK
   } else {
-    $WorkRoot = 'C:\src\ghosium-chromium'
+    $WorkRoot = 'C:\src\ghosium-engine'
   }
 }
 

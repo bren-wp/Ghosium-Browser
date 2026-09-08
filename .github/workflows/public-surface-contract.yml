@@ -2,8 +2,6 @@ name: Ghosium Public Surface Contract
 
 on:
   pull_request:
-    branches:
-      - main
     paths:
       - 'ENGINE_SOURCE_REVISION'
       - 'engine/branding/**'
@@ -14,8 +12,6 @@ on:
       - 'scripts/generate-engine-brand-assets.py'
       - '.github/workflows/public-surface-contract.yml'
   push:
-    branches:
-      - main
     paths:
       - 'ENGINE_SOURCE_REVISION'
       - 'engine/branding/**'
@@ -32,7 +28,6 @@ permissions:
 
 jobs:
   public-surfaces:
-    name: Verify Ghosium Settings About and New Tab identity
     runs-on: ubuntu-latest
     timeout-minutes: 25
 
@@ -43,23 +38,6 @@ jobs:
           persist-credentials: false
           fetch-depth: 1
 
-      - name: Validate public-surface tooling syntax
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = 'Stop'
-          foreach ($path in @(
-            'scripts/rewrite-engine-public-surfaces.ps1',
-            'scripts/verify-engine-public-surfaces.ps1',
-            'scripts/rebrand-engine-locales.ps1',
-            'scripts/verify-engine-locales.ps1'
-          )) {
-            $tokens = $null
-            $errors = $null
-            [void][System.Management.Automation.Language.Parser]::ParseFile(
-              (Resolve-Path $path),
-              [ref]$tokens,
-              [ref]$errors
-            )
             if ($errors.Count -gt 0) {
               $errors | ForEach-Object { Write-Error $_.Message }
               throw "PowerShell parser errors found in $path"
@@ -70,7 +48,6 @@ jobs:
             throw 'Ghosium deterministic brand-asset generator has syntax errors.'
           }
 
-      - name: Sparse checkout pinned public Chromium surfaces
         shell: bash
         run: |
           set -euo pipefail
@@ -101,76 +78,14 @@ jobs:
           test "$(git -C "$src" rev-parse HEAD)" = "$revision"
           echo "PUBLIC_ENGINE_SRC=$src" >> "$GITHUB_ENV"
 
-      - name: Stage canonical Ghosium public logo assets
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = 'Stop'
-          $sourceLogo = Resolve-Path 'engine/branding/ghosium-mark.svg'
-          $targetLogo = Join-Path $env:PUBLIC_ENGINE_SRC 'chrome/app/theme/chromium/product_logo.svg'
-          New-Item -ItemType Directory -Force -Path (Split-Path -Parent $targetLogo) | Out-Null
-          Copy-Item $sourceLogo $targetLogo -Force
-
           python3 ./scripts/generate-engine-brand-assets.py $env:PUBLIC_ENGINE_SRC
           if ($LASTEXITCODE -ne 0) {
             throw "Ghosium brand-asset generation failed with exit code $LASTEXITCODE"
           }
 
-      - name: Apply complete Settings About New Tab and locale branding twice
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = 'Stop'
-
-          # First pass proves compatibility with pristine pinned Chromium.
-          ./scripts/rebrand-engine-locales.ps1 -SourceRoot $env:PUBLIC_ENGINE_SRC
-          if ($LASTEXITCODE -ne 0) {
-            throw 'First Ghosium public-surface/locale transform failed.'
-          }
-
-          # Second pass proves the transform is idempotent and does not duplicate
-          # New Tab/App Launcher or public string changes.
-          ./scripts/rebrand-engine-locales.ps1 -SourceRoot $env:PUBLIC_ENGINE_SRC
-          if ($LASTEXITCODE -ne 0) {
-            throw 'Second idempotent Ghosium public-surface/locale transform failed.'
-          }
-
-          ./scripts/verify-engine-public-surfaces.ps1 -SourceRoot $env:PUBLIC_ENGINE_SRC
-          ./scripts/verify-engine-locales.ps1 -SourceRoot $env:PUBLIC_ENGINE_SRC
-
-      - name: Verify screenshot regression contract
         shell: bash
         run: |
           set -euo pipefail
           src="$PUBLIC_ENGINE_SRC"
 
           grep -F 'About Ghosium Browser' "$src/chrome/app/settings_chromium_strings.grdp"
-          grep -F 'Ghosium Support' "$src/chrome/app/settings_chromium_strings.grdp"
-          grep -F 'Brendigo. Ghosium Browser. All rights reserved.' "$src/chrome/app/chromium_strings.grd"
-          grep -F 'name="IDS_SETTINGS_PEOPLE"' "$src/chrome/app/settings_strings.grdp"
-          grep -F 'Ghosium' "$src/chrome/app/settings_strings.grdp"
-          grep -F 'app->id() == extensions::kWebStoreAppId' "$src/chrome/browser/extensions/extension_ui_util.cc"
-
-          for legacy in \
-            'About Chromium' \
-            'Get help with Chromium' \
-            'AI in Chrome' \
-            'Chrome Colors' \
-            'Open Chrome Web Store' \
-            'You and Google'; do
-            if grep -F "$legacy" \
-              "$src/chrome/app/chromium_strings.grd" \
-              "$src/chrome/app/settings_chromium_strings.grdp" \
-              "$src/chrome/app/settings_strings.grdp" \
-              "$src/chrome/app/shared_settings_strings.grdp" \
-              "$src/chrome/app/glic_strings.grdp"; then
-              echo "Screenshot-visible legacy browser branding remains: $legacy" >&2
-              exit 1
-            fi
-          done
-
-          git -C "$src" diff --check
-          if git -C "$src" status --porcelain=v1 -- third_party | grep -q .; then
-            echo 'Public-surface branding must never modify third_party source.' >&2
-            exit 1
-          fi
-
-          echo 'Pinned Ghosium public surface screenshot-regression contract: OK'

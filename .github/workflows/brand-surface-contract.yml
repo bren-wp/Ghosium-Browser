@@ -10,9 +10,11 @@ on:
       - 'search-provider/**'
       - 'search-web/**'
       - 'store-web/**'
-      - 'launcher/**'
+      - 'updates-web/**'
       - 'installer/**'
-      - 'packaging/**'
+      - 'engine/branding/**'
+      - 'engine/build/**'
+      - 'scripts/assemble-source-release-stage.ps1'
       - '.github/workflows/brand-surface-contract.yml'
   push:
     branches:
@@ -23,17 +25,20 @@ on:
       - 'search-provider/**'
       - 'search-web/**'
       - 'store-web/**'
-      - 'launcher/**'
+      - 'updates-web/**'
       - 'installer/**'
-      - 'packaging/**'
+      - 'engine/branding/**'
+      - 'engine/build/**'
+      - 'scripts/assemble-source-release-stage.ps1'
       - '.github/workflows/brand-surface-contract.yml'
+  workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
   brand-surface:
-    name: Verify Ghosium-only public surfaces
+    name: Verify Ghosium-only public and distributable surfaces
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
@@ -44,40 +49,44 @@ jobs:
           persist-credentials: false
           fetch-depth: 1
 
-      - name: Reject legacy browser branding and internal URLs
+      - name: Reject legacy product branding on every Ghosium-owned surface
         shell: python
         run: |
           from pathlib import Path
           import re
 
-          # Product/UI surfaces remain strictly Ghosium-only. README is checked
-          # separately so its explicit legal-attribution section may accurately
-          # name Chromium and other third-party software without that legal text
-          # being mistaken for product branding.
           roots = (
               Path('extension'),
               Path('search-provider'),
               Path('search-web'),
               Path('store-web'),
-              Path('launcher'),
+              Path('updates-web'),
               Path('installer'),
-              Path('packaging'),
           )
-          suffixes = {'.md', '.html', '.php', '.json', '.cpp', '.h', '.rc', '.nsi'}
+          suffixes = {'.md', '.html', '.php', '.json', '.css', '.js', '.ts', '.cpp', '.h', '.rc', '.nsi', '.txt', '.svg'}
           legacy = re.compile(
-              r'chromium|google\s+chrome|chrome\s+web\s+store|chrome://|'
-              r'chrome-untrusted://|support\.google|chrome\.google|google\.com/chrome',
+              r'chromium|google\s+chrome|\bchrome\b|chrome://|chrome-untrusted://|'
+              r'support\.google|chrome\.google|google\.com/chrome',
               re.I,
           )
           failures = []
+
+          # Research and automated test fixtures may discuss external projects.
+          # They are never distributed as browser UI/product identity.
+          explicit_non_product = {Path('search-web/RESEARCH.md')}
+
+          def is_non_product(path: Path) -> bool:
+              if path in explicit_non_product:
+                  return True
+              return any(part.lower() in {'test', 'tests', 'fixtures'} for part in path.parts)
 
           for root in roots:
               if not root.exists():
                   continue
               for path in root.rglob('*'):
-                  if not path.is_file():
+                  if not path.is_file() or is_non_product(path):
                       continue
-                  if path.name != 'Dockerfile' and path.suffix.lower() not in suffixes:
+                  if path.suffix.lower() not in suffixes:
                       continue
                   text = path.read_text(encoding='utf-8', errors='replace')
                   for number, line in enumerate(text.splitlines(), 1):
@@ -93,18 +102,18 @@ jobs:
               for number, line in enumerate(public_readme.splitlines(), 1):
                   if legacy.search(line):
                       failures.append(f'README.md:{number}: {line.strip()}')
+              # The legal section is the one intentional exception: third-party
+              # attribution must remain accurate even though product UI is clean.
               if 'Chromium' not in legal_readme or 'third-party' not in legal_readme.lower():
-                  failures.append(
-                      'README.md: legal-attribution section must preserve explicit Chromium/third-party attribution'
-                  )
+                  failures.append('README.md: required third-party attribution is missing from the legal-only section')
 
           if failures:
               raise SystemExit(
-                  'Legacy browser branding, internal scheme or product link remains outside legal attribution:\n'
+                  'Legacy product name or URL leaked into a Ghosium-owned public/distributable surface:\n'
                   + '\n'.join(failures)
               )
 
-          print('Ghosium public branding contract: OK; legal third-party attribution remains isolated.')
+          print('Ghosium public/distributable branding: zero legacy product names; legal attribution isolated.')
 
       - name: Verify Ghosium product destinations
         shell: python
@@ -117,8 +126,14 @@ jobs:
               Path('search-provider/manifest.json'),
               Path('search-web/index.php'),
               Path('store-web/index.php'),
+              Path('updates-web/index.php'),
           )
-          allowed_hosts = {'ghosium.com', 'search.ghosium.com', 'store.ghosium.com'}
+          allowed_hosts = {
+              'ghosium.com',
+              'search.ghosium.com',
+              'store.ghosium.com',
+              'updates.ghosium.com',
+          }
           url_re = re.compile(r'https://([a-z0-9.-]+)(?:/[^\s"\'<>)]*)?', re.I)
 
           for path in files:
@@ -146,34 +161,50 @@ jobs:
             grep -F "$route" README.md >/dev/null
           done
 
-      - name: Verify launcher hardening and isolation contract
-        shell: bash
+      - name: Verify source-built security and performance boundaries
+        shell: python
         run: |
-          set -euo pipefail
-          launcher='launcher/main.cpp'
+          from pathlib import Path
+          import re
 
-          for required in \
-            'SetDefaultDllDirectories' \
-            'NoRemoteImages = 1' \
-            'NoLowMandatoryLabelImages = 1' \
-            'PreferSystem32Images = 1' \
-            'DisableExtensionPoints = 1' \
-            'ProhibitDynamicCode = 1' \
-            '--disable-gpu-sandbox' \
-            '--disable-site-isolation-trials' \
-            '--disable-features' \
-            '--ignore-certificate-errors' \
-            'L"Brendigo" / L"Ghosium" / L"User Data"'; do
-            grep -F -- "$required" "$launcher" >/dev/null || {
-              echo "Launcher hardening invariant missing: $required" >&2
-              exit 1
-            }
-          done
+          gn = Path('engine/build/windows-x64.args.gn').read_text(encoding='utf-8')
+          if not re.search(r'(?m)^\s*enable_background_mode\s*=\s*false\s*$', gn):
+              raise SystemExit('Ghosium Windows build must disable legacy background keep-alive mode.')
 
-          if grep -F -- '--renderer-process-limit' "$launcher"; then
-            echo 'Ghosium low-memory mode must not reduce renderer/site isolation through a renderer-process cap.' >&2
-            exit 1
-          fi
+          repository_text = '\n'.join(
+              path.read_text(encoding='utf-8', errors='replace')
+              for path in (
+                  Path('engine/build/windows-x64.args.gn'),
+                  Path('scripts/configure-engine-build.ps1'),
+              )
+          )
+          for forbidden in (
+              '--renderer-process-limit',
+              '--no-sandbox',
+              '--disable-gpu-sandbox',
+              '--disable-site-isolation-trials',
+              '--disable-web-security',
+              '--ignore-certificate-errors',
+          ):
+              if forbidden in repository_text:
+                  raise SystemExit(f'Forbidden security-reducing performance shortcut: {forbidden}')
 
-          grep -F '64ULL * 1024ULL * 1024ULL' "$launcher" >/dev/null
-          grep -F '128ULL * 1024ULL * 1024ULL' "$launcher" >/dev/null
+          print('Ghosium source-built security/performance boundary: OK')
+
+      - name: Verify release stage rejects legacy public executable names
+        shell: python
+        run: |
+          from pathlib import Path
+          text = Path('scripts/assemble-source-release-stage.ps1').read_text(encoding='utf-8')
+          for required in (
+              "'chrome.exe'",
+              "'chrome_proxy.exe'",
+              "'update.exe'",
+              "'updater.exe'",
+              "'uninstall.exe'",
+          ):
+              if required not in text:
+                  raise SystemExit(f'Release-stage forbidden-name guard missing: {required}')
+          if "Join-Path $outPath 'Ghosium-Browser.exe'" not in text:
+              raise SystemExit('Release stage must require Ghosium-Browser.exe.')
+          print('Ghosium public executable-name release gate: OK')

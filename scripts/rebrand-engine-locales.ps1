@@ -8,6 +8,7 @@ Set-StrictMode -Version Latest
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $config = Get-Content (Join-Path $repoRoot 'engine/branding/product.json') -Raw | ConvertFrom-Json
+$localeUi = Get-Content (Join-Path $repoRoot 'engine/branding/locale-ui.json') -Raw | ConvertFrom-Json
 $sourceRootResolved = (Resolve-Path $SourceRoot).Path
 
 $legalChromiumIds = @(
@@ -15,7 +16,6 @@ $legalChromiumIds = @(
   '7681937895330411637'
 )
 $settingsPeopleTranslationId = '3721119614952978349'
-$chromiumWord = [regex]::new('\bChromium\b')
 $chromiumProductStem = [regex]::new('\bChromium(?=\p{Ll}|\b)')
 $chromeProductStem = [regex]::new('\bChrome(?=\p{Ll}|\b)')
 
@@ -30,30 +30,60 @@ function Get-TranslationLocaleCode {
   }
 }
 
+function Get-LocalizedUiString {
+  param(
+    [Parameter(Mandatory = $true)][string]$Locale,
+    [Parameter(Mandatory = $true)][string]$Key
+  )
+
+  $keyProperty = $localeUi.strings.PSObject.Properties[$Key]
+  if (!$keyProperty) {
+    throw "Missing Ghosium localized UI key: $Key"
+  }
+  $localeProperty = $keyProperty.Value.PSObject.Properties[$Locale]
+  if (!$localeProperty -or [string]::IsNullOrWhiteSpace([string]$localeProperty.Value)) {
+    throw "Missing Ghosium localized UI value for ${Key}/${Locale}"
+  }
+  return [string]$localeProperty.Value
+}
+
+function Get-ProductLocaleForXtbPath {
+  param([Parameter(Mandatory = $true)][string]$Path)
+
+  $name = [IO.Path]::GetFileName($Path)
+  foreach ($locale in @($config.locales.supported)) {
+    $productLocale = [string]$locale
+    $fileLocale = Get-TranslationLocaleCode -Locale $productLocale
+    if (!$fileLocale) {
+      continue
+    }
+    if ($name.EndsWith("_${fileLocale}.xtb", [StringComparison]::OrdinalIgnoreCase)) {
+      return $productLocale
+    }
+  }
+  return [string]$config.locales.default
+}
+
 function Replace-ProductBrandingInBody {
   param(
     [Parameter(Mandatory = $true)][string]$Body,
     [Parameter(Mandatory = $true)][AllowEmptyString()][string]$TranslationId,
-    [Parameter(Mandatory = $true)][bool]$PreserveChromiumProject
+    [Parameter(Mandatory = $true)][bool]$PreserveChromiumProject,
+    [Parameter(Mandatory = $false)][string]$Locale = 'en-US'
   )
 
-  if ($TranslationId -eq $settingsPeopleTranslationId) {
-    return 'Ghosium'
   }
 
   $updated = $Body
   $updated = $updated.Replace('Chrome Web Store', 'Ghosium Store')
   $updated = $updated.Replace('Chrome Colors', 'Ghosium Colors')
-  $updated = $updated.Replace('AI in Chrome', 'AI in Ghosium')
-  $updated = $updated.Replace('Gemini in Chromium', 'Gemini in Ghosium')
-  $updated = $updated.Replace('Gemini in Chrome', 'Gemini in Ghosium')
   $updated = $updated.Replace('Google Chrome for Testing', 'Ghosium Browser')
   $updated = $updated.Replace('Chrome for Testing', 'Ghosium Browser')
   $updated = $updated.Replace('Google Chrome', 'Ghosium Browser')
 
   if ($PreserveChromiumProject -and $legalChromiumIds -contains $TranslationId) {
     if (!$updated.Contains('Ghosium Browser')) {
-      $updated = $chromiumWord.Replace($updated, 'Ghosium Browser', 1)
+      $updated = $chromiumProductStem.Replace($updated, 'Ghosium Browser', 1)
     }
   } else {
     $updated = $chromiumProductStem.Replace($updated, 'Ghosium Browser')
@@ -74,14 +104,15 @@ function Update-XtbBundle {
 
   $updatedFiles = 0
   foreach ($locale in @($config.locales.supported)) {
-    $fileLocale = Get-TranslationLocaleCode -Locale ([string]$locale)
+    $productLocale = [string]$locale
+    $fileLocale = Get-TranslationLocaleCode -Locale $productLocale
     if (!$fileLocale) {
       continue
     }
 
     $path = Join-Path $sourceRootResolved (Join-Path $Directory ($Prefix + $fileLocale + '.xtb'))
     if (!(Test-Path $path -PathType Leaf)) {
-      throw "Missing translation bundle for supported locale ${locale}: $path"
+      throw "Missing translation bundle for supported locale ${productLocale}: $path"
     }
 
     $text = [IO.File]::ReadAllText($path)
@@ -90,7 +121,11 @@ function Update-XtbBundle {
       param($match)
       $id = $match.Groups[2].Value
       $originalBody = $match.Groups[3].Value
-      $body = Replace-ProductBrandingInBody -Body $originalBody -TranslationId $id -PreserveChromiumProject $PreserveChromiumProject
+      $body = Replace-ProductBrandingInBody `
+        -Body $originalBody `
+        -TranslationId $id `
+        -PreserveChromiumProject $PreserveChromiumProject `
+        -Locale $productLocale
 
       if ($body -ne $originalBody) {
         $body = [regex]::Replace($body, '[ \t]+(?=\r?\n)', '')
@@ -134,6 +169,7 @@ function Normalize-RewrittenLocalizedResources {
     $updated = $text
 
     if ($extension -eq '.xtb') {
+      $productLocale = Get-ProductLocaleForXtbPath -Path $path
       $updated = [regex]::Replace(
         $updated,
         '(?s)(<translation\s+id="([0-9]+)"[^>]*>)(.*?)(</translation>)',
@@ -143,7 +179,8 @@ function Normalize-RewrittenLocalizedResources {
           $body = Replace-ProductBrandingInBody `
             -Body $match.Groups[3].Value `
             -TranslationId $id `
-            -PreserveChromiumProject $true
+            -PreserveChromiumProject $true `
+            -Locale $productLocale
           return $match.Groups[1].Value + $body + $match.Groups[4].Value
         }
       )
@@ -156,7 +193,8 @@ function Normalize-RewrittenLocalizedResources {
           $body = Replace-ProductBrandingInBody `
             -Body $match.Groups[2].Value `
             -TranslationId '' `
-            -PreserveChromiumProject $false
+            -PreserveChromiumProject $false `
+            -Locale ([string]$config.locales.default)
           return $match.Groups[1].Value + $body + $match.Groups[3].Value
         }
       )
@@ -173,15 +211,10 @@ function Normalize-RewrittenLocalizedResources {
   Write-Host "Normalized $normalizedFiles additional rewritten localization resource(s)."
 }
 
-# The historical engine audit uses a deliberately narrow sparse checkout. A
-# complete production source tree, and the dedicated public-surface CI checkout,
-# contain all of these files. Only those complete contexts may execute and
-# independently verify the Settings/About/New Tab source transform.
 $publicSurfaceRequired = @(
   'chrome/app/settings_strings.grdp',
   'chrome/app/shared_settings_strings.grdp',
   'chrome/app/glic_strings.grdp',
-  'chrome/browser/extensions/extension_ui_util.cc'
 )
 $completePublicSurfaceSource = $true
 foreach ($relative in $publicSurfaceRequired) {
@@ -224,6 +257,3 @@ if ($completePublicSurfaceSource) {
   if ($LASTEXITCODE -ne 0) {
     throw 'Ghosium public-surface verification failed after locale branding.'
   }
-}
-
-Write-Host 'Ghosium supported locale branding verified; complete public surfaces are independently verified whenever their source set is present.'
