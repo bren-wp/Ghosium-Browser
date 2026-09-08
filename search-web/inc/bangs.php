@@ -49,7 +49,7 @@ function resolve_ghosium_bang(string $query): ?array
         return null;
     }
 
-    // Support both "!gh chromium" and "chromium !gh". Only one bang is
+    // Support both "!gh browser" and "browser !gh". Only one bang is
     // consumed; an unknown bang stays an ordinary Ghosium Search query.
     if (!preg_match('/(?:^|\s)!([a-z0-9_-]{1,16})(?:\s|$)/i', $query, $match, PREG_OFFSET_CAPTURE)) {
         return null;
