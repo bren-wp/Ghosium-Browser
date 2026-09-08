@@ -13,9 +13,9 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parent.parent
 GITILES_ROOT = "https://chromium.googlesource.com/chromium/src/+"
 
-# The source paths below are pinned engine implementation anchors. Their names
-# are upstream technical identifiers only; Ghosium public/release surfaces are
-# verified separately and must never expose the upstream product brand.
+# These are revision-pinned implementation anchors. Their path/symbol names are
+# technical source API only; public Ghosium product surfaces are checked by
+# separate branding/public-surface contracts.
 FILE_ANCHORS: dict[str, tuple[str, ...]] = {
     "chrome/app/chromium_strings.grd": (
         "IDS_PRODUCT_NAME",
@@ -27,7 +27,7 @@ FILE_ANCHORS: dict[str, tuple[str, ...]] = {
     "chrome/app/settings_chromium_strings.grdp": (
         "IDS_SETTINGS_ABOUT_PROGRAM",
         "IDS_SETTINGS_GET_HELP_USING_CHROME",
-        "IDS_SETTINGS_ABOUT_BROWSER_VERSION",
+        "IDS_SETTINGS_UPGRADE_UP_TO_DATE",
     ),
     "components/components_chromium_strings.grd": (
         "IDS_SHORT_PRODUCT_NAME",
@@ -85,11 +85,11 @@ FILE_ANCHORS: dict[str, tuple[str, ...]] = {
     "build/win/reorder-imports.py": (
         'input_image = os.path.join(input_dir, "chrome.exe")',
         'output_image = os.path.join(output_dir, "chrome.exe")',
-        'assert os.path.isfile(input_image)',
+        "assert os.path.isfile(input_image)",
     ),
     "chrome/app/chrome_exe.ver": (
-        'INTERNAL_NAME=chrome_exe',
-        'ORIGINAL_FILENAME=chrome.exe',
+        "INTERNAL_NAME=chrome_exe",
+        "ORIGINAL_FILENAME=chrome.exe",
     ),
     "chrome/installer/mini_installer/BUILD.gn": (
         'chrome_path = "$root_out_dir/chrome.exe"',
@@ -104,24 +104,24 @@ FILE_ANCHORS: dict[str, tuple[str, ...]] = {
     ),
     "chrome/installer/launcher_support/chrome_launcher_support.cc": (
         'L"chrome.exe"',
-        'kChromeExe',
+        "kChromeExe",
     ),
     "chrome/chrome_proxy/BUILD.gn": (
         'output_name = "chrome_proxy"',
     ),
     "chrome/chrome_proxy/chrome_proxy.ver": (
-        'INTERNAL_NAME=chrome_proxy',
-        'ORIGINAL_FILENAME=chrome_proxy.exe',
+        "INTERNAL_NAME=chrome_proxy",
+        "ORIGINAL_FILENAME=chrome_proxy.exe",
     ),
     "chrome/chrome_proxy/chrome_proxy_main_win.cc": (
-        'chrome_proxy',
-        'chrome.exe',
+        "chrome_proxy",
+        "chrome.exe",
     ),
     "chrome/browser/ui/webui/version/version_ui.cc": (
-        'version_info::GetVersionNumber()',
-        'version_info::GetOSType()',
-        'version_info::GetLastChange()',
-        'version_info::GetVersionStringWithModifier(',
+        "version_info::GetVersionNumber()",
+        "version_info::GetOSType()",
+        "version_info::GetLastChange()",
+        "version_info::GetVersionStringWithModifier(",
     ),
     "chrome/browser/ui/webui/side_panel/customize_chrome/customize_chrome_page_handler.cc": (
         "CustomizeChromePageHandler",
@@ -167,6 +167,11 @@ FILE_ANCHORS: dict[str, tuple[str, ...]] = {
         "kChromeElfDll",
         "kChromePwaLauncherExe",
     ),
+    "components/performance_manager/user_tuning/prefs.cc": (
+        "kMemorySaverModeState, static_cast<int>(MemorySaverModeState::kDisabled));",
+        "static_cast<int>(MemorySaverModeAggressiveness::kMedium)",
+        "registry->RegisterBooleanPref(kTabFreezingEnabled, true);",
+    ),
     "ui/webui/resources/images/chrome_logo_dark.svg": (),
     "chrome/app/theme/chromium/product_logo.svg": (),
     "components/vector_icons/chromium/product.icon": (),
@@ -196,7 +201,9 @@ def _request_bytes(url: str, attempts: int = 4) -> bytes:
             last_error = error
             if attempt + 1 < attempts:
                 time.sleep(1.5 * (attempt + 1))
-    raise RuntimeError(f"Unable to fetch pinned source anchor URL after {attempts} attempts: {url}") from last_error
+    raise RuntimeError(
+        f"Unable to fetch pinned source anchor URL after {attempts} attempts: {url}"
+    ) from last_error
 
 
 def fetch_file(revision: str, path: str) -> str:
@@ -204,9 +211,11 @@ def fetch_file(revision: str, path: str) -> str:
     encoded = _request_bytes(url)
     try:
         decoded = base64.b64decode(encoded, validate=True)
-    except Exception as error:  # noqa: BLE001 - surface a precise contract failure.
+    except Exception as error:  # noqa: BLE001 - expose a precise contract failure.
         preview = encoded[:120].decode("utf-8", errors="replace")
-        raise RuntimeError(f"Gitiles returned non-base64 content for {path}: {preview!r}") from error
+        raise RuntimeError(
+            f"Gitiles returned non-base64 content for {path}: {preview!r}"
+        ) from error
     return decoded.decode("utf-8")
 
 
@@ -219,7 +228,11 @@ def fetch_directory_names(revision: str, path: str) -> set[str]:
     entries = payload.get("entries")
     if not isinstance(entries, list):
         raise RuntimeError(f"Gitiles directory listing is malformed for {path}")
-    return {str(entry.get("name")) for entry in entries if isinstance(entry, dict) and entry.get("name")}
+    return {
+        str(entry.get("name"))
+        for entry in entries
+        if isinstance(entry, dict) and entry.get("name")
+    }
 
 
 def translation_locale(locale: str) -> str | None:
@@ -237,34 +250,57 @@ def verify_file_anchors(revision: str) -> None:
         text = fetch_file(revision, path)
         for anchor in anchors:
             if anchor not in text:
-                raise RuntimeError(f"Pinned engine patch anchor changed: {path}: {anchor}")
-        if path.endswith("template_url_prepopulate_data.cc") and SEARCH_FALLBACK_BLOCK not in text:
-            raise RuntimeError("Pinned engine fallback-search implementation no longer matches the reviewed Ghosium rewrite block.")
+                raise RuntimeError(
+                    f"Pinned engine patch anchor changed: {path}: {anchor}"
+                )
+        if path.endswith("template_url_prepopulate_data.cc"):
+            if SEARCH_FALLBACK_BLOCK not in text:
+                raise RuntimeError(
+                    "Pinned engine fallback-search implementation no longer matches "
+                    "the reviewed Ghosium rewrite block."
+                )
         print(f"OK source anchors: {path} ({len(anchors)} required literal(s))")
 
 
 def verify_locale_layout(revision: str) -> None:
-    config = json.loads((REPO_ROOT / "engine/branding/product.json").read_text(encoding="utf-8"))
+    config = json.loads(
+        (REPO_ROOT / "engine/branding/product.json").read_text(encoding="utf-8")
+    )
     locale_config = config.get("locales", {})
     locales = locale_config.get("supported", [])
     if not isinstance(locales, list) or len(locales) < 31:
-        raise RuntimeError("engine/branding/product.json must define more than 30 supported locales before source layout validation.")
+        raise RuntimeError(
+            "engine/branding/product.json must define more than 30 supported locales "
+            "before source layout validation."
+        )
     if locale_config.get("default") != "en-US" or locale_config.get("required") != "hr":
-        raise RuntimeError("Ghosium locale contract requires en-US as primary and hr as required Croatian locale.")
-    if len(locales) != len(set(map(str, locales))):
+        raise RuntimeError(
+            "Ghosium locale contract requires en-US as primary and hr as required "
+            "Croatian locale."
+        )
+    normalized = [str(locale) for locale in locales]
+    if len(normalized) != len(set(normalized)):
         raise RuntimeError("Ghosium supported locale list contains duplicates.")
 
-    expected_locales = [translation_locale(str(locale)) for locale in locales]
+    expected_locales = [translation_locale(locale) for locale in normalized]
     expected_locales = [locale for locale in expected_locales if locale]
 
     for directory, prefix in LOCALE_DIRECTORIES:
         names = fetch_directory_names(revision, directory)
-        missing = [f"{prefix}{locale}.xtb" for locale in expected_locales if f"{prefix}{locale}.xtb" not in names]
+        missing = [
+            f"{prefix}{locale}.xtb"
+            for locale in expected_locales
+            if f"{prefix}{locale}.xtb" not in names
+        ]
         if missing:
             raise RuntimeError(
-                f"Pinned engine locale layout changed under {directory}; missing: {', '.join(missing)}"
+                f"Pinned engine locale layout changed under {directory}; missing: "
+                f"{', '.join(missing)}"
             )
-        print(f"OK locale layout: {directory} ({len(expected_locales)} translated locale bundle(s))")
+        print(
+            f"OK locale layout: {directory} "
+            f"({len(expected_locales)} translated locale bundle(s))"
+        )
 
 
 def parse_args() -> argparse.Namespace:
@@ -278,9 +314,14 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> int:
     args = parse_args()
-    revision = args.revision or (REPO_ROOT / "ENGINE_SOURCE_REVISION").read_text(encoding="utf-8").strip()
+    revision = args.revision or (
+        REPO_ROOT / "ENGINE_SOURCE_REVISION"
+    ).read_text(encoding="utf-8").strip()
     if not re.fullmatch(r"[0-9a-f]{40}", revision):
-        raise RuntimeError(f"ENGINE_SOURCE_REVISION is not one lowercase 40-character Git commit: {revision!r}")
+        raise RuntimeError(
+            "ENGINE_SOURCE_REVISION is not one lowercase 40-character Git commit: "
+            f"{revision!r}"
+        )
 
     verify_file_anchors(revision)
     verify_locale_layout(revision)
