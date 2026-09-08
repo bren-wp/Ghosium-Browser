@@ -3,5 +3,5 @@ document.querySelector('#options').addEventListener('click', () => {
 });
 
 document.querySelector('#newTab').addEventListener('click', () => {
-  chrome.tabs.create({url: 'chrome://newtab/'});
+  chrome.tabs.create({});
 });
