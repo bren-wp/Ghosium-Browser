@@ -1,0 +1,93 @@
+name: Ghosium GitHub-Hosted Interactive Desktop Probe
+
+on:
+  push:
+    branches:
+      - 'ghosium/ops/github-hosted-builder-probe-0.1.9'
+    paths:
+      - '.github/workflows/github-hosted-interactive-probe.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    name: Verify GitHub-hosted Windows GUI session capability
+    runs-on: windows-2025
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Launch and observe a real desktop window
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Set-StrictMode -Version Latest
+
+          $current = Get-Process -Id $PID
+          $sessionId = [int]$current.SessionId
+          if ($sessionId -eq 0) {
+            throw 'GitHub-hosted runner is executing in Session 0; first-usable-window benchmark evidence would not be valid.'
+          }
+
+          $explorer = @(Get-Process explorer -ErrorAction SilentlyContinue | Where-Object { $_.SessionId -eq $sessionId })
+          $notepad = Start-Process notepad.exe -PassThru
+          try {
+            $deadline = [DateTime]::UtcNow.AddSeconds(20)
+            $windowHandle = [IntPtr]::Zero
+            while ([DateTime]::UtcNow -lt $deadline) {
+              Start-Sleep -Milliseconds 250
+              $notepad.Refresh()
+              if ($notepad.HasExited) { break }
+              $windowHandle = $notepad.MainWindowHandle
+              if ($windowHandle -ne [IntPtr]::Zero) { break }
+            }
+
+            if ($notepad.HasExited) {
+              throw 'GUI probe process exited before exposing a window.'
+            }
+            if ($windowHandle -eq [IntPtr]::Zero) {
+              throw 'GUI probe process did not expose a top-level window in the runner session.'
+            }
+
+            $report = [ordered]@{
+              schemaVersion = 1
+              purpose = 'github-hosted-interactive-desktop-proof'
+              productVersion = (Get-Content VERSION -Raw).Trim()
+              repositoryCommit = $env:GITHUB_SHA
+              runner = [ordered]@{
+                imageOS = $env:ImageOS
+                imageVersion = $env:ImageVersion
+                sessionId = $sessionId
+                userInteractive = [Environment]::UserInteractive
+                explorerInSession = ($explorer.Count -gt 0)
+              }
+              guiProbe = [ordered]@{
+                executable = 'notepad.exe'
+                processSessionId = [int]$notepad.SessionId
+                mainWindowHandleNonZero = ($windowHandle -ne [IntPtr]::Zero)
+              }
+              result = 'interactive-window-observed'
+            }
+
+            New-Item -ItemType Directory -Force -Path artifacts | Out-Null
+            $report | ConvertTo-Json -Depth 6 | Set-Content 'artifacts/GHOSIUM-GITHUB-HOSTED-INTERACTIVE-DESKTOP.json' -Encoding utf8
+            $report | ConvertTo-Json -Depth 6
+          } finally {
+            if (!$notepad.HasExited) {
+              Stop-Process -Id $notepad.Id -Force -ErrorAction SilentlyContinue
+            }
+          }
+
+      - name: Upload interactive desktop evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: ghosium-github-hosted-interactive-desktop-0.1.9
+          path: artifacts/GHOSIUM-GITHUB-HOSTED-INTERACTIVE-DESKTOP.json
+          if-no-files-found: error
+          retention-days: 30
