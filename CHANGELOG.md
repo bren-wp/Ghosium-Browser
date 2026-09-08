@@ -1,5 +1,35 @@
 # Changelog
 
+## 0.1.3 — Search redesign, measured performance gate and release hardening
+
+### Ghosium Search
+- Rebuilt the public Ghosium Search interface from the ground up around the same dark surface, mint/teal/cyan accent system and compact browser-like controls used by Ghosium Browser.
+- Replaced the monolithic public template with reusable server-rendered PHP UI components for brand, search box and result cards.
+- Kept the public search path free of a JavaScript runtime bundle: no client framework, hydration layer or Node application server is required to search.
+- Removed developer/operator examples, index counts and provider implementation details from the public home page. Users see one focused search box; advanced `site:`, phrase, exclusion, title and explicit `!bang` functionality remains available to the parser/API.
+- Added responsive browser-style result layout, accessible controls, reduced-motion handling and no inline CSS/JavaScript.
+- Strengthened Search CI so public UI simplicity is a contract while backend advanced-query behavior remains independently tested.
+
+### Performance evidence
+- Upgraded the Windows benchmark evidence schema to v2.
+- Added direct source-built `UserDataDir` benchmark mode while retaining the historical portable-profile mode for the immutable pre-0.1.0 comparison binary.
+- Added best-effort per-process Windows GPU memory counters with explicit unavailable state instead of fabricated zero values.
+- Added Ghosium-owned TCP/UDP endpoint snapshots, TCP state counts and unique remote-address counts without misrepresenting them as network-byte attribution.
+- Added five-second and sixty-second activity intervals with CPU and process-I/O deltas.
+- Made `GHOSIUM-PERFORMANCE.json` mandatory evidence in the controlled full-source Windows build and immutable release gate.
+
+### Builder and release engineering
+- Renamed the default persistent source workspace to `C:\src\ghosium-engine`.
+- Documented the interactive Windows desktop requirement needed to measure first usable browser window reliably.
+- Strengthened the Source Builder contract to parse and validate benchmark tooling and require source-built performance evidence in the manual release workflow.
+- Kept all performance work behind sandbox/site-isolation/certificate-validation safety boundaries.
+
+### Versioning
+- Advanced `VERSION`, Ghosium Privacy, Ghosium Search, built-in Store metadata and the disabled Windows update baseline to `0.1.3`.
+- The checked-in update baseline remains disabled and contains no release SHA-256/size until a real signed 0.1.3 package exists.
+
+> `0.1.3` is not considered a released source-built browser until the controlled full-source Windows workflow compiles, measures, signs and runtime-tests the exact production commit.
+
 ## 0.1.2 — localization, cleanup, performance and stability
 
 ### Product identity
@@ -21,7 +51,7 @@
 - Preserved native medium aggressiveness, tab-freezing behavior, existing discard threshold and explicit user preference precedence.
 - Disabled legacy background-app keep-alive in the Windows build configuration so closing the final browser window does not intentionally keep that mode resident.
 - Added a pinned-source performance-default contract that applies the transformation twice, independently verifies it and rejects renderer caps or security-reducing launch shortcuts.
-- Performance claims remain blocked until the actual 0.1.2 source-built binary is benchmarked against the retained historical methodology.
+- Performance claims remain blocked until the actual source-built binary is benchmarked against the retained historical methodology.
 
 ### Repository cleanup
 - Removed the retired pre-source wrapper launcher and its resource/build script.
@@ -32,8 +62,6 @@
 ### Build and release
 - Advanced `VERSION`, Ghosium Privacy, Ghosium Search and built-in Store metadata to `0.1.2`.
 - Kept the production full-source build, runtime verification, canonical Setup packaging, signing, update-manifest binding and immutable release evidence as mandatory release gates.
-
-> `0.1.2` is not considered a released source-built browser until the controlled full-source Windows workflow compiles, signs and runtime-tests the exact production commit.
 
 ## 0.1.1 — Ghosium-only public surfaces
 
