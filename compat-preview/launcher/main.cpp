@@ -159,6 +159,22 @@ bool IsProtectedArgument(const std::wstring& argument, bool* consumes_next) {
          IsInternalSwitch(lowered);
 }
 
+bool IsValidHandle(HANDLE handle) {
+  return handle != nullptr && handle != INVALID_HANDLE_VALUE;
+}
+
+HANDLE DuplicateForChild(HANDLE source) {
+  if (!IsValidHandle(source)) {
+    return nullptr;
+  }
+  HANDLE duplicate = nullptr;
+  if (!DuplicateHandle(GetCurrentProcess(), source, GetCurrentProcess(), &duplicate,
+                       0, TRUE, DUPLICATE_SAME_ACCESS)) {
+    return nullptr;
+  }
+  return duplicate;
+}
+
 void ApplyLauncherMitigations() {
   SetDllDirectoryW(L"");
   PROCESS_MITIGATION_IMAGE_LOAD_POLICY policy{};
@@ -186,6 +202,7 @@ int APIENTRY wWinMain(HINSTANCE, HINSTANCE, LPWSTR, int) {
   }
 
   bool wait_for_engine = false;
+  bool headless_mode = false;
   fs::path portable_profile;
   std::wstring requested_locale;
 
@@ -197,6 +214,9 @@ int APIENTRY wWinMain(HINSTANCE, HINSTANCE, LPWSTR, int) {
       return 0;
     }
     if (lowered == kWaitSwitch) {
+      wait_for_engine = true;
+    } else if (lowered == L"--dump-dom" || StartsWithInsensitive(lowered, L"--headless")) {
+      headless_mode = true;
       wait_for_engine = true;
     } else if (StartsWithInsensitive(argument, kPortableProfilePrefix)) {
       portable_profile = fs::path(argument.substr(std::wstring(kPortableProfilePrefix).size()));
@@ -265,11 +285,33 @@ int APIENTRY wWinMain(HINSTANCE, HINSTANCE, LPWSTR, int) {
 
   STARTUPINFOW startup_info{};
   startup_info.cb = sizeof(startup_info);
+  BOOL inherit_handles = FALSE;
+  HANDLE child_stdin = nullptr;
+  HANDLE child_stdout = nullptr;
+  HANDLE child_stderr = nullptr;
+
+  if (headless_mode) {
+    child_stdin = DuplicateForChild(GetStdHandle(STD_INPUT_HANDLE));
+    child_stdout = DuplicateForChild(GetStdHandle(STD_OUTPUT_HANDLE));
+    child_stderr = DuplicateForChild(GetStdHandle(STD_ERROR_HANDLE));
+    if (child_stdout && child_stderr) {
+      startup_info.dwFlags |= STARTF_USESTDHANDLES;
+      startup_info.hStdInput = child_stdin;
+      startup_info.hStdOutput = child_stdout;
+      startup_info.hStdError = child_stderr;
+      inherit_handles = TRUE;
+    }
+  }
+
   PROCESS_INFORMATION process_info{};
   const BOOL created = CreateProcessW(
-      engine_executable.c_str(), command_line.data(), nullptr, nullptr, FALSE,
+      engine_executable.c_str(), command_line.data(), nullptr, nullptr, inherit_handles,
       CREATE_UNICODE_ENVIRONMENT, nullptr, runtime_directory.c_str(),
       &startup_info, &process_info);
+
+  if (child_stdin) CloseHandle(child_stdin);
+  if (child_stdout) CloseHandle(child_stdout);
+  if (child_stderr) CloseHandle(child_stderr);
 
   if (!created) {
     const DWORD error = GetLastError();
