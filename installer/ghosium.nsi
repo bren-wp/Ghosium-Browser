@@ -50,6 +50,10 @@ VIAddVersionKey /LANG=1033 "LegalCopyright" "Copyright (c) 2026 Brendigo"
 
 !define MUI_ABORTWARNING
 !define MUI_ICON "${GHOSIUM_ICON}"
+!define MUI_HEADERIMAGE
+!define MUI_HEADERIMAGE_BITMAP "${__FILEDIR__}\assets\header.bmp"
+!define MUI_HEADERIMAGE_RIGHT
+!define MUI_WELCOMEFINISHPAGE_BITMAP "${__FILEDIR__}\assets\welcome.bmp"
 !define MUI_WELCOMEPAGE_TITLE "Ghosium Browser ${GHOSIUM_VERSION}"
 !define MUI_WELCOMEPAGE_TEXT "Welcome to Ghosium Browser.$\r$\n$\r$\nChoose your language, review the Brendigo license, and install Ghosium Browser for your Windows account."
 !define MUI_FINISHPAGE_LINK "Ghosium Support"

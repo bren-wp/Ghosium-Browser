@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>Ghosium Privacy</title>
+  <link rel="stylesheet" href="popup.css">
+  <script src="popup.js" defer></script>
+</head>
+<body>
+  <main class="popup">
+    <header>
+      <img src="ghosium-mark.svg" width="34" height="34" alt="">
+      <div>
+        <strong>Ghosium Privacy</strong>
+        <span>Protection is active</span>
+      </div>
+    </header>
+
+    <div class="status-card">
+      <span class="dot" aria-hidden="true"></span>
+      <div>
+        <strong>Ghosium Shield</strong>
+        <small>Declarative tracker protection enabled</small>
+      </div>
+    </div>
+
+    <div class="actions">
+      <button id="newTab" type="button">Open New Tab</button>
+      <button id="options" type="button">Ghosium Options</button>
+    </div>
+  </main>
+</body>
+</html>

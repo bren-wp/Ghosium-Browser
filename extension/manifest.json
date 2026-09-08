@@ -1,14 +1,31 @@
 {
   "manifest_version": 3,
   "name": "Ghosium Privacy",
-  "version": "0.1.8",
-  "description": "Ghosium new tab and declarative privacy protection.",
+  "short_name": "Ghosium",
+  "version": "0.1.9",
+  "description": "Ghosium new tab, local customization and declarative privacy protection.",
   "permissions": [
-    "declarativeNetRequest"
+    "declarativeNetRequest",
+    "storage"
   ],
   "host_permissions": [
     "<all_urls>"
   ],
+  "icons": {
+    "16": "icons/16.png",
+    "32": "icons/32.png",
+    "48": "icons/48.png",
+    "128": "icons/128.png"
+  },
+  "action": {
+    "default_title": "Ghosium Privacy",
+    "default_icon": {
+      "16": "icons/16.png",
+      "32": "icons/32.png"
+    },
+    "default_popup": "popup.html"
+  },
+  "options_page": "options.html",
   "declarative_net_request": {
     "rule_resources": [
       {

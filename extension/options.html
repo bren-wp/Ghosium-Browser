@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark light">
+  <title>Ghosium Options</title>
+  <link rel="stylesheet" href="options.css">
+  <script src="options.js" defer></script>
+</head>
+<body>
+  <main class="settings-shell">
+    <header class="brand">
+      <img src="ghosium-mark.svg" width="48" height="48" alt="">
+      <div>
+        <p class="eyebrow">GHOSIUM BROWSER</p>
+        <h1>New Tab options</h1>
+        <p class="lead">Customize the Ghosium New Tab locally. These settings stay on this browser profile.</p>
+      </div>
+    </header>
+
+    <section class="panel" aria-labelledby="appearance-title">
+      <div class="section-heading">
+        <div>
+          <p class="eyebrow">APPEARANCE</p>
+          <h2 id="appearance-title">Make Ghosium yours</h2>
+        </div>
+        <span id="saveState" class="save-state" role="status" aria-live="polite">Saved locally</span>
+      </div>
+
+      <label class="field" for="accent">
+        <span>
+          <strong>Accent</strong>
+          <small>Choose the highlight used on the New Tab page.</small>
+        </span>
+        <select id="accent" name="accent">
+          <option value="mint">Ghosium Mint</option>
+          <option value="violet">Ghosium Violet</option>
+          <option value="blue">Ghosium Blue</option>
+        </select>
+      </label>
+
+      <label class="toggle-row" for="compactMode">
+        <span>
+          <strong>Compact layout</strong>
+          <small>Use tighter spacing on smaller displays and weaker PCs.</small>
+        </span>
+        <input id="compactMode" type="checkbox">
+      </label>
+
+      <label class="toggle-row" for="showTopNav">
+        <span>
+          <strong>Show Ghosium navigation</strong>
+          <small>Show Home, Store, Support and Security links.</small>
+        </span>
+        <input id="showTopNav" type="checkbox">
+      </label>
+
+      <label class="toggle-row" for="showStatus">
+        <span>
+          <strong>Show feature status</strong>
+          <small>Display Google Search, Ghosium Shield and Low Memory indicators.</small>
+        </span>
+        <input id="showStatus" type="checkbox">
+      </label>
+
+      <label class="toggle-row" for="reduceEffects">
+        <span>
+          <strong>Reduce visual effects</strong>
+          <small>Disable large blur/aurora effects to lower GPU work.</small>
+        </span>
+        <input id="reduceEffects" type="checkbox">
+      </label>
+    </section>
+
+    <section class="panel actions" aria-labelledby="privacy-title">
+      <div>
+        <p class="eyebrow">PRIVACY</p>
+        <h2 id="privacy-title">Local by design</h2>
+        <p>Ghosium options are stored in this browser profile only. They are not sent to a Brendigo service.</p>
+      </div>
+      <button id="reset" type="button">Reset defaults</button>
+    </section>
+  </main>
+</body>
+</html>

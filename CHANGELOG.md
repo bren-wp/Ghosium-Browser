@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.1.9 — Ghosium UI, real README imagery and canonical Portable
+
+### Product UI and branding
+- Added Ghosium-owned New Tab, Customize/Options and Ghosium Privacy surfaces with local accent, compact-layout, navigation/status and reduced-effects preferences.
+- Added generated Ghosium extension icons and branded NSIS header/welcome artwork while retaining existing installer security behavior.
+- Connected the native public-surface and performance-default rewrite/verification steps to the normal source-branding pipeline so those source changes are no longer dormant helpers.
+
+### README and evidence
+- Added the Ghosium browser mark to README and synchronized active documentation to 0.1.9.
+- Added actual pinned-Chromium renders of the checked-in Ghosium New Tab, Options and Privacy surfaces plus `GHOSIUM-SCREENSHOTS.json` provenance.
+- The screenshots are explicitly not presented as canonical full-source browser-shell evidence; that claim remains gated on the controlled Windows source build.
+
+### Setup and Portable
+- Added canonical `Ghosium-Browser-Portable.exe` generation from the same verified source stage as Setup, using an adjacent `Ghosium-Portable-Data` profile and no install registration or shortcuts.
+- Extended package provenance to schema v3 with Portable filename, byte size, SHA-256 and behavioral guarantees.
+- Production signing now requires Valid Authenticode for both Setup and Portable, with the same expected publisher relationship as the signed browser.
+- Full-source SHA-256 generation and immutable release publication now require and publish both public EXE packages.
+
+### Performance comparison
+- Added `BRZINA.md` and same-run Windows browser comparison tooling for Ghosium, Chrome, Edge, Firefox, Brave, Vivaldi and Opera. Numerical claims remain prohibited until the browsers are actually measured under the documented common methodology.
+
+> `0.1.9` is not a source-built production release until the controlled Windows candidate and production workflows compile, runtime-test, measure, sign and package the exact production commit.
+
 ## 0.1.8 — repository hygiene and release-state consistency
 
 ### Repository hygiene

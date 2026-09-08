@@ -6,92 +6,188 @@ on:
       - main
     paths:
       - 'VERSION'
+      - 'benchmarks/windows/v0.8.0-hosted-baseline.json'
       - 'scripts/benchmark-ghosium-windows.ps1'
       - '.github/workflows/performance-baseline.yml'
   workflow_dispatch:
 
 permissions:
+  actions: read
   contents: read
 
 jobs:
   baseline-v0-8-0:
-    name: Benchmark pre-0.1.0 public baseline
-    runs-on: windows-2025
-    timeout-minutes: 25
+    name: Verify retained pre-0.1.0 performance baseline evidence
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
 
     steps:
-      - name: Checkout benchmark harness
+      - name: Checkout baseline contract
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
           persist-credentials: false
           fetch-depth: 1
 
-      - name: Download immutable historical baseline release
-        shell: pwsh
+      - name: Verify immutable historical measurement provenance
+        shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          $ErrorActionPreference = 'Stop'
-          New-Item -ItemType Directory -Force -Path baseline, artifacts | Out-Null
-          gh release download v0.8.0 `
-            --repo $env:GITHUB_REPOSITORY `
-            --pattern 'Ghosium-Browser-Setup.exe' `
-            --dir baseline
-          if ($LASTEXITCODE -ne 0 -or !(Test-Path 'baseline/Ghosium-Browser-Setup.exe' -PathType Leaf)) {
-            throw 'Unable to download the historical v0.8.0 baseline Setup artifact.'
-          }
-          $hash = (Get-FileHash 'baseline/Ghosium-Browser-Setup.exe' -Algorithm SHA256).Hash.ToLowerInvariant()
-          if ($hash -ne '45815ec06c1e63954a29793cac756d6f91af44edaff569159c23fb9f1b8e6e50') {
-            throw "Historical baseline Setup hash mismatch: $hash"
-          }
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          import os
+          import subprocess
 
-      - name: Install historical baseline
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = 'Stop'
-          $setup = (Resolve-Path 'baseline/Ghosium-Browser-Setup.exe').Path
-          $process = Start-Process -FilePath $setup -ArgumentList '/S' -Wait -PassThru
-          if ($process.ExitCode -ne 0) {
-            throw "Historical baseline installation failed with exit code $($process.ExitCode)"
+          repo = os.environ['GITHUB_REPOSITORY']
+          artifact_id = 10031331806
+          workflow_run_id = 34156958912
+          workflow_job_id = 101850670705
+          expected_name = 'ghosium-performance-baseline-v0.8.0'
+          expected_digest = 'sha256:dea8492210acea8d9064ba34911efc15b76906681cba415d071d97a023d09f8d'
+          expected_setup_sha256 = '45815ec06c1e63954a29793cac756d6f91af44edaff569159c23fb9f1b8e6e50'
+
+          def gh(path):
+              raw = subprocess.check_output(['gh', 'api', path], text=True)
+              return json.loads(raw)
+
+          artifact = gh(f'/repos/{repo}/actions/artifacts/{artifact_id}')
+          if artifact.get('expired') is True:
+              raise SystemExit('Historical performance evidence artifact has expired.')
+          if artifact.get('name') != expected_name:
+              raise SystemExit(f"Historical performance artifact name mismatch: {artifact.get('name')!r}")
+          if artifact.get('digest') != expected_digest:
+              raise SystemExit(f"Historical performance artifact digest mismatch: {artifact.get('digest')!r}")
+          if int(artifact.get('workflow_run', {}).get('id', 0)) != workflow_run_id:
+              raise SystemExit('Historical performance artifact is attached to the wrong workflow run.')
+
+          run = gh(f'/repos/{repo}/actions/runs/{workflow_run_id}')
+          if run.get('status') != 'completed' or run.get('conclusion') != 'success':
+              raise SystemExit('Historical baseline workflow run is not completed/success.')
+
+          job = gh(f'/repos/{repo}/actions/jobs/{workflow_job_id}')
+          if int(job.get('run_id', 0)) != workflow_run_id:
+              raise SystemExit('Historical baseline job belongs to the wrong workflow run.')
+          if job.get('name') != 'Benchmark pre-0.1.0 public baseline':
+              raise SystemExit(f"Historical baseline job name mismatch: {job.get('name')!r}")
+          if job.get('status') != 'completed' or job.get('conclusion') != 'success':
+              raise SystemExit('Historical baseline benchmark job is not completed/success.')
+
+          contract = json.load(open('benchmarks/windows/v0.8.0-hosted-baseline.json', encoding='utf-8'))
+          baseline = contract.get('baseline', {})
+          expected_contract = {
+              'productVersion': '0.8.0',
+              'releaseTag': 'v0.8.0',
+              'setupSha256': expected_setup_sha256,
+              'workflowRunId': workflow_run_id,
+              'artifactId': artifact_id,
+              'artifactName': expected_name,
+              'artifactSha256': expected_digest.removeprefix('sha256:'),
+              'capturedAtUtc': '2026-09-07T19:50:19.7347424Z',
           }
-          $browser = Join-Path $env:LOCALAPPDATA 'Programs\Ghosium Browser\Ghosium-Browser.exe'
-          if (!(Test-Path $browser -PathType Leaf)) {
-            throw "Historical baseline browser executable was not installed: $browser"
-          }
+          if baseline != expected_contract:
+              raise SystemExit(f'Checked-in historical baseline provenance changed. Expected {expected_contract!r}; got {baseline!r}')
+          if contract.get('schemaVersion') != 1:
+              raise SystemExit('Checked-in historical baseline contract must remain schemaVersion 1.')
 
-      - name: Measure cold/warm startup, RAM, CPU, processes and I/O
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = 'Stop'
-          $browser = Join-Path $env:LOCALAPPDATA 'Programs\Ghosium Browser\Ghosium-Browser.exe'
-          ./scripts/benchmark-ghosium-windows.ps1 `
-            -BrowserPath $browser `
-            -OutputPath 'artifacts/PERFORMANCE-BASELINE-v0.8.0.json' `
-            -IdleSeconds 60 `
-            -StartupTimeoutSeconds 30
+          print('Historical 0.8.0 benchmark provenance: OK')
+          print(f'Original release Setup SHA-256 remains locked to {expected_setup_sha256}')
+          PY
 
-      - name: Uninstall historical baseline
-        if: always()
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = 'Continue'
-          Get-Process -ErrorAction SilentlyContinue | Where-Object {
-            $_.ProcessName -in @('Ghosium-Browser', 'Ghosium-Engine')
-          } | Stop-Process -Force -ErrorAction SilentlyContinue
-
-          $installedSetup = Join-Path $env:LOCALAPPDATA 'Programs\Ghosium Browser\Installer\Ghosium-Browser-Setup.exe'
-          if (Test-Path $installedSetup -PathType Leaf) {
-            $process = Start-Process -FilePath $installedSetup -ArgumentList '/S', '/UNINSTALL' -Wait -PassThru
-            if ($process.ExitCode -ne 0) {
-              Write-Warning "Baseline uninstall returned exit code $($process.ExitCode)"
-            }
-          }
-
-      - name: Upload baseline benchmark
-        if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - name: Download immutable historical measurement artifact
+        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
         with:
-          name: ghosium-performance-baseline-v0.8.0
-          path: artifacts/
-          if-no-files-found: warn
-          retention-days: 30
+          artifact-ids: '10031331806'
+          path: retained-baseline
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: '34156958912'
+
+      - name: Verify raw measurements against checked-in baseline
+        shell: python
+        run: |
+          import json
+          import math
+          from pathlib import Path
+
+          matches = list(Path('retained-baseline').rglob('PERFORMANCE-BASELINE-v0.8.0.json'))
+          if len(matches) != 1:
+              raise SystemExit(f'Expected exactly one retained raw baseline JSON; found {len(matches)}.')
+
+          raw = json.loads(matches[0].read_text(encoding='utf-8-sig'))
+          summary = json.loads(Path('benchmarks/windows/v0.8.0-hosted-baseline.json').read_text(encoding='utf-8'))
+
+          if raw.get('schemaVersion') != 1:
+              raise SystemExit(f"Historical raw benchmark schema changed: {raw.get('schemaVersion')!r}")
+          if raw.get('capturedAtUtc') != summary['baseline']['capturedAtUtc']:
+              raise SystemExit('Historical raw benchmark capture timestamp does not match the checked-in baseline.')
+
+          if summary['host']['runnerImage'] != 'windows-2025-vs2026':
+              raise SystemExit('Historical baseline runner image contract changed.')
+          for key in ('os', 'logicalProcessors', 'totalPhysicalMemoryBytes'):
+              if raw['host'][key] != summary['host'][key]:
+                  raise SystemExit(f'Historical host field mismatch for {key}.')
+
+          if raw['methodology']['tabPages'] != summary['methodology']['pageUrl']:
+              raise SystemExit('Historical benchmark page URL changed.')
+          if summary['methodology']['profileIsolation'] != '--ghosium-portable-profile':
+              raise SystemExit('Historical profile-isolation contract changed.')
+          if raw['methodology']['idleSeconds'] != summary['methodology']['oneTabIdleSeconds']:
+              raise SystemExit('Historical one-tab idle duration changed.')
+          if summary['methodology']['idleCpuIntervalSeconds'] != 5:
+              raise SystemExit('Historical short idle CPU interval changed.')
+          if summary['methodology']['gpuMemoryMeasured'] is not False:
+              raise SystemExit('Historical baseline must not claim GPU-memory measurement.')
+          if summary['methodology']['networkBytesMeasured'] is not False:
+              raise SystemExit('Historical baseline must not claim byte-level network measurement.')
+
+          mib = 1024 * 1024
+
+          def one_decimal_mib(value):
+              return round(float(value) / mib, 1)
+
+          def assert_equal(label, actual, expected):
+              if isinstance(expected, float):
+                  if not math.isclose(float(actual), expected, rel_tol=0.0, abs_tol=0.0005):
+                      raise SystemExit(f'{label} mismatch: raw-derived={actual!r}, checked-in={expected!r}')
+              elif actual != expected:
+                  raise SystemExit(f'{label} mismatch: raw-derived={actual!r}, checked-in={expected!r}')
+
+          for label in ('cold', 'warm'):
+              source = raw['startup'][label]
+              sample = source['postStartupSample']
+              target = summary['startup'][label]
+              assert_equal(f'startup.{label}.launchToUsableWindowMs', source['launchToUsableWindowMs'], target['launchToUsableWindowMs'])
+              assert_equal(f'startup.{label}.processCount', sample['processCount'], target['processCount'])
+              assert_equal(f'startup.{label}.workingSetMiB', one_decimal_mib(sample['workingSetBytes']), target['workingSetMiB'])
+              assert_equal(f'startup.{label}.privateMemoryMiB', one_decimal_mib(sample['privateMemoryBytes']), target['privateMemoryMiB'])
+
+          raw_tabs = {str(item['tabCount']): item for item in raw['tabs']}
+          if set(raw_tabs) != {'1', '5', '10'}:
+              raise SystemExit(f"Historical raw tab scenarios changed: {sorted(raw_tabs)}")
+
+          for tab_count in ('1', '5', '10'):
+              source = raw_tabs[tab_count]
+              sample = source['settledSample']
+              target = summary['tabs'][tab_count]
+              assert_equal(f'tabs.{tab_count}.launchToUsableWindowMs', source['launchToUsableWindowMs'], target['launchToUsableWindowMs'])
+              assert_equal(f'tabs.{tab_count}.processCount', sample['processCount'], target['processCount'])
+              assert_equal(f'tabs.{tab_count}.workingSetMiB', one_decimal_mib(sample['workingSetBytes']), target['workingSetMiB'])
+              assert_equal(f'tabs.{tab_count}.privateMemoryMiB', one_decimal_mib(sample['privateMemoryBytes']), target['privateMemoryMiB'])
+              assert_equal(f'tabs.{tab_count}.idleCpuPercent', source['idleCpu']['normalizedCpuPercent'], target['idleCpuPercent'])
+
+          source_idle = raw_tabs['1']['afterIdleSample']
+          target_idle = summary['tabs']['1']['after60SecondsIdle']
+          if source_idle is None:
+              raise SystemExit('Historical one-tab 60-second idle sample is missing.')
+          assert_equal('tabs.1.after60SecondsIdle.processCount', source_idle['processCount'], target_idle['processCount'])
+          assert_equal('tabs.1.after60SecondsIdle.workingSetMiB', one_decimal_mib(source_idle['workingSetBytes']), target_idle['workingSetMiB'])
+          assert_equal('tabs.1.after60SecondsIdle.privateMemoryMiB', one_decimal_mib(source_idle['privateMemoryBytes']), target_idle['privateMemoryMiB'])
+
+          interpretation = summary.get('interpretation', {})
+          if interpretation.get('universalPerformanceClaim') is not False:
+              raise SystemExit('Historical baseline must not become a universal performance claim.')
+          if interpretation.get('sourceBuiltBaseline') is not False:
+              raise SystemExit('Historical 0.8.0 baseline must not be relabeled as source-built.')
+
+          print('Retained 0.8.0 raw measurements exactly reproduce the checked-in baseline summary.')

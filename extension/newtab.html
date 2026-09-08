@@ -7,8 +7,9 @@
   <meta name="referrer" content="no-referrer">
   <title>Ghosium Browser</title>
   <link rel="stylesheet" href="newtab.css">
+  <script src="newtab.js" defer></script>
 </head>
-<body>
+<body data-accent="mint">
   <main class="shell">
     <div class="aurora aurora-a" aria-hidden="true"></div>
     <div class="aurora aurora-b" aria-hidden="true"></div>
@@ -18,6 +19,7 @@
       <a href="https://store.ghosium.com/">Store</a>
       <a href="https://ghosium.com/support">Support</a>
       <a href="https://ghosium.com/security">Security</a>
+      <a class="local-option" href="options.html">Customize</a>
     </nav>
 
     <section class="hero" aria-labelledby="title">
@@ -29,7 +31,7 @@
       <form class="search" action="https://www.google.com/search" method="get" role="search">
         <label class="sr-only" for="q">Google Search</label>
         <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"></circle><path d="m16 16 4 4"></path></svg>
-        <input id="q" name="q" type="search" autocomplete="off" spellcheck="false" placeholder="Search with Google">
+        <input id="q" name="q" type="search" autocomplete="off" spellcheck="false" placeholder="Search with Google" autofocus>
       </form>
 
       <div class="status" aria-label="Ghosium features">

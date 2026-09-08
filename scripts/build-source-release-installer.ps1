@@ -72,6 +72,7 @@ $signing = [ordered]@{
   browserStatus = [string](Get-AuthenticodeSignature $browserPath).Status
   proxyStatus = [string](Get-AuthenticodeSignature $proxyPath).Status
   setupStatus = 'NotBuilt'
+  portableStatus = 'NotBuilt'
 }
 
 $signtool = $null
@@ -196,8 +197,11 @@ if (!$makensis) {
 $makensis = (Resolve-Path $makensis).Path
 
 $nsi = Join-Path $repoRoot 'installer/ghosium.nsi'
+$portableNsi = Join-Path $repoRoot 'installer/ghosium-portable.nsi'
 $icon = Join-Path $repoRoot 'ghosium.ico'
-foreach ($required in @($nsi, $icon, (Join-Path $stagePath 'LICENSE'), $browserPath)) {
+$headerArt = Join-Path $repoRoot 'installer/assets/header.bmp'
+$welcomeArt = Join-Path $repoRoot 'installer/assets/welcome.bmp'
+foreach ($required in @($nsi, $portableNsi, $icon, $headerArt, $welcomeArt, (Join-Path $stagePath 'LICENSE'), $browserPath)) {
   if (!(Test-Path $required -PathType Leaf)) {
     throw "Canonical Setup packaging input is missing: $required"
   }
@@ -223,6 +227,46 @@ if (!(Test-Path $setupPath -PathType Leaf) -or (Get-Item $setupPath).Length -le 
   throw 'Canonical Ghosium-Browser-Setup.exe was not produced.'
 }
 
+$portablePath = Join-Path $artifactsPath 'Ghosium-Browser-Portable.exe'
+if (Test-Path $portablePath) {
+  Remove-Item $portablePath -Force
+}
+$portableArguments = @(
+  "/DGHOSIUM_VERSION=$version",
+  "/DGHOSIUM_STAGE=$stagePath",
+  "/DGHOSIUM_ARTIFACTS=$artifactsPath",
+  "/DGHOSIUM_ICON=$icon",
+  '/DGHOSIUM_PORTABLE_PROFILE_SWITCH=--user-data-dir',
+  $portableNsi
+)
+& $makensis @portableArguments | Out-Host
+if ($LASTEXITCODE -ne 0) {
+  throw "Canonical Ghosium Portable NSIS build failed with exit code $LASTEXITCODE"
+}
+if (!(Test-Path $portablePath -PathType Leaf) -or (Get-Item $portablePath).Length -le 0) {
+  throw 'Canonical Ghosium-Browser-Portable.exe was not produced.'
+}
+
+$setupInfo = (Get-Item $setupPath).VersionInfo
+$portableInfo = (Get-Item $portablePath).VersionInfo
+foreach ($metadata in @(
+  [ordered]@{ Label='Setup'; Info=$setupInfo; ExpectedDescription='Ghosium Browser Setup' },
+  [ordered]@{ Label='Portable'; Info=$portableInfo; ExpectedDescription='Ghosium Browser Portable' }
+)) {
+  if ([string]$metadata.Info.ProductName -ne 'Ghosium Browser') {
+    throw "$($metadata.Label) ProductName mismatch: '$($metadata.Info.ProductName)'"
+  }
+  if ([string]$metadata.Info.CompanyName -ne 'Brendigo') {
+    throw "$($metadata.Label) CompanyName mismatch: '$($metadata.Info.CompanyName)'"
+  }
+  if ([string]$metadata.Info.FileDescription -ne $metadata.ExpectedDescription) {
+    throw "$($metadata.Label) FileDescription mismatch: '$($metadata.Info.FileDescription)'"
+  }
+  if ([string]$metadata.Info.ProductVersion -notlike "$version*") {
+    throw "$($metadata.Label) ProductVersion mismatch: '$($metadata.Info.ProductVersion)' expected '$version'"
+  }
+}
+
 $setupInfo = (Get-Item $setupPath).VersionInfo
 if ([string]$setupInfo.ProductName -ne 'Ghosium Browser') {
   throw "Canonical Setup ProductName mismatch: '$($setupInfo.ProductName)'"
@@ -236,13 +280,18 @@ if ([string]$setupInfo.ProductVersion -notlike "$version*") {
 
 if ($RequireSigning) {
   $setupSignature = Sign-GhosiumFile -Path $setupPath -Description 'Ghosium Browser Setup'
+  $portableSignature = Sign-GhosiumFile -Path $portablePath -Description 'Ghosium Browser Portable'
   $browserSignature = Get-AuthenticodeSignature $browserPath
-  if ($setupSignature.SignerCertificate.Subject -ne $browserSignature.SignerCertificate.Subject) {
-    throw 'Ghosium Setup publisher subject does not match the signed Ghosium Browser publisher subject.'
+  foreach ($publicSignature in @($setupSignature, $portableSignature)) {
+    if ($publicSignature.SignerCertificate.Subject -ne $browserSignature.SignerCertificate.Subject) {
+      throw 'Ghosium public package publisher subject does not match the signed Ghosium Browser publisher subject.'
+    }
   }
   $signing.setupStatus = [string]$setupSignature.Status
+  $signing.portableStatus = [string]$portableSignature.Status
 } else {
   $signing.setupStatus = [string](Get-AuthenticodeSignature $setupPath).Status
+  $signing.portableStatus = [string](Get-AuthenticodeSignature $portablePath).Status
 }
 
 $outPath = if ([IO.Path]::IsPathRooted($OutDir)) {
@@ -280,6 +329,9 @@ $report = [ordered]@{
   package = 'Ghosium-Browser-Setup.exe'
   packageBytes = [int64](Get-Item $setupPath).Length
   packageSha256 = (Get-FileHash $setupPath -Algorithm SHA256).Hash.ToLowerInvariant()
+  portablePackage = 'Ghosium-Browser-Portable.exe'
+  portableBytes = [int64](Get-Item $portablePath).Length
+  portableSha256 = (Get-FileHash $portablePath -Algorithm SHA256).Hash.ToLowerInvariant()
   publisherMetadata = [ordered]@{
     productName = [string]$setupInfo.ProductName
     companyName = [string]$setupInfo.CompanyName
@@ -296,6 +348,14 @@ $report = [ordered]@{
     fileCountBeforeSigning = [int]$stage.fileCount
     totalBytesBeforeSigning = [int64]$stage.totalBytes
   }
+  portable = [ordered]@{
+    executable = 'Ghosium-Browser-Portable.exe'
+    registryFree = $true
+    createsShortcuts = $false
+    adjacentProfileDirectory = 'Ghosium-Portable-Data'
+    adjacentRuntimeDirectory = '.ghosium-portable-runtime'
+    profileSwitch = '--user-data-dir'
+  }
   maintenance = [ordered]@{
     sameSetupExecutable = $true
     install = $true
@@ -308,8 +368,8 @@ $report = [ordered]@{
   publicSetupIsChromiumMiniInstallerRename = $false
 }
 
-if ($RequireSigning -and (!$report.signing.applied -or $report.signing.setupStatus -ne 'Valid')) {
-  throw 'Production same-Setup package did not satisfy the mandatory Authenticode signing contract.'
+if ($RequireSigning -and (!$report.signing.applied -or $report.signing.setupStatus -ne 'Valid' -or $report.signing.portableStatus -ne 'Valid')) {
+  throw 'Production Setup/Portable packages did not satisfy the mandatory Authenticode signing contract.'
 }
 
 $reportDirectory = Split-Path -Parent $reportFullPath
@@ -322,9 +382,12 @@ if ($reportDirectory -and !(Test-Path $reportDirectory -PathType Container)) {
   [Text.UTF8Encoding]::new($false)
 )
 
-Write-Host "Canonical Ghosium same-Setup package built: $setupPath"
-Write-Host "SHA-256: $($report.packageSha256)"
+Write-Host "Canonical Ghosium Setup built: $setupPath"
+Write-Host "Setup SHA-256: $($report.packageSha256)"
+Write-Host "Canonical Ghosium Portable built: $portablePath"
+Write-Host "Portable SHA-256: $($report.portableSha256)"
 if ($RequireSigning) {
   Write-Host "Authenticode publisher: $($report.signing.publisherSubject)"
 }
 Write-Output $setupPath
+Write-Output $portablePath

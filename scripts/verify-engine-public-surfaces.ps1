@@ -175,12 +175,15 @@ Assert-FileContains -Path $settingsRouteTs -Expected 'return routes.PRIVACY;' -D
 Assert-FileContains -Path $settingsUiCc -Expected 'html_source->AddBoolean("showAiPage", false);' -Description 'Ghosium AI Settings backend disablement'
 Assert-FileNotContains -Path $settingsUiCc -Forbidden 'update.Set("showAiPage", true);' -Description 'dynamic Google/Gemini AI Settings re-enablement'
 
-# The Chromium New Tab customization UI was explicitly requested to be removed,
-# not simply relabeled. Both visible entry points are therefore forbidden.
-Assert-FileNotContains -Path $ntpAppHtml -Forbidden '<ntp-customize-buttons id="customizeButtons"' -Description 'Chromium New Tab customize button'
-Assert-FileContains -Path $ntpAppHtml -Expected 'upstream Chromium NTP customization entry intentionally removed' -Description 'Ghosium NTP customize-button suppression marker'
-Assert-FileNotContains -Path $ntpFooterContextMenu -Forbidden 'AddItemWithStringIdAndIcon(COMMAND_SHOW_CUSTOMIZE_CHROME' -Description 'Chromium New Tab footer customize action'
-Assert-FileContains -Path $ntpFooterContextMenu -Expected 'upstream Chromium NTP customization context-menu entry removed' -Description 'Ghosium NTP footer customize suppression marker'
+# Ghosium 0.1.9 deliberately preserves the maintained native customization
+# implementation. Its visible labels are verified above as Ghosium-owned, and
+# both native entry points must remain wired so branding does not remove useful
+# browser functionality. The retired suppression-marker implementation must not
+# return.
+Assert-FileContains -Path $ntpAppHtml -Expected '<ntp-customize-buttons id="customizeButtons"' -Description 'native Ghosium New Tab customize button'
+Assert-FileContains -Path $ntpFooterContextMenu -Expected 'AddItemWithStringIdAndIcon(COMMAND_SHOW_CUSTOMIZE_CHROME' -Description 'native Ghosium New Tab footer customize action'
+Assert-FileNotContains -Path $ntpAppHtml -Forbidden 'upstream Chromium NTP customization entry intentionally removed' -Description 'retired NTP customize-button suppression marker'
+Assert-FileNotContains -Path $ntpFooterContextMenu -Forbidden 'upstream Chromium NTP customization context-menu entry removed' -Description 'retired NTP footer customize suppression marker'
 
 $sourceSvgHash = (Get-FileHash $productLogoSvg -Algorithm SHA256).Hash
 $canonicalSvgHash = (Get-FileHash $canonicalLogoSvg -Algorithm SHA256).Hash
@@ -235,4 +238,4 @@ if ($thirdPartyChanges) {
   throw 'Ghosium public-surface changes touched third_party source.'
 }
 
-Write-Host 'Ghosium public surfaces verified: Ghosium identity retained; Chromium customization, Google account nav, Gemini/AI and Web Store tile are not public.'
+Write-Host 'Ghosium public surfaces verified: Ghosium identity and branded native Customize retained; Google account nav, Gemini/AI and upstream Web Store tile are not public.'
