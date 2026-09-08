@@ -115,7 +115,8 @@ jobs:
                   raise SystemExit(f'Release promotion workflow invariant missing: {value}')
 
           required_version_contract = (
-              'HEAD_REF: ${{ github.head_ref }}',
+              'HEAD_REF:',
+              'github.head_ref',
               "head_ref == f'ghosium/release/{version}'",
               "changed == [marker.as_posix()]",
               'candidate evidence is enforced by the release marker promotion contract',
