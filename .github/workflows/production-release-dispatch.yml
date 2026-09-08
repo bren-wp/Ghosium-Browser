@@ -40,23 +40,32 @@ jobs:
           grep -Fxq 'candidate_tree=21a57ad1cd964c4247cabfcd93bf9313f7380ec4' '.release/ghosium-v0.1.5.production'
           echo 'Validated Ghosium 0.1.5 production request.'
 
-      - name: Cancel superseded candidate build
+      - name: Clear superseded release runs
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           set -euo pipefail
-          if ! gh api --method POST "/repos/$GITHUB_REPOSITORY/actions/runs/34182761239/cancel"; then
-            echo 'Candidate run could not be cancelled (it may already be completed); continuing with production dispatch.'
-          fi
+          for run_id in 34179694874 34182761239; do
+            if ! gh api --method POST "/repos/$GITHUB_REPOSITORY/actions/runs/$run_id/cancel"; then
+              echo "Run $run_id could not be cancelled (it may already be completed); continuing."
+            fi
+          done
 
-      - name: Dispatch production full-source build
+      - name: Ensure production full-source build is queued
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           set -euo pipefail
-          gh workflow run full-source-windows-build.yml --ref main --repo "$GITHUB_REPOSITORY"
+          production_run=34183762471
+          state="$(gh run view "$production_run" --repo "$GITHUB_REPOSITORY" --json status --jq .status 2>/dev/null || true)"
+          if [[ "$state" == 'pending' || "$state" == 'queued' || "$state" == 'in_progress' || "$state" == 'waiting' || "$state" == 'requested' ]]; then
+            echo "Production run $production_run already exists with status $state; not dispatching a duplicate."
+          else
+            echo "Production run $production_run is not active (status: ${state:-unknown}); dispatching a replacement."
+            gh workflow run full-source-windows-build.yml --ref main --repo "$GITHUB_REPOSITORY"
+          fi
           sleep 5
           gh run list \
             --repo "$GITHUB_REPOSITORY" \
