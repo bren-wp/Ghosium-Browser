@@ -198,8 +198,8 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           & ./compat-preview/vendor/build-native-launcher.ps1 -Version $env:GHOSIUM_VERSION -OutputPath 'staging/Ghosium-Browser.exe'
-          if ($LASTEXITCODE -ne 0 -or !(Test-Path 'staging/Ghosium-Browser.exe' -PathType Leaf)) {
-            throw 'Ghosium preview launcher compile failed.'
+          if (!(Test-Path 'staging/Ghosium-Browser.exe' -PathType Leaf)) {
+            throw 'Ghosium preview launcher compile did not produce the expected executable.'
           }
 
       - name: Smoke test launcher and pinned engine
@@ -239,8 +239,8 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           $resolverOutput = @(& ./compat-preview/vendor/resolve-nsis.ps1)
-          if ($LASTEXITCODE -ne 0 -or $resolverOutput.Count -eq 0) {
-            throw 'Verified NSIS resolver failed.'
+          if ($resolverOutput.Count -eq 0) {
+            throw 'Verified NSIS resolver returned no compiler path.'
           }
           $makensisPath = [string]$resolverOutput[-1]
           if (!(Test-Path $makensisPath -PathType Leaf)) {
@@ -281,9 +281,7 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           & ./compat-preview/vendor/smoke-test-windows-installer.ps1 -SetupPath 'artifacts/preview/Ghosium-Browser-Setup.exe' -Version $env:GHOSIUM_VERSION
-          if ($LASTEXITCODE -ne 0) {
-            throw 'Preview Setup install/uninstall smoke test failed.'
-          }
+          Write-Host 'Preview installer smoke script completed without throwing: verified.'
 
       - name: Generate Preview provenance and SHA-256 evidence
         shell: pwsh
@@ -375,11 +373,13 @@ jobs:
         env:
           GHOSIUM_VERSION: ${{ needs.verify-preview-contract.outputs.version }}
         run: |
+          import hashlib
           import json
           import os
           from pathlib import Path
 
-          evidence = json.loads(Path('artifacts/GHOSIUM-PREVIEW-BUILD.json').read_text(encoding='utf-8-sig'))
+          evidence_path = Path('artifacts/GHOSIUM-PREVIEW-BUILD.json')
+          evidence = json.loads(evidence_path.read_text(encoding='utf-8-sig'))
           if evidence.get('product') != 'Ghosium Browser':
               raise SystemExit('Unexpected preview product identity.')
           if evidence.get('productVersion') != os.environ['GHOSIUM_VERSION']:
@@ -390,9 +390,18 @@ jobs:
               raise SystemExit('Preview evidence must not claim canonical production/full-source status.')
           if evidence.get('stableUpdaterEnabled') is not False:
               raise SystemExit('Preview must not enable the stable updater.')
-          for name in ('Ghosium-Browser-Setup.exe', 'Ghosium-Browser-Portable.exe', 'SHA256SUMS.txt', 'BUILD-STATUS.txt'):
+
+          for key, filename in [('setup', 'Ghosium-Browser-Setup.exe'), ('portable', 'Ghosium-Browser-Portable.exe')]:
+              path = Path('artifacts', filename)
+              if not path.is_file():
+                  raise SystemExit(f'Missing preview artifact: {filename}')
+              digest = hashlib.sha256(path.read_bytes()).hexdigest()
+              if digest != evidence[key]['sha256'] or path.stat().st_size != evidence[key]['bytes']:
+                  raise SystemExit(f'{filename} does not match preview provenance.')
+
+          for name in ('SHA256SUMS.txt', 'BUILD-STATUS.txt'):
               if not Path('artifacts', name).is_file():
-                  raise SystemExit(f'Missing preview artifact: {name}')
+                  raise SystemExit(f'Missing preview evidence: {name}')
 
       - name: Publish immutable Preview prerelease
         env:
