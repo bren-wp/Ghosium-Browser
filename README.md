@@ -31,12 +31,13 @@ ghosium-v0.1.2
 ghosium-v0.1.3
 ghosium-v0.1.4
 ghosium-v0.1.5
+ghosium-v0.1.6
 ghosium-v0.2.0
 ```
 
 Existing releases are never overwritten. A production release is allowed only after the exact commit passes the controlled full-source Windows compile, runtime checks, measured performance evidence, canonical Setup round trip, signing requirements, provenance and SHA-256 manifest generation.
 
-A source transformation audit or hosted CI contract is not proof that a production binary exists. **0.1.5 must not be described as a released source-built binary until the controlled Windows compile succeeds for the exact production commit.**
+A source transformation audit or hosted CI contract is not proof that a production binary exists. **0.1.6 must not be described as a released source-built binary until the controlled Windows compile succeeds for the exact production commit.**
 
 Release-candidate dispatch is version-bound to branches named `ghosium/release/<VERSION>`. Candidate request markers are not allowed to auto-dispatch a production build when merged into `main`; production is a separate explicit gate after candidate evidence has passed.
 
@@ -60,7 +61,7 @@ Runtime support is considered production-verified only after the full-source com
 
 ## Languages
 
-Ghosium 0.1.5 defines **38 supported product locales**. English (`en-US`) is the primary/default language and Croatian (`hr`) is required and selectable.
+Ghosium 0.1.6 defines **38 supported product locales**. English (`en-US`) is the primary/default language and Croatian (`hr`) is required and selectable.
 
 ```text
 en-US, hr, de, fr, es, it, pt-PT, pt-BR, nl, pl,
@@ -89,7 +90,7 @@ The production update path validates the Ghosium update manifest, newer version,
 
 Ghosium Browser uses **Google Search** as its default web search service. New Tab queries are submitted directly to `https://www.google.com/search`; Ghosium does not proxy them and does not operate a first-party search endpoint.
 
-The browser retains Chromium's reviewed Google fallback instead of injecting a Ghosium-specific provider. Explicit user search-engine choices, enterprise policy and extension overrides retain their native precedence.
+The browser retains the pinned engine's reviewed Google Search fallback instead of injecting a Ghosium-specific provider. Explicit user search-engine choices, enterprise policy and extension overrides retain their native precedence.
 
 The retired first-party search extension and server application are not part of the current product architecture.
 
@@ -142,7 +143,7 @@ Current conservative source-level defaults use native engine mechanisms: Memory 
 
 No performance optimization may disable or weaken sandboxing, renderer/site isolation, certificate validation, extension verification or update verification. Renderer-process caps are not used as a RAM shortcut.
 
-Every source-built release candidate must produce `GHOSIUM-PERFORMANCE.json` from the newly compiled `Ghosium-Browser.exe`. No numerical 0.1.5 performance claim is valid until that evidence exists.
+Every source-built release candidate must produce `GHOSIUM-PERFORMANCE.json` from the newly compiled `Ghosium-Browser.exe`. No numerical 0.1.6 performance claim is valid until that evidence exists.
 
 ## Production signing
 
