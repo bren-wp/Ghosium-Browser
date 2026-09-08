@@ -60,6 +60,8 @@ jobs:
             'scripts/harden-engine-version-updater.ps1',
             'scripts/verify-engine-version-updater.ps1',
             'scripts/rewrite-engine-internal-scheme.ps1',
+            'scripts/rewrite-engine-performance-defaults.ps1',
+            'scripts/verify-engine-performance-defaults.ps1',
             'scripts/verify-engine-locales.ps1',
             'scripts/verify-engine-fork.ps1',
             'scripts/verify-engine-windows-executable.ps1',
@@ -75,9 +77,9 @@ jobs:
               throw "PowerShell parser errors found in $path"
             }
           }
-          python3 -m py_compile scripts/generate-engine-brand-assets.py
+          python3 -m py_compile scripts/generate-engine-brand-assets.py scripts/verify-pinned-source-anchors.py
           if ($LASTEXITCODE -ne 0) {
-            throw 'Brand asset generator has Python syntax errors.'
+            throw 'Ghosium source-audit Python tooling has syntax errors.'
           }
 
       - name: Validate pinned revisions and Windows source-build contract
@@ -102,6 +104,7 @@ jobs:
             'is_official_build = false',
             'is_chrome_branded = false',
             'target_cpu = "x64"',
+            'enable_background_mode = false',
             'use_remoteexec = false'
           )) {
             if (!$args.Contains($required)) {
@@ -111,6 +114,7 @@ jobs:
           foreach ($forbidden in @(
             '(?im)^\s*is_chrome_branded\s*=\s*true\s*$',
             '(?im)^\s*is_official_build\s*=\s*true\s*$',
+            '(?im)^\s*enable_background_mode\s*=\s*true\s*$',
             '(?im)^\s*use_remoteexec\s*=\s*true\s*$',
             '(?im)^\s*google_api_key\s*=',
             '(?im)^\s*google_default_client_id\s*=',
@@ -165,6 +169,12 @@ jobs:
               [string]$config.internalUi.untrustedScheme -ne 'ghost-untrusted') {
             throw 'Ghosium internal UI schemes must be ghost / ghost-untrusted.'
           }
+          if ([string]$config.locales.default -ne 'en-US' -or [string]$config.locales.required -ne 'hr') {
+            throw 'Ghosium locale contract requires English primary/default and Croatian required.'
+          }
+          if (@($config.locales.supported).Count -lt 31) {
+            throw 'Ghosium must keep more than 30 supported product locales.'
+          }
           foreach ($route in @(
             'ghost://newtab/',
             'ghost://history/',
@@ -181,7 +191,7 @@ jobs:
           }
 
   pinned-source-smoke:
-    name: Apply branding to pinned upstream source
+    name: Apply Ghosium transform to pinned source
     needs: source-contract
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -193,7 +203,7 @@ jobs:
           persist-credentials: false
           fetch-depth: 1
 
-      - name: Sparse checkout pinned upstream source
+      - name: Sparse checkout pinned source
         shell: bash
         run: |
           set -euo pipefail
@@ -237,6 +247,7 @@ jobs:
           /chrome/browser/resources/signin/managed_user_profile_notice/managed_user_profile_notice_value_prop.html.ts
           /chrome/browser/resources/contextual_tasks/top_toolbar_logo.html.ts
           /components/components_chromium_strings.grd
+          /components/performance_manager/user_tuning/prefs.cc
           /components/search_engines/template_url_prepopulate_data.cc
           /components/strings/
           /components/vector_icons/chromium/
@@ -255,20 +266,24 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           ./scripts/apply-engine-branding.ps1 -SourceRoot $env:ENGINE_SRC
+          ./scripts/rewrite-engine-performance-defaults.ps1 -SourceRoot $env:ENGINE_SRC
+          ./scripts/verify-engine-performance-defaults.ps1 -SourceRoot $env:ENGINE_SRC
           ./scripts/verify-engine-fork.ps1 -SourceRoot $env:ENGINE_SRC
           ./scripts/verify-engine-windows-executable.ps1 -SourceRoot $env:ENGINE_SRC
           ./scripts/verify-engine-version-updater.ps1 -SourceRoot $env:ENGINE_SRC
 
-      - name: Validate Ghosium updater and public source identity
+      - name: Validate Ghosium updater performance and public source identity
         shell: bash
         run: |
           set -euo pipefail
           src="$ENGINE_SRC"
           product_version="$(tr -d '\r\n ' < VERSION)"
           updater="$src/chrome/browser/ui/webui/help/version_updater_ghosium_win.cc"
+          performance_prefs="$src/components/performance_manager/user_tuning/prefs.cc"
 
           git -C "$src" diff --check
           test -f "$updater"
+          test -f "$performance_prefs"
           grep -F 'https://updates.ghosium.com/windows/stable.json' "$updater"
           grep -F 'CredentialsMode::kOmit' "$updater"
           grep -F 'crypto::hash::HashFile' "$updater"
@@ -290,12 +305,15 @@ jobs:
           grep -F 'kChromeProxyExe[] = L"Ghosium-Proxy.exe"' "$src/chrome/installer/util/util_constants.h"
           grep -F 'kChromeUIScheme[] = "ghost"' "$src/content/public/common/url_constants.h"
           grep -F 'kChromeUIUntrustedScheme[] = "ghost-untrusted"' "$src/content/public/common/url_constants.h"
+          grep -F 'kMemorySaverModeState, static_cast<int>(MemorySaverModeState::kEnabled));' "$performance_prefs"
+          grep -F 'static_cast<int>(MemorySaverModeAggressiveness::kMedium)' "$performance_prefs"
+          grep -F 'RegisterBooleanPref(kTabFreezingEnabled, true)' "$performance_prefs"
 
           test -f "$src/chrome/common/ghosium_product_version.h"
           grep -F "kProductVersion[] = \"${product_version}\"" "$src/chrome/common/ghosium_product_version.h"
 
           if grep -Eqi '(^|[^A-Za-z])(powershell|cmd|curl)(\.exe)?|GoogleUpdate|google_update_win|(^|[^A-Za-z])(update|updater)\.exe' "$updater"; then
-            echo 'Native Ghosium updater contains a forbidden shell, Google updater, or standalone updater dependency.' >&2
+            echo 'Native Ghosium updater contains a forbidden shell, external updater, or standalone updater dependency.' >&2
             exit 1
           fi
           if git -C "$src" status --porcelain=v1 -- third_party | grep -q .; then
