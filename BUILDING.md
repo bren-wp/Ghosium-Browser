@@ -2,7 +2,7 @@
 
 ## Current development line
 
-The active product version is `0.1.2`. Ghosium Browser is built as a full-source Windows x64 product. A source audit, patch-only result, historical precompiled package, renamed technical installer or wrapper executable is not a production Ghosium release.
+The active product version is `0.1.3`. Ghosium Browser is built as a full-source Windows x64 product. A source audit, patch-only result, historical precompiled package, renamed technical installer or wrapper executable is not a production Ghosium release.
 
 The canonical production workflow is:
 
@@ -21,24 +21,25 @@ The release path is fail-closed:
 3. validate the controlled Windows builder and exact `DEPOT_TOOLS_REVISION`;
 4. validate revision-pinned transformation anchors;
 5. bootstrap/reset the source workspace to `ENGINE_SOURCE_REVISION`;
-6. apply Ghosium identity, branding, public-surface removal, localization, `ghost://` routing, Search, Store/update destinations and Windows executable identity;
+6. apply Ghosium identity, branding, public-surface removal, localization, product version, `ghost://` routing, Search, Store/update destinations and Windows executable identity;
 7. verify the transformed source and prove Ghosium transformations did not edit `third_party/`;
 8. apply/verify native performance defaults;
 9. configure the reviewed Windows x64 GN arguments;
 10. compile the browser and technical packaging targets from source;
 11. verify the compiled Ghosium binaries and run sandbox-preserving runtime smoke tests;
-12. verify the technical source-installer path as internal build evidence;
-13. extract and verify the newly built runtime archive;
-14. assemble the canonical Ghosium release stage;
-15. on production `main`, sign `Ghosium-Browser.exe` and `Ghosium-Proxy.exe`;
-16. build `Ghosium-Browser-Setup.exe` from `installer/ghosium.nsi`;
-17. prove the public Setup is not a renamed technical installer;
-18. on production `main`, sign the Setup and verify the publisher relationship;
-19. run install → runtime → update → runtime → uninstall smoke verification;
-20. verify locale/profile preservation and cleanup behavior;
-21. generate the production update manifest for the exact signed Setup;
-22. generate provenance and SHA-256 evidence;
-23. publish a new immutable `ghosium-v0.x.y` release only if the tag does not already exist.
+12. benchmark the newly compiled runtime and require `GHOSIUM-PERFORMANCE.json`;
+13. verify the technical source-installer path as internal build evidence;
+14. extract and verify the newly built runtime archive;
+15. assemble the canonical Ghosium release stage;
+16. on production `main`, sign `Ghosium-Browser.exe` and `Ghosium-Proxy.exe`;
+17. build `Ghosium-Browser-Setup.exe` from `installer/ghosium.nsi`;
+18. prove the public Setup is not a renamed technical installer;
+19. on production `main`, sign the Setup and verify the publisher relationship;
+20. run install → runtime → update → runtime → uninstall smoke verification;
+21. verify locale/profile preservation and cleanup behavior;
+22. generate the production update manifest for the exact signed Setup;
+23. generate provenance, performance and SHA-256 evidence;
+24. publish a new immutable `ghosium-v0.x.y` release only if the tag does not already exist.
 
 The repository must not claim a source-built release until this controlled chain actually succeeds for the exact commit.
 
@@ -72,17 +73,17 @@ Do not globally rename an internal build target or DLL name without a coordinate
 
 ## 38-language contract
 
-Ghosium 0.1.2 supports 38 locales. English (`en-US`) is the primary/default language and Croatian (`hr`) is mandatory.
+Ghosium 0.1.3 supports 38 locales. English (`en-US`) is the primary/default language and Croatian (`hr`) is mandatory.
 
 The browser and interactive Setup must expose the same locale set. CI verifies that contract and verifies the corresponding pinned source translation bundles before an expensive build.
 
 A fresh install initializes the native browser locale from the Setup selection. Reinstall/update preserves an existing browser language preference.
 
-## Performance defaults
+## Performance defaults and evidence
 
 Performance work uses native engine mechanisms and must be benchmark-driven.
 
-The 0.1.2 Windows source configuration includes:
+The 0.1.3 Windows source configuration includes:
 
 ```text
 enable_background_mode = false
@@ -95,12 +96,15 @@ This removes legacy background-app keep-alive behavior after the last window clo
 The following are forbidden performance shortcuts:
 
 - disabling browser or renderer sandboxing;
+- disabling GPU sandboxing;
 - disabling site/process isolation;
 - bypassing TLS/certificate validation;
 - disabling extension or update trust verification;
 - applying a renderer-process cap solely to improve RAM numbers.
 
-Do not publish performance claims until the compiled source-built 0.1.2 binary is measured with the same benchmark methodology as the accepted baseline.
+Do not publish performance claims until the compiled source-built 0.1.3 binary is measured with the same benchmark methodology as the accepted baseline.
+
+The full-source workflow requires `GHOSIUM-PERFORMANCE.json` from the newly compiled runtime. Benchmark schema v2 records cold/warm first-usable-window startup, memory, process count, handles, CPU, process I/O, 1/5/10-tab scenarios, 60-second idle activity, best-effort per-process GPU memory and Ghosium-owned TCP/UDP endpoint activity. Unsupported GPU telemetry is reported as unavailable rather than as zero. Endpoint counts are not represented as byte-level network attribution.
 
 ## Native update and same-Setup maintenance
 
@@ -150,7 +154,7 @@ X64
 ghosium-source-builder
 ```
 
-The builder must pass `scripts/verify-source-builder-host.ps1`. Detailed provisioning is maintained in `docs/SOURCE_BUILDER_SETUP.md`.
+The builder must pass `scripts/verify-source-builder-host.ps1`. It must use an interactive Windows desktop session for first-usable-window benchmark evidence. Detailed provisioning is maintained in `docs/SOURCE_BUILDER_SETUP.md`.
 
 A constrained or misconfigured host must fail preflight; do not weaken checks to make a machine appear build-ready.
 
@@ -162,6 +166,7 @@ Use repository scripts rather than ad-hoc source edits:
 ./scripts/verify-source-builder-host.ps1
 ./scripts/bootstrap-engine-source.ps1 -Destination <work-root>
 ./scripts/apply-engine-branding.ps1 -SourceRoot <work-root>\src
+./scripts/rewrite-engine-product-version.ps1 -SourceRoot <work-root>\src
 ./scripts/verify-engine-fork.ps1 -SourceRoot <work-root>\src
 ./scripts/verify-engine-windows-executable.ps1 -SourceRoot <work-root>\src
 ./scripts/verify-engine-version-updater.ps1 -SourceRoot <work-root>\src
@@ -174,7 +179,7 @@ The pinned build graph currently requires the technical targets:
 autoninja -C out/Ghosium chrome mini_installer
 ```
 
-Those target names are internal build API. After compilation, run the same compiled-output verification, staging, Setup packaging and maintenance smoke sequence used by the production workflow.
+Those target names are internal build API. After compilation, run the same compiled-output verification, source-built benchmark, staging, Setup packaging and maintenance smoke sequence used by the production workflow.
 
 ## Release evidence
 
@@ -183,6 +188,7 @@ The controlled build produces evidence including:
 ```text
 GHOSIUM-BUILDER-READY.json
 GHOSIUM-SOURCE-BUILD.json
+GHOSIUM-PERFORMANCE.json
 GHOSIUM-UPSTREAM-MINI-INSTALLER-SMOKE.json
 GHOSIUM-SOURCE-STAGE.json
 GHOSIUM-PUBLIC-SETUP.json
@@ -198,9 +204,9 @@ The raw source-runtime archive may be retained as an internal workflow artifact 
 
 ## Benchmarking
 
-Use `scripts/benchmark-ghosium-windows.ps1` for comparable Windows measurements. The benchmark records startup, first usable window, memory, process count, handles, CPU, disk transfer counters and idle behavior.
+Use `scripts/benchmark-ghosium-windows.ps1` for comparable Windows measurements. Direct source-built binaries use `-ProfileMode UserDataDir`; historical packaged baselines can use the portable-profile mode where required by that retained binary's profile boundary.
 
-A metric not reliably collected by the harness must not be represented as measured. GPU-memory and precise per-process network-byte attribution remain separate work until reliable collectors are implemented.
+The benchmark records startup, first usable window, memory, process count, handles, CPU, process I/O and idle behavior. It also attempts Windows per-process GPU-memory counters and records Ghosium-owned TCP/UDP endpoint activity. If GPU counters cannot be mapped reliably, the result is explicitly unavailable. Precise byte-level network attribution is not claimed by the endpoint telemetry.
 
 ## Legal and security requirements
 
