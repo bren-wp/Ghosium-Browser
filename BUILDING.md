@@ -2,7 +2,7 @@
 
 ## Current development line
 
-The active product version is `0.1.5`. Ghosium Browser is built as a full-source Windows x64 product. A source audit, patch-only result, historical precompiled package, renamed technical installer or wrapper executable is not a production Ghosium release.
+The active product version is `0.1.8`. Ghosium Browser is built as a full-source Windows x64 product. A source audit, patch-only result, historical precompiled package, renamed technical installer or wrapper executable is not a production Ghosium release.
 
 The canonical production workflow is:
 
@@ -16,6 +16,8 @@ It is intentionally manual and runs on the controlled `ghosium-source-builder` W
 
 Release candidates use a dedicated branch named exactly `ghosium/release/<VERSION>`. The matching `.release/ghosium-v<VERSION>.request` marker may dispatch the controlled full-source **candidate** workflow only from that version-bound branch.
 
+A same-version marker PR is valid only when it changes exactly that one marker from the exact release branch. The release-marker promotion contract then requires a completed/success full-source candidate run for the exact PR head SHA and verifies the candidate evidence bundle before promotion.
+
 Merging a candidate marker into `main` must not automatically dispatch production. Production is a separate explicit gate performed only after the candidate has produced successful full-source/runtime/performance evidence and the exact intended candidate tree is on `main`.
 
 ## Production build chain
@@ -27,7 +29,7 @@ The release path is fail-closed:
 3. validate the controlled Windows builder and exact `DEPOT_TOOLS_REVISION`;
 4. validate revision-pinned transformation anchors;
 5. bootstrap/reset the source workspace to `ENGINE_SOURCE_REVISION`;
-6. apply Ghosium identity, branding, public-surface removal, localization, product version, native `ghost://` routing, Search, Store/update destinations and Windows executable identity;
+6. apply Ghosium identity, branding, public-surface removal, localization, product version, native `ghost://` routing, Google Search fallback preservation, Store/update destinations and Windows executable identity;
 7. verify the transformed source, including canonical native profile/password WebUI hosts, and prove Ghosium transformations did not edit `third_party/`;
 8. apply/verify native performance defaults;
 9. configure the reviewed Windows x64 GN arguments;
@@ -87,17 +89,25 @@ This preserves the maintained profile/password implementations while making the 
 
 ## 38-language contract
 
-Ghosium 0.1.5 supports 38 locales. English (`en-US`) is the primary/default language and Croatian (`hr`) is mandatory.
+Ghosium 0.1.8 supports 38 locales. English (`en-US`) is the primary/default language and Croatian (`hr`) is mandatory.
 
 The browser and interactive Setup must expose the same locale set. CI verifies that contract and verifies the corresponding pinned source translation bundles before an expensive build.
 
 A fresh install initializes the native browser locale from the Setup selection. Reinstall/update preserves an existing browser language preference.
 
+## Google Search contract
+
+Ghosium does not ship a first-party web search backend or bundled Ghosium Search provider. New Tab submits the standard `q` parameter directly to `https://www.google.com/search`.
+
+The source transformation preserves the pinned engine's reviewed Google fallback and must not inject a Ghosium-owned default-search provider. Explicit user search-engine choices, enterprise policy and extension overrides keep their native precedence.
+
+The repository hygiene contract rejects restoration of `search-provider/`, `search-web/`, the retired Search CI/deployment paths or legacy snapshot stable-release workflow.
+
 ## Performance defaults and evidence
 
 Performance work uses native engine mechanisms and must be benchmark-driven.
 
-The 0.1.5 Windows source configuration includes:
+The 0.1.8 Windows source configuration includes:
 
 ```text
 enable_background_mode = false
@@ -116,7 +126,7 @@ The following are forbidden performance shortcuts:
 - disabling extension or update trust verification;
 - applying a renderer-process cap solely to improve RAM numbers.
 
-Do not publish performance claims until the compiled source-built 0.1.5 binary is measured with the same benchmark methodology as the accepted baseline.
+Do not publish performance claims until the compiled source-built 0.1.8 binary is measured with the same benchmark methodology as the accepted baseline.
 
 The full-source workflow requires `GHOSIUM-PERFORMANCE.json` from the newly compiled runtime. Benchmark schema v2 records cold/warm first-usable-window startup, memory, process count, handles, CPU, process I/O, 1/5/10-tab scenarios, 60-second idle activity, best-effort per-process GPU memory and Ghosium-owned TCP/UDP endpoint activity. Unsupported GPU telemetry is reported as unavailable rather than as zero. Endpoint counts are not represented as byte-level network attribution.
 
@@ -142,7 +152,7 @@ No separately distributed updater or uninstaller executable is part of the Ghosi
 
 Update/uninstall first requests normal shutdown of the `Ghosium-Browser.exe` process tree. Forced termination is retained only as a maintenance fallback. The user profile lives outside the install directory and is preserved by normal update/uninstall.
 
-The checked-in `updates-web/windows/stable.json` remains disabled. Enabled production metadata is generated only from a verified signed canonical Setup.
+The checked-in `updates-web/windows/stable.json` remains disabled, version-synchronized, with empty SHA-256 and zero size. Enabled production metadata is generated only from a verified signed canonical Setup.
 
 ## Production signing
 
