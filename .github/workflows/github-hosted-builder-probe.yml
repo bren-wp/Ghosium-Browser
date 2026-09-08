@@ -55,11 +55,24 @@ jobs:
 
           $os = Get-CimInstance Win32_OperatingSystem
           $computer = Get-CimInstance Win32_ComputerSystem
-          $drive = Get-PSDrive -Name C
-          $volume = Get-Volume -DriveLetter C
-          $freeDiskGiB = [math]::Floor([double]$drive.Free / 1GB)
           $ramGiB = [math]::Floor([double]$computer.TotalPhysicalMemory / 1GB)
           $logicalProcessors = [int]$computer.NumberOfLogicalProcessors
+
+          $fixedDisks = @(
+            Get-CimInstance Win32_LogicalDisk -Filter 'DriveType=3' |
+              Sort-Object DeviceID |
+              ForEach-Object {
+                [ordered]@{
+                  drive = [string]$_.DeviceID
+                  fileSystem = [string]$_.FileSystem
+                  totalGiB = [math]::Floor([double]$_.Size / 1GB)
+                  freeGiB = [math]::Floor([double]$_.FreeSpace / 1GB)
+                  meetsFreshMinimum = ([string]$_.FileSystem -eq 'NTFS' -and ([double]$_.FreeSpace / 1GB) -ge $minimumFreshDiskGiB)
+                }
+              }
+          )
+          $bestDisk = $fixedDisks | Sort-Object { [int64]$_.freeGiB } -Descending | Select-Object -First 1
+          $anyFixedDiskMeetsFresh = @($fixedDisks | Where-Object { $_.meetsFreshMinimum }).Count -gt 0
 
           $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
           $vsPath = $null
@@ -80,26 +93,36 @@ jobs:
             $kitsRoot = $null
           }
 
+          $installedSdkVersions = @()
           $sdkHeader = $null
           $sdkLibrary = $null
           $debuggerPath = $null
           $debuggerVersion = $null
           if (![string]::IsNullOrWhiteSpace([string]$kitsRoot)) {
+            $includeRoot = Join-Path $kitsRoot 'Include'
+            if (Test-Path $includeRoot -PathType Container) {
+              $installedSdkVersions = @(
+                Get-ChildItem $includeRoot -Directory |
+                  Where-Object { $_.Name -match '^10\.0\.\d+\.\d+$' } |
+                  Select-Object -ExpandProperty Name |
+                  Sort-Object
+              )
+            }
             $sdkHeader = Join-Path $kitsRoot "Include\$requiredSdk\um\Windows.h"
             $sdkLibrary = Join-Path $kitsRoot "Lib\$requiredSdk\um\x64\Kernel32.Lib"
             $debuggerPath = Join-Path $kitsRoot 'Debuggers\x64\cdb.exe'
             $debuggerVersion = Numeric-File-Version $debuggerPath
           }
 
-          $sdkExactPresent = ($null -ne $sdkHeader -and (Test-Path $sdkHeader -PathType Leaf) -and (Test-Path $sdkLibrary -PathType Leaf))
+          $sdkHeaderPresent = ($null -ne $sdkHeader -and (Test-Path $sdkHeader -PathType Leaf))
+          $sdkLibraryPresent = ($null -ne $sdkLibrary -and (Test-Path $sdkLibrary -PathType Leaf))
+          $sdkExactPresent = $sdkHeaderPresent -and $sdkLibraryPresent
           $debuggerPresent = ($null -ne $debuggerPath -and (Test-Path $debuggerPath -PathType Leaf))
           $debuggerMeetsMinimum = ($null -ne $debuggerVersion -and $debuggerVersion -ge $minimumDebugger)
           $vsMeetsMinimum = ($null -ne $vsMajor -and $vsMajor -ge $requiredVsMajor)
-          $diskMeetsFresh = ($freeDiskGiB -ge $minimumFreshDiskGiB)
           $ramMeetsMinimum = ($ramGiB -ge $minimumRamGiB)
           $ramMeetsRecommended = ($ramGiB -ge $recommendedRamGiB)
           $cpuMeetsRecommended = ($logicalProcessors -ge $recommendedLogicalProcessors)
-          $ntfs = ([string]$volume.FileSystem -eq 'NTFS')
 
           $commands = [ordered]@{}
           foreach ($name in @('git','python3','fetch','gclient','gn','autoninja')) {
@@ -107,10 +130,10 @@ jobs:
           }
           $chromiumToolsPreinstalled = $commands.fetch.present -and $commands.gclient.present -and $commands.gn.present -and $commands.autoninja.present -and $commands.python3.present
 
-          $staticImageRequirementsMet = $ntfs -and $diskMeetsFresh -and $ramMeetsMinimum -and $vsMeetsMinimum -and $sdkExactPresent -and $debuggerMeetsMinimum
+          $staticImageRequirementsMet = $anyFixedDiskMeetsFresh -and $ramMeetsMinimum -and $vsMeetsMinimum -and $sdkExactPresent -and $debuggerMeetsMinimum
 
           $report = [ordered]@{
-            schemaVersion = 1
+            schemaVersion = 2
             purpose = 'github-hosted-read-only-builder-feasibility'
             productVersion = (Get-Content VERSION -Raw).Trim()
             repositoryCommit = $env:GITHUB_SHA
@@ -120,6 +143,8 @@ jobs:
               architecture = $env:RUNNER_ARCH
               imageOS = $env:ImageOS
               imageVersion = $env:ImageVersion
+              workspace = $env:GITHUB_WORKSPACE
+              temp = $env:RUNNER_TEMP
             }
             requirements = [ordered]@{
               visualStudioMajorMinimum = $requiredVsMajor
@@ -129,28 +154,29 @@ jobs:
               ramGiBRecommended = $recommendedRamGiB
               logicalProcessorsRecommended = $recommendedLogicalProcessors
               freshDiskGiBMinimum = $minimumFreshDiskGiB
+              workspaceFileSystem = 'NTFS'
             }
             observed = [ordered]@{
               osCaption = [string]$os.Caption
               osVersion = [string]$os.Version
               osArchitecture = [Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString()
               is64BitProcess = [Environment]::Is64BitProcess
-              fileSystem = [string]$volume.FileSystem
-              freeDiskGiB = $freeDiskGiB
+              fixedDisks = $fixedDisks
+              bestFixedDisk = $bestDisk
               ramGiB = $ramGiB
               logicalProcessors = $logicalProcessors
               visualStudioPath = if ($null -eq $vsPath) { $null } else { [string]$vsPath }
               visualStudioVersion = if ($null -eq $vsVersionText) { $null } else { [string]$vsVersionText }
               windowsKitsRoot = if ($null -eq $kitsRoot) { $null } else { [string]$kitsRoot }
-              requiredSdkHeaderPresent = [bool]$sdkExactPresent
-              requiredSdkLibraryPresent = [bool]$sdkExactPresent
+              installedWindowsSdkVersions = $installedSdkVersions
+              requiredSdkHeaderPresent = [bool]$sdkHeaderPresent
+              requiredSdkLibraryPresent = [bool]$sdkLibraryPresent
               debuggerPresent = [bool]$debuggerPresent
               debuggerVersion = if ($null -eq $debuggerVersion) { $null } else { [string]$debuggerVersion }
               commands = $commands
             }
             evaluation = [ordered]@{
-              ntfs = [bool]$ntfs
-              freshDiskMeetsMinimum = [bool]$diskMeetsFresh
+              anyFixedNtfsDiskMeetsFreshMinimum = [bool]$anyFixedDiskMeetsFresh
               ramMeetsMinimum = [bool]$ramMeetsMinimum
               ramMeetsRecommended = [bool]$ramMeetsRecommended
               logicalProcessorsMeetRecommendation = [bool]$cpuMeetsRecommended
@@ -163,7 +189,8 @@ jobs:
             interpretation = @(
               'This probe is read-only and does not install or provision build dependencies.',
               'Missing depot_tools commands alone do not prove GitHub-hosted builds are impossible because those tools can be provisioned in a workflow.',
-              'Disk, Visual Studio, exact Windows SDK and Debugging Tools results are the key baseline constraints before considering a hosted migration.',
+              'All local fixed disks are measured because a hosted migration could select a non-C workspace if it is local NTFS and satisfies the existing source-builder contract.',
+              'The exact Windows SDK requirement is reported separately from whatever SDK versions the image currently ships.',
               'The canonical 0.1.9 release workflow remains unchanged and continues to require the existing fail-closed source-builder contract.'
             )
           }
