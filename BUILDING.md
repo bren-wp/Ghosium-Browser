@@ -2,7 +2,7 @@
 
 ## Current development line
 
-The active product version is `0.1.8`. Ghosium Browser is built as a full-source Windows x64 product. A source audit, patch-only result, historical precompiled package, renamed technical installer or wrapper executable is not a production Ghosium release.
+The active product version is `0.1.9`. Ghosium Browser is built as a full-source Windows x64 product. A source audit, patch-only result, historical precompiled package, renamed technical installer or wrapper executable is not a production Ghosium release.
 
 The canonical production workflow is:
 
@@ -40,14 +40,14 @@ The release path is fail-closed:
 14. extract and verify the newly built runtime archive;
 15. assemble the canonical Ghosium release stage;
 16. on production `main`, sign `Ghosium-Browser.exe` and `Ghosium-Proxy.exe`;
-17. build `Ghosium-Browser-Setup.exe` from `installer/ghosium.nsi`;
-18. prove the public Setup is not a renamed technical installer;
-19. on production `main`, sign the Setup and verify the publisher relationship;
-20. run install → runtime → update → runtime → uninstall smoke verification;
-21. verify locale/profile preservation and cleanup behavior;
+17. build `Ghosium-Browser-Setup.exe` and `Ghosium-Browser-Portable.exe` from the same verified source stage;
+18. prove the public Setup is not a renamed technical installer and validate the Portable registry-free/profile-isolation contract;
+19. on production `main`, sign both public packages and verify their publisher relationship to the signed browser;
+20. run install → runtime → update → runtime → uninstall smoke verification for Setup;
+21. verify locale/profile preservation, Portable profile isolation and cleanup behavior;
 22. generate the production update manifest for the exact signed Setup;
-23. generate provenance, performance and SHA-256 evidence;
-24. publish a new immutable `ghosium-v0.x.y` release only if the tag does not already exist.
+23. generate provenance, performance and SHA-256 evidence including both public packages;
+24. publish a new immutable `ghosium-v0.x.y` release with Setup and Portable only if the tag does not already exist.
 
 The repository must not claim a source-built release until this controlled chain actually succeeds for the exact commit.
 
@@ -73,6 +73,7 @@ The public Windows product identity is:
 Ghosium-Browser.exe
 Ghosium-Proxy.exe
 Ghosium-Browser-Setup.exe
+Ghosium-Browser-Portable.exe
 ```
 
 The technical source-runtime archive is retained only as workflow evidence. It is not a stable end-user release asset.
@@ -89,7 +90,7 @@ This preserves the maintained profile/password implementations while making the 
 
 ## 38-language contract
 
-Ghosium 0.1.8 supports 38 locales. English (`en-US`) is the primary/default language and Croatian (`hr`) is mandatory.
+Ghosium 0.1.9 supports 38 locales. English (`en-US`) is the primary/default language and Croatian (`hr`) is mandatory.
 
 The browser and interactive Setup must expose the same locale set. CI verifies that contract and verifies the corresponding pinned source translation bundles before an expensive build.
 
@@ -107,7 +108,7 @@ The repository hygiene contract rejects restoration of `search-provider/`, `sear
 
 Performance work uses native engine mechanisms and must be benchmark-driven.
 
-The 0.1.8 Windows source configuration includes:
+The 0.1.9 Windows source configuration includes:
 
 ```text
 enable_background_mode = false
@@ -126,7 +127,7 @@ The following are forbidden performance shortcuts:
 - disabling extension or update trust verification;
 - applying a renderer-process cap solely to improve RAM numbers.
 
-Do not publish performance claims until the compiled source-built 0.1.8 binary is measured with the same benchmark methodology as the accepted baseline.
+Do not publish performance claims until the compiled source-built 0.1.9 binary is measured with the same benchmark methodology as the accepted baseline.
 
 The full-source workflow requires `GHOSIUM-PERFORMANCE.json` from the newly compiled runtime. Benchmark schema v2 records cold/warm first-usable-window startup, memory, process count, handles, CPU, process I/O, 1/5/10-tab scenarios, 60-second idle activity, best-effort per-process GPU memory and Ghosium-owned TCP/UDP endpoint activity. Unsupported GPU telemetry is reported as unavailable rather than as zero. Endpoint counts are not represented as byte-level network attribution.
 
@@ -148,7 +149,7 @@ normal install
 /S /UNINSTALL
 ```
 
-No separately distributed updater or uninstaller executable is part of the Ghosium product.
+No separately distributed updater or uninstaller executable is part of the Ghosium product. `Ghosium-Browser-Portable.exe` is a separate registry-free end-user package; it is not an updater or uninstaller and keeps its profile/runtime data beside the Portable executable.
 
 Update/uninstall first requests normal shutdown of the `Ghosium-Browser.exe` process tree. Forced termination is retained only as a maintenance fallback. The user profile lives outside the install directory and is preserved by normal update/uninstall.
 
@@ -163,7 +164,7 @@ Production `main` requires:
 - an accessible code-signing private key for the controlled runner;
 - the required Windows SDK `signtool.exe`.
 
-The signing process uses SHA-256 file digests and RFC3161 timestamping. Browser, proxy and Setup signatures must validate and use the expected publisher relationship.
+The signing process uses SHA-256 file digests and RFC3161 timestamping. Browser, proxy, Setup and Portable signatures must validate and use the expected publisher relationship.
 
 Never commit a PFX, private key, password or other signing secret.
 
@@ -217,6 +218,7 @@ GHOSIUM-PERFORMANCE.json
 GHOSIUM-UPSTREAM-MINI-INSTALLER-SMOKE.json
 GHOSIUM-SOURCE-STAGE.json
 GHOSIUM-PUBLIC-SETUP.json
+Ghosium-Browser-Portable.exe
 GHOSIUM-CANONICAL-SETUP-SMOKE.json
 GHOSIUM-UPDATE-MANIFEST.json
 GHOSIUM-VERSION.txt

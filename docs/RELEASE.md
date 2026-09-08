@@ -2,7 +2,7 @@
 
 ## Current product version
 
-The active development version is `0.1.8`.
+The active development version is `0.1.9`.
 
 Version policy:
 
@@ -23,14 +23,15 @@ ghosium-v0.1.5
 ghosium-v0.1.6
 ghosium-v0.1.7
 ghosium-v0.1.8
+ghosium-v0.1.9
 ghosium-v0.2.0
 ```
 
 Historical releases remain untouched.
 
-## 0.1.8 release scope
+## 0.1.9 release scope
 
-The 0.1.8 line carries forward the Google Search simplification and adds repository/release hygiene enforcement:
+The 0.1.9 line carries forward the fail-closed Google Search/release contracts and adds Ghosium-owned UI, verified documentation imagery and a canonical Portable package:
 
 - Google Search remains the default external web search service;
 - New Tab submits the standard `q` parameter directly to `https://www.google.com/search`;
@@ -40,7 +41,12 @@ The 0.1.8 line carries forward the Google Search simplification and adds reposit
 - the repository hygiene contract rejects restoration of `search-provider/`, `search-web/`, retired Search CI/migration paths and the legacy snapshot stable-release workflow;
 - same-version release-marker PRs are accepted only from the exact `ghosium/release/<VERSION>` branch and only when the marker is the sole changed file;
 - release-marker promotion requires a completed/success full-source candidate run for the exact PR head SHA and verifies the downloaded candidate evidence bundle;
-- the checked-in 0.1.8 update baseline remains fail-closed with `enabled:false`, empty SHA-256 and zero size until a real signed package exists.
+- Ghosium New Tab, Customize/Options and Ghosium Privacy use checked-in branded UI surfaces with generated extension icons;
+- README interface images are actual pinned-Chromium renders of those checked-in surfaces, with provenance, and are not represented as full-source native browser-shell screenshots;
+- source branding now applies and verifies the native public-surface and performance-default transforms as part of the normal fork pipeline;
+- canonical source packaging produces both `Ghosium-Browser-Setup.exe` and registry-free `Ghosium-Browser-Portable.exe` from the same verified source stage;
+- production publication requires exact Portable SHA-256/size provenance and Valid Authenticode for both Setup and Portable;
+- the checked-in 0.1.9 update baseline remains fail-closed with `enabled:false`, empty SHA-256 and zero size until a real signed Setup exists.
 
 This scope is not a production-binary or performance claim. Canonical release status still requires the controlled full-source candidate/production compile, runtime, performance, installer, signing and provenance gates for the exact release tree.
 
@@ -90,27 +96,29 @@ Required gate:
 17. source-built performance measurement and `GHOSIUM-PERFORMANCE.json` validation;
 18. internal technical installer verification;
 19. verified source-runtime extraction/staging;
-20. canonical `Ghosium-Browser-Setup.exe` build;
-21. production Authenticode signing on `main`;
-22. install → runtime → update → runtime → uninstall round trip;
-23. profile/language preservation and cleanup verification;
-24. exact update-manifest generation;
-25. provenance and SHA-256 evidence;
-26. immutable release publication.
+20. canonical `Ghosium-Browser-Setup.exe` and `Ghosium-Browser-Portable.exe` build from the same verified source stage;
+21. Portable registry-free/profile-isolation provenance validation;
+22. production Authenticode signing of Setup and Portable on `main`;
+23. install → runtime → update → runtime → uninstall round trip for Setup;
+24. profile/language preservation and cleanup verification;
+25. exact update-manifest generation for the signed Setup;
+26. provenance and SHA-256 evidence for both public packages;
+27. immutable release publication.
 
 A source audit, patch-only result, historical package, technical archive or installer definition does not satisfy this gate.
 
 ## Public release asset
 
-The stable end-user Windows artifact is:
+The stable end-user Windows artifacts are:
 
 ```text
 Ghosium-Browser-Setup.exe
+Ghosium-Browser-Portable.exe
 ```
 
-The workflow may retain technical source-runtime archives and JSON evidence for diagnosis/provenance, but they are not alternative end-user browser packages.
+Setup is the canonical install/update/uninstall maintenance package. Portable is generated from the same verified source stage, writes no install registration/shortcuts, and uses an adjacent isolated user-data directory. The workflow may retain technical source-runtime archives and JSON evidence for diagnosis/provenance, but they are not alternative end-user browser packages.
 
-The retired legacy Portable package is not part of the active release architecture. It must not return unless a future Portable design is generated from the same verified source output and receives equivalent runtime, profile-isolation, update and cleanup verification.
+The retired legacy wrapper/snapshot Portable architecture remains forbidden; the current Portable design is part of the canonical source-stage packaging contract and must satisfy provenance, signing and profile-isolation gates.
 
 ## Release evidence
 
@@ -118,6 +126,7 @@ A successful production candidate produces or retains:
 
 ```text
 Ghosium-Browser-Setup.exe
+Ghosium-Browser-Portable.exe
 GHOSIUM-BUILDER-READY.json
 GHOSIUM-SOURCE-BUILD.json
 GHOSIUM-PERFORMANCE.json
@@ -209,7 +218,7 @@ The repository hygiene workflow must remain green and fail closed if any of thes
 
 ## Update and uninstall gate
 
-The canonical Setup is the only public maintenance package and supports normal install, `/S /UPDATE` and `/S /UNINSTALL`.
+The canonical Setup is the only public maintenance package and supports normal install, `/S /UPDATE` and `/S /UNINSTALL`. Portable is a separate registry-free run-in-place package and is never used as the updater/uninstaller.
 
 Update validation requires an exact trusted Setup URL, size, SHA-256, Authenticode status, expected publisher relationship and signed Ghosium/Brendigo product metadata.
 
@@ -252,7 +261,7 @@ Tests must not be weakened to make a release green. Fix implementation defects o
 
 ## Signing
 
-Do not describe a release as Authenticode-signed unless the actual published Setup and required binaries are signed by the configured Brendigo/Ghosium identity and validation succeeds in the production workflow.
+Do not describe a release as Authenticode-signed unless the actual published Setup, Portable and required binaries are signed by the configured Brendigo/Ghosium identity and validation succeeds in the production workflow.
 
 Signing keys, PFX files and passwords must never be committed.
 
@@ -264,4 +273,4 @@ Required third-party attribution remains a legal requirement and must stay isola
 
 ## Release decision
 
-Do not merge or publish 0.1.8 merely because hosted source contracts are green. Marker promotion requires successful controlled Windows full-source candidate evidence for the exact candidate SHA. Publication additionally requires the production `main` source compile, source-built performance evidence, runtime/installer evidence, valid signing, exact update-manifest binding and immutable release publication for the exact production commit.
+Do not merge or publish 0.1.9 merely because hosted source contracts are green. Marker promotion requires successful controlled Windows full-source candidate evidence for the exact candidate SHA. Publication additionally requires the production `main` source compile, source-built performance evidence, runtime/installer evidence, valid signing, exact update-manifest binding and immutable release publication for the exact production commit.
