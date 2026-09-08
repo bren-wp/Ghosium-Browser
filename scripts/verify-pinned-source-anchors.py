@@ -160,8 +160,9 @@ FILE_ANCHORS: dict[str, tuple[str, ...]] = {
         "CustomizeChromePageHandler",
     ),
     "chrome/browser/ui/chrome_pages.cc": (
-        "ShowChromePageForURL",
-        "chrome::kChromeUISettingsURL",
+        "void ShowWebStore(BrowserWindowInterface* browser,",
+        "GURL webstore_url = extension_urls::GetNewWebstoreLaunchURL();",
+        "browser, extension_urls::AppendUtmSource(webstore_url, utm_source_value));",
     ),
     "chrome/browser/ui/webui/extensions/extensions_ui.cc": (
         "ExtensionsUI::ExtensionsUI",
