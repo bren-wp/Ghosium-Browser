@@ -125,10 +125,10 @@ foreach ($route in $expectedInternalRoutes) {
 }
 
 $locales = @($config.locales.supported)
-if ($locales.Count -ne 30) {
-  throw "Ghosium must define exactly 30 supported locales; found $($locales.Count)."
+if ($locales.Count -ne 38) {
+  throw "Ghosium must define exactly 38 supported locales; found $($locales.Count)."
 }
-if (@($locales | Sort-Object -Unique).Count -ne 30) {
+if (@($locales | Sort-Object -Unique).Count -ne 38) {
   throw 'Ghosium locale list contains duplicates.'
 }
 if ($config.locales.default -ne 'en-US') {
@@ -208,9 +208,12 @@ if ($SourceRoot) {
     'chrome/common/url_constants.h',
     'chrome/common/webui_url_constants.h',
     'chrome/common/ghosium_product_version.h',
+    'components/password_manager/content/common/web_ui_constants.h',
     'content/public/common/url_constants.h',
     'chrome/browser/browser_about_handler.cc',
     'chrome/browser/ui/webui/version/version_ui.cc',
+    'chrome/browser/ui/webui/signin/profile_picker_ui.h',
+    'chrome/browser/ui/webui/password_manager/password_manager_ui.h',
     'chrome/app/theme/chromium/BRANDING',
     'chrome/app/theme/chromium/product_logo.svg',
     'chrome/install_static/chromium_install_modes.h',
@@ -312,6 +315,7 @@ if ($SourceRoot) {
     'ghost://bookmarks/',
     'ghost://downloads/',
     'ghost://settings/',
+    'ghost://profiles/',
     'ghost://extensions/'
   )) {
     if (!$webUiConstants.Contains($nativeRoute)) {
@@ -319,10 +323,36 @@ if ($SourceRoot) {
     }
   }
 
+  $passwordConstants = Get-Content (Join-Path $resolvedSourceRoot 'components/password_manager/content/common/web_ui_constants.h') -Raw
+  $profilePickerController = Get-Content (Join-Path $resolvedSourceRoot 'chrome/browser/ui/webui/signin/profile_picker_ui.h') -Raw
+  $passwordManagerController = Get-Content (Join-Path $resolvedSourceRoot 'chrome/browser/ui/webui/password_manager/password_manager_ui.h') -Raw
+  if (!$webUiConstants.Contains('kChromeUIProfilePickerHost[] = "profiles"') -or
+      !$webUiConstants.Contains('kChromeUIProfilePickerUrl[] = "ghost://profiles/"') -or
+      !$profilePickerController.Contains('chrome::kChromeUIProfilePickerHost')) {
+    throw 'ghost://profiles is not backed by the native ProfilePickerUI host contract.'
+  }
+  if (!$passwordConstants.Contains('kChromeUIPasswordManagerHost[] = "passwords"') -or
+      !$passwordManagerController.Contains('password_manager::kChromeUIPasswordManagerHost') -or
+      !$webUiConstants.Contains('ghost://passwords/checkup?start=true') -or
+      !$webUiConstants.Contains('ghost://passwords/settings') -or
+      !$webUiConstants.Contains('ghost://passwords')) {
+    throw 'ghost://passwords is not backed by the native PasswordManagerUI host contract.'
+  }
+  if ($webUiConstants.Contains('ghost://profile-picker/') -or
+      $webUiConstants.Contains('ghost://password-manager/')) {
+    throw 'Superseded profile-picker/password-manager product URLs remain active.'
+  }
+
   $aboutHandler = Get-Content (Join-Path $resolvedSourceRoot 'chrome/browser/browser_about_handler.cc') -Raw
-  if (!$aboutHandler.Contains('GURL("ghost://settings/manageProfile")') -or
-      !$aboutHandler.Contains('GURL("ghost://password-manager/")')) {
-    throw 'ghost://profiles or ghost://passwords alias routing is missing.'
+  foreach ($forbiddenAlias in @(
+    'host == "profiles"',
+    'GURL("ghost://settings/manageProfile")',
+    'host == "passwords"',
+    'GURL("ghost://password-manager/")'
+  )) {
+    if ($aboutHandler.Contains($forbiddenAlias)) {
+      throw "Canonical ghost://profiles/passwords regressed to a browser_about_handler alias: $forbiddenAlias"
+    }
   }
 
   $searchSource = Get-Content (Join-Path $resolvedSourceRoot 'components/search_engines/template_url_prepopulate_data.cc') -Raw
