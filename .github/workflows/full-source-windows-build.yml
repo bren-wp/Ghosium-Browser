@@ -193,6 +193,9 @@ jobs:
           if (Test-Path 'artifacts/full-source/Ghosium-Browser-Setup.exe') {
             throw 'Public Setup must not exist before the canonical source-release packaging step.'
           }
+          if (Test-Path 'artifacts/full-source/Ghosium-Browser-Portable.exe') {
+            throw 'Public Portable must not exist before the canonical source-release packaging step.'
+          }
 
       - name: Benchmark source-built Ghosium Browser
         shell: pwsh
@@ -231,7 +234,7 @@ jobs:
             -MiniInstallerPath (Join-Path $src 'out/Ghosium/mini_installer.exe') `
             -ReportPath (Join-Path $PWD 'artifacts/full-source/GHOSIUM-UPSTREAM-MINI-INSTALLER-SMOKE.json')
 
-      - name: Build canonical Ghosium same-Setup package
+      - name: Build canonical Ghosium Setup and Portable packages
         shell: pwsh
         env:
           WORK_ROOT: ${{ steps.builder.outputs.work_root }}
@@ -253,9 +256,13 @@ jobs:
           ./scripts/build-source-release-installer.ps1 @params
 
           $publicSetup = Join-Path $PWD 'artifacts/full-source/Ghosium-Browser-Setup.exe'
+          $publicPortable = Join-Path $PWD 'artifacts/full-source/Ghosium-Browser-Portable.exe'
           $miniInstaller = Join-Path $src 'out/Ghosium/mini_installer.exe'
           if (!(Test-Path $publicSetup -PathType Leaf)) {
             throw 'Canonical public Ghosium Setup was not produced.'
+          }
+          if (!(Test-Path $publicPortable -PathType Leaf)) {
+            throw 'Canonical public Ghosium Portable was not produced.'
           }
           if ((Get-FileHash $publicSetup -Algorithm SHA256).Hash -eq
               (Get-FileHash $miniInstaller -Algorithm SHA256).Hash) {
@@ -290,15 +297,26 @@ jobs:
           }
 
           $public = Get-Content 'artifacts/full-source/GHOSIUM-PUBLIC-SETUP.json' -Raw | ConvertFrom-Json
-          if ($public.product -ne 'Ghosium Browser' -or
+          if ($public.schemaVersion -ne 3 -or
+              $public.product -ne 'Ghosium Browser' -or
               $public.productVersion -ne $env:GHOSIUM_VERSION -or
               !$public.maintenance.sameSetupExecutable -or
               $public.publicSetupIsChromiumMiniInstallerRename) {
             throw 'Canonical public Setup provenance failed the release contract.'
           }
+          if ($public.portablePackage -ne 'Ghosium-Browser-Portable.exe' -or
+              [int64]$public.portableBytes -le 0 -or
+              [string]$public.portableSha256 -notmatch '^[0-9a-f]{64}$' -or
+              !$public.portable.registryFree -or
+              $public.portable.createsShortcuts -or
+              $public.portable.profileSwitch -ne '--user-data-dir') {
+            throw 'Canonical public Portable provenance failed the release contract.'
+          }
           if ($env:GITHUB_REF -eq 'refs/heads/main' -and
-              (!$public.signing.applied -or $public.signing.setupStatus -ne 'Valid')) {
-            throw 'Production main release requires a Valid Authenticode canonical Setup package.'
+              (!$public.signing.applied -or
+               $public.signing.setupStatus -ne 'Valid' -or
+               $public.signing.portableStatus -ne 'Valid')) {
+            throw 'Production main release requires Valid Authenticode Setup and Portable packages.'
           }
 
           $performance = Get-Content 'artifacts/full-source/GHOSIUM-PERFORMANCE.json' -Raw | ConvertFrom-Json
@@ -323,6 +341,7 @@ jobs:
           $ErrorActionPreference = 'Stop'
           $filesToHash = @(
             'artifacts/full-source/Ghosium-Browser-Setup.exe',
+            'artifacts/full-source/Ghosium-Browser-Portable.exe',
             'artifacts/full-source/Ghosium-Browser-Source-Runtime.7z',
             'artifacts/full-source/GHOSIUM-SOURCE-BUILD.json',
             'artifacts/full-source/GHOSIUM-PERFORMANCE.json',
@@ -391,6 +410,7 @@ jobs:
 
           for required in \
             artifacts/Ghosium-Browser-Setup.exe \
+            artifacts/Ghosium-Browser-Portable.exe \
             artifacts/GHOSIUM-SOURCE-BUILD.json \
             artifacts/GHOSIUM-PERFORMANCE.json \
             artifacts/GHOSIUM-PUBLIC-SETUP.json \
@@ -403,24 +423,36 @@ jobs:
           done
 
           python3 - <<'PY'
+          import hashlib
           import json
           from pathlib import Path
 
           public = json.loads(Path('artifacts/GHOSIUM-PUBLIC-SETUP.json').read_text(encoding='utf-8'))
           update = json.loads(Path('artifacts/GHOSIUM-UPDATE-MANIFEST.json').read_text(encoding='utf-8'))
           performance = json.loads(Path('artifacts/GHOSIUM-PERFORMANCE.json').read_text(encoding='utf-8-sig'))
-          if public['signing']['setupStatus'] != 'Valid' or not public['signing']['applied']:
-              raise SystemExit('Refusing release: canonical Setup is not proven Authenticode-signed.')
+          if public.get('schemaVersion') != 3:
+              raise SystemExit('Refusing release: canonical package provenance schema is not version 3.')
+          signing = public.get('signing', {})
+          if signing.get('setupStatus') != 'Valid' or signing.get('portableStatus') != 'Valid' or not signing.get('applied'):
+              raise SystemExit('Refusing release: canonical Setup and Portable are not proven Authenticode-signed.')
           if public['publicSetupIsChromiumMiniInstallerRename']:
               raise SystemExit('Refusing release: public Setup is an upstream mini-installer rename.')
           if update['sha256'] != public['packageSha256'] or update['size'] != public['packageBytes']:
               raise SystemExit('Refusing release: update manifest does not describe the exact canonical Setup package.')
+          portable = Path('artifacts/Ghosium-Browser-Portable.exe')
+          portable_digest = hashlib.sha256(portable.read_bytes()).hexdigest()
+          if portable.name != public.get('portablePackage') or portable_digest != public.get('portableSha256') or portable.stat().st_size != public.get('portableBytes'):
+              raise SystemExit('Refusing release: Portable bytes do not match canonical provenance.')
+          portable_contract = public.get('portable', {})
+          if portable_contract.get('registryFree') is not True or portable_contract.get('createsShortcuts') is not False or portable_contract.get('profileSwitch') != '--user-data-dir':
+              raise SystemExit('Refusing release: Portable behavior contract is invalid.')
           if performance.get('schemaVersion') != 2 or performance.get('profileMode') != 'UserDataDir':
               raise SystemExit('Refusing release: source-built performance evidence is missing or invalid.')
           PY
 
           gh release create "$GHOSIUM_TAG" \
             artifacts/Ghosium-Browser-Setup.exe \
+            artifacts/Ghosium-Browser-Portable.exe \
             artifacts/GHOSIUM-SOURCE-BUILD.json \
             artifacts/GHOSIUM-PERFORMANCE.json \
             artifacts/GHOSIUM-BUILDER-READY.json \
@@ -435,5 +467,5 @@ jobs:
             artifacts/SHA256SUMS.txt \
             --target "$GITHUB_SHA" \
             --title "Ghosium Browser $GHOSIUM_VERSION" \
-            --notes $'Verified Ghosium Browser Windows x64 release built from the pinned source revision.\n\nThe public Ghosium-Browser-Setup.exe is the canonical Brendigo same-Setup package. It performs install, /UPDATE and /UNINSTALL maintenance, is Authenticode-signed for production, and has passed an installed runtime + update + uninstall round-trip smoke test.\n\nRelease gate: pinned source checkout, Ghosium fork application, source verification, full compile, runtime smoke, measured source-built performance evidence, canonical source-stage assembly, source-runtime-to-Setup packaging, Authenticode publisher verification, same-Setup update/profile-preservation smoke, legal payload verification, production update-manifest binding, SHA-256 manifest, and provenance must all succeed before publication.\n\nTechnical upstream GN/Ninja target names and internal DLL/archive names may remain where a safe coordinated rename has not yet been compile/runtime proven. Third-party/open-source components remain governed by their own licenses.' \
+            --notes $'Verified Ghosium Browser Windows x64 release built from the pinned source revision.\n\nThe public Ghosium-Browser-Setup.exe is the canonical Brendigo maintenance package, and Ghosium-Browser-Portable.exe is the canonical registry-free portable package produced from the same verified source stage. Both are Authenticode-signed for production; Setup performs install, /UPDATE and /UNINSTALL maintenance and has passed an installed runtime + update + uninstall round-trip smoke test.\n\nRelease gate: pinned source checkout, Ghosium fork application, source verification, full compile, runtime smoke, measured source-built performance evidence, canonical source-stage assembly, source-runtime-to-Setup/Portable packaging, Authenticode publisher verification, same-Setup update/profile-preservation smoke, Portable provenance verification, legal payload verification, production update-manifest binding, SHA-256 manifest, and provenance must all succeed before publication.\n\nTechnical upstream GN/Ninja target names and internal DLL/archive names may remain where a safe coordinated rename has not yet been compile/runtime proven. Third-party/open-source components remain governed by their own licenses.' \
             --repo "$GITHUB_REPOSITORY"
