@@ -1,11 +1,11 @@
 {
   "schemaVersion": 1,
-  "updatedAt": "2026-09-08T19:40:00Z",
+  "updatedAt": "2026-09-08T20:45:00Z",
   "extensions": [
     {
       "id": "ghosium-privacy",
       "name": "Ghosium Privacy",
-      "version": "0.1.6",
+      "version": "0.1.7",
       "manifestVersion": 3,
       "status": "built_in",
       "description": "Built-in declarative tracker protection and Ghosium new-tab experience.",
