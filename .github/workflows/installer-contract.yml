@@ -5,18 +5,17 @@ on:
     branches:
       - main
     paths:
-      - 'launcher/ghosium.rc'
       - 'installer/**'
       - 'scripts/**'
+      - 'engine/branding/**'
       - '.github/workflows/**'
   push:
     branches:
       - main
-      - ghosium/0.1.1-public-branding
     paths:
-      - 'launcher/ghosium.rc'
       - 'installer/**'
       - 'scripts/**'
+      - 'engine/branding/**'
       - '.github/workflows/**'
   workflow_dispatch:
 
@@ -62,12 +61,11 @@ jobs:
               )
           print('GitHub Actions immutable-reference contract: OK')
 
-      - name: Validate installer and canonical release scripts
+      - name: Validate canonical installer and release scripts
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
           foreach ($path in @(
-            'scripts/build-native-launcher.ps1',
             'scripts/resolve-nsis.ps1',
             'scripts/assemble-source-release-stage.ps1',
             'scripts/build-source-release-installer.ps1',
@@ -84,6 +82,25 @@ jobs:
               throw "PowerShell parser errors found in $path"
             }
           }
+
+      - name: Reject retired wrapper and portable packaging artifacts
+        shell: python
+        run: |
+          from pathlib import Path
+
+          retired = (
+              Path('launcher/main.cpp'),
+              Path('launcher/ghosium.rc'),
+              Path('scripts/build-native-launcher.ps1'),
+              Path('installer/portable.nsi'),
+              Path('docs/NEXT-CHAT-PROMPT.md'),
+          )
+          found = [str(path) for path in retired if path.exists()]
+          if found:
+              raise SystemExit(
+                  'Retired pre-source/portable artifacts must not return:\n' + '\n'.join(found)
+              )
+          print('Retired wrapper/portable packaging artifacts: absent')
 
       - name: Verify pinned NSIS bootstrap and warnings-as-errors
         shell: bash
@@ -103,14 +120,12 @@ jobs:
             echo 'Ghosium installer tooling must not depend on mutable Chocolatey NSIS feeds.' >&2
             exit 1
           fi
-          for script in installer/ghosium.nsi installer/portable.nsi; do
-            test "$(grep -Fc '!pragma warning error all' "$script")" -eq 1 || {
-              echo "$script must contain exactly one warnings-as-errors directive." >&2
-              exit 1
-            }
-          done
+          test "$(grep -Fc '!pragma warning error all' installer/ghosium.nsi)" -eq 1 || {
+            echo 'Canonical Ghosium Setup must contain exactly one warnings-as-errors directive.' >&2
+            exit 1
+          }
 
-      - name: Verify deterministic Ghosium icon wiring
+      - name: Verify deterministic Ghosium Setup icon wiring
         shell: bash
         run: |
           set -euo pipefail
@@ -127,9 +142,7 @@ jobs:
           first_offset = struct.unpack_from('<I', data, 18)[0]
           assert struct.unpack_from('<I', data, first_offset)[0] == 40
           PY
-          grep -Fq '101 ICON "ghosium.ico"' launcher/ghosium.rc
           grep -Fq '!define MUI_ICON "${GHOSIUM_ICON}"' installer/ghosium.nsi
-          grep -Fq 'Icon "${GHOSIUM_ICON}"' installer/portable.nsi
           if grep -Fq 'modern-install.ico' installer/ghosium.nsi; then
             echo 'Canonical Setup must not use a generic NSIS product icon.' >&2
             exit 1
@@ -224,7 +237,7 @@ jobs:
               raise SystemExit('Update preparation must not uninstall Ghosium or erase profile/registration state.')
           print('Same-Setup update/profile-preservation contract: OK')
 
-      - name: Verify canonical public Setup is not Chromium mini-installer rename
+      - name: Verify canonical public Setup is independently packaged
         shell: python
         run: |
           from pathlib import Path
@@ -246,7 +259,7 @@ jobs:
 
           forbidden_copy = "Copy-Item (Join-Path $out 'mini_installer.exe') 'artifacts/full-source/Ghosium-Browser-Setup.exe'"
           if forbidden_copy in workflow:
-              raise SystemExit('Public Setup is still produced by renaming Chromium mini_installer.exe.')
+              raise SystemExit('Public Ghosium Setup must not be a renamed upstream technical installer artifact.')
 
           required_packager = [
               "Join-Path $outPath 'mini_installer.exe'",
