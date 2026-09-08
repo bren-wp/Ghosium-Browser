@@ -10,6 +10,7 @@ on:
       - 'scripts/verify-source-builder-host.ps1'
       - 'scripts/bootstrap-engine-source.ps1'
       - 'scripts/verify-engine-build-output.ps1'
+      - 'scripts/benchmark-ghosium-windows.ps1'
       - 'scripts/verify-pinned-source-anchors.py'
       - 'scripts/smoke-test-source-windows-installer.ps1'
       - 'scripts/assemble-source-release-stage.ps1'
@@ -28,6 +29,7 @@ on:
       - 'scripts/verify-source-builder-host.ps1'
       - 'scripts/bootstrap-engine-source.ps1'
       - 'scripts/verify-engine-build-output.ps1'
+      - 'scripts/benchmark-ghosium-windows.ps1'
       - 'scripts/verify-pinned-source-anchors.py'
       - 'scripts/smoke-test-source-windows-installer.ps1'
       - 'scripts/assemble-source-release-stage.ps1'
@@ -112,6 +114,7 @@ jobs:
             'scripts/verify-source-builder-host.ps1',
             'scripts/bootstrap-engine-source.ps1',
             'scripts/verify-engine-build-output.ps1',
+            'scripts/benchmark-ghosium-windows.ps1',
             'scripts/smoke-test-source-windows-installer.ps1',
             'scripts/assemble-source-release-stage.ps1',
             'scripts/build-source-release-installer.ps1',
@@ -165,7 +168,7 @@ jobs:
             "Require-Command -Name 'gn'",
             "Require-Command -Name 'autoninja'",
             "Require-Command -Name 'python3'",
-            "`$WorkRoot = 'C:\src\ghosium-chromium'",
+            "`$WorkRoot = 'C:\src\ghosium-engine'",
             "Join-Path `$resolvedWorkRoot 'src\.git'",
             "Join-Path `$resolvedWorkRoot '.gclient'",
             "`$workspaceState = 'fresh-empty'",
@@ -179,8 +182,8 @@ jobs:
           if ($script -match '(?i)api[_-]?key|client_secret|private[_-]?key|github_token|personal access token') {
             throw 'Builder readiness script must not contain credentials or product API secrets.'
           }
-          if ($script.Contains("Join-Path `$env:RUNNER_TEMP 'ghosium-chromium'")) {
-            throw 'Chromium source workspace must not silently fall back to RUNNER_TEMP.'
+          if ($script.Contains("Join-Path `$env:RUNNER_TEMP 'ghosium-engine'")) {
+            throw 'Engine source workspace must not silently fall back to RUNNER_TEMP.'
           }
 
       - name: Verify absolute workspace bootstrap safety
@@ -265,6 +268,30 @@ jobs:
           }
           if ($technicalSmoke -match "(?i)'--no-sandbox'") {
             throw 'Installed source-built runtime smoke must not disable the Chromium sandbox.'
+          }
+
+      - name: Verify benchmark telemetry contract
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $benchmark = Get-Content 'scripts/benchmark-ghosium-windows.ps1' -Raw
+          foreach ($required in @(
+            "[ValidateSet('PortableProfile', 'UserDataDir')]",
+            "[string]`$ProfileMode = 'PortableProfile'",
+            "Get-Counter -ListSet 'GPU Process Memory'",
+            'Get-NetTCPConnection',
+            'Get-NetUDPEndpoint',
+            'uniqueRemoteAddressCount',
+            'longIdleActivity',
+            'schemaVersion = 2',
+            "'--user-data-dir=`$ProfilePath'"
+          )) {
+            if (!$benchmark.Contains($required)) {
+              throw "Ghosium benchmark is missing required telemetry/profile invariant: $required"
+            }
+          }
+          if ($benchmark -match "(?i)'--no-sandbox'|--disable-gpu-sandbox|--ignore-certificate-errors") {
+            throw 'Benchmark tooling must not weaken runtime security to obtain measurements.'
           }
 
       - name: Verify canonical source-release gate
@@ -381,6 +408,7 @@ jobs:
           grep -Fq 'DEPOT_TOOLS_UPDATE' "$doc"
           grep -Fq 'GIT_TERMINAL_PROMPT' "$doc"
           grep -Fq 'GHOSIUM_SOURCE_WORK' "$doc"
+          grep -Fq 'C:\src\ghosium-engine' "$doc"
           grep -Fq 'verify-source-builder-host.ps1' "$doc"
           grep -Fq 'autoninja -C out/Ghosium chrome mini_installer' "$doc"
           grep -Fq 'runtime smoke' "$doc"
