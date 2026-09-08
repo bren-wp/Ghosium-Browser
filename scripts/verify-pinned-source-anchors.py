@@ -122,16 +122,13 @@ FILE_ANCHORS: dict[str, tuple[str, ...]] = {
         'chrome_proxy.exe: %(ChromeDir)s\\',
     ),
     "chrome/installer/util/util_constants.h": (
+        'kChromeDll[] = L"chrome.dll"',
         'kChromeExe[] = L"chrome.exe"',
         'kChromeNewExe[] = L"new_chrome.exe"',
         'kChromeOldExe[] = L"old_chrome.exe"',
         'kChromeProxyExe[] = L"chrome_proxy.exe"',
         'kChromeProxyNewExe[] = L"new_chrome_proxy.exe"',
         'kChromeProxyOldExe[] = L"old_chrome_proxy.exe"',
-        'kChromeDll',
-        'kChromeVisualElementsManifest',
-        'kChromeElfDll',
-        'kChromePwaLauncherExe',
     ),
     "chrome/installer/setup/setup_constants.cc": (
         'kVisualElementsManifest[] = L"chrome.VisualElementsManifest.xml"',
