@@ -1,0 +1,122 @@
+name: Ghosium Performance Defaults Contract
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'ENGINE_SOURCE_REVISION'
+      - 'engine/build/windows-x64.args.gn'
+      - 'scripts/rewrite-engine-performance-defaults.ps1'
+      - 'scripts/verify-engine-performance-defaults.ps1'
+      - 'scripts/configure-engine-build.ps1'
+      - '.github/workflows/performance-defaults-contract.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'ENGINE_SOURCE_REVISION'
+      - 'engine/build/windows-x64.args.gn'
+      - 'scripts/rewrite-engine-performance-defaults.ps1'
+      - 'scripts/verify-engine-performance-defaults.ps1'
+      - 'scripts/configure-engine-build.ps1'
+      - '.github/workflows/performance-defaults-contract.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  performance-defaults:
+    name: Verify safe low-overhead Ghosium defaults
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+
+    steps:
+      - name: Checkout Ghosium tooling
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Parse performance tooling
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          foreach ($path in @(
+            'scripts/rewrite-engine-performance-defaults.ps1',
+            'scripts/verify-engine-performance-defaults.ps1',
+            'scripts/configure-engine-build.ps1'
+          )) {
+            $tokens = $null
+            $errors = $null
+            [void][System.Management.Automation.Language.Parser]::ParseFile(
+              (Resolve-Path $path), [ref]$tokens, [ref]$errors)
+            if ($errors.Count -gt 0) {
+              $errors | ForEach-Object { Write-Error $_.Message }
+              throw "PowerShell parser errors found in $path"
+            }
+          }
+
+      - name: Verify Windows build keeps security boundaries and exits cleanly
+        shell: python
+        run: |
+          import re
+          from pathlib import Path
+
+          text = Path('engine/build/windows-x64.args.gn').read_text(encoding='utf-8')
+          if not re.search(r'(?m)^\s*enable_background_mode\s*=\s*false\s*$', text):
+              raise SystemExit('Ghosium must compile without legacy background-app keep-alive mode.')
+          for pattern in (
+              r'(?im)^\s*enable_background_mode\s*=\s*true\s*$',
+              r'--renderer-process-limit',
+              r'--no-sandbox',
+              r'--disable-gpu-sandbox',
+              r'--disable-site-isolation-trials',
+              r'--disable-web-security',
+              r'--ignore-certificate-errors',
+          ):
+              if re.search(pattern, text):
+                  raise SystemExit(f'Forbidden performance/security configuration: {pattern}')
+          print('Ghosium Windows low-overhead GN contract: OK')
+
+      - name: Sparse checkout pinned native performance preferences
+        shell: bash
+        run: |
+          set -euo pipefail
+          src="${RUNNER_TEMP}/ghosium-performance-source"
+          revision="$(tr -d '\r\n ' < ENGINE_SOURCE_REVISION)"
+          git init "$src"
+          git -C "$src" remote add origin https://github.com/chromium/chromium.git
+          git -C "$src" config core.sparseCheckout true
+          mkdir -p "$src/.git/info"
+          cat > "$src/.git/info/sparse-checkout" <<'EOF'
+          /components/performance_manager/user_tuning/prefs.cc
+          EOF
+          git -C "$src" fetch --depth=1 --filter=blob:none origin "$revision"
+          git -C "$src" checkout --detach FETCH_HEAD
+          test "$(git -C "$src" rev-parse HEAD)" = "$revision"
+          echo "GHOSIUM_PERF_SRC=$src" >> "$GITHUB_ENV"
+
+      - name: Apply twice and independently verify Memory Saver defaults
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          ./scripts/rewrite-engine-performance-defaults.ps1 -SourceRoot $env:GHOSIUM_PERF_SRC
+          ./scripts/rewrite-engine-performance-defaults.ps1 -SourceRoot $env:GHOSIUM_PERF_SRC
+          ./scripts/verify-engine-performance-defaults.ps1 -SourceRoot $env:GHOSIUM_PERF_SRC
+
+      - name: Verify minimal source diff
+        shell: bash
+        run: |
+          set -euo pipefail
+          src="$GHOSIUM_PERF_SRC"
+          git -C "$src" diff --check
+          changed="$(git -C "$src" diff --name-only)"
+          test "$changed" = 'components/performance_manager/user_tuning/prefs.cc'
+          test "$(git -C "$src" diff --numstat | awk '{print $1+$2}')" -eq 2
+          grep -F 'kMemorySaverModeState, static_cast<int>(MemorySaverModeState::kEnabled));' \
+            "$src/components/performance_manager/user_tuning/prefs.cc"
+          if git -C "$src" status --porcelain=v1 -- third_party | grep -q .; then
+            echo 'Performance defaults modified third_party source.' >&2
+            exit 1
+          fi
+          echo 'Ghosium performance source diff is intentionally minimal: one default state change.'

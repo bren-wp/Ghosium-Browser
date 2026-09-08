@@ -23,7 +23,13 @@ Unicode true
 !define INSTALL_MARKER "ghosium-install.marker"
 !define CLEANUP_DIR "$TEMP\Brendigo\Ghosium Browser Cleanup"
 !define CLEANUP_SETUP "$TEMP\Brendigo\Ghosium Browser Cleanup\Ghosium-Browser-Setup.exe"
+!define UPDATE_DIR "$TEMP\Brendigo\Ghosium Browser Update"
+!define UPDATE_SETUP "$TEMP\Brendigo\Ghosium Browser Update\Ghosium-Browser-Setup.exe"
 !define UNINSTALL_KEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\GhosiumBrowser"
+!define USER_DATA_DIR "$LOCALAPPDATA\Brendigo\Ghosium\User Data"
+
+Var GhosiumUpdateMode
+Var GhosiumDeleteSelf
 
 Name "${PRODUCT_NAME} ${GHOSIUM_VERSION}"
 OutFile "${GHOSIUM_ARTIFACTS}\Ghosium-Browser-Setup.exe"
@@ -61,6 +67,7 @@ VIAddVersionKey /LANG=1033 "LegalCopyright" "Copyright (c) 2026 Brendigo"
 !insertmacro MUI_PAGE_INSTFILES
 !insertmacro MUI_PAGE_FINISH
 
+; English is intentionally first and remains the default Setup/browser locale.
 !insertmacro MUI_LANGUAGE "English"
 !insertmacro MUI_LANGUAGE "Croatian"
 !insertmacro MUI_LANGUAGE "German"
@@ -91,6 +98,14 @@ VIAddVersionKey /LANG=1033 "LegalCopyright" "Copyright (c) 2026 Brendigo"
 !insertmacro MUI_LANGUAGE "TradChinese"
 !insertmacro MUI_LANGUAGE "Arabic"
 !insertmacro MUI_LANGUAGE "Hebrew"
+!insertmacro MUI_LANGUAGE "Serbian"
+!insertmacro MUI_LANGUAGE "Catalan"
+!insertmacro MUI_LANGUAGE "Estonian"
+!insertmacro MUI_LANGUAGE "Latvian"
+!insertmacro MUI_LANGUAGE "Lithuanian"
+!insertmacro MUI_LANGUAGE "Indonesian"
+!insertmacro MUI_LANGUAGE "Thai"
+!insertmacro MUI_LANGUAGE "Vietnamese"
 
 LangString GhosiumLocale ${LANG_ENGLISH} "en-US"
 LangString GhosiumLocale ${LANG_CROATIAN} "hr"
@@ -122,6 +137,14 @@ LangString GhosiumLocale ${LANG_SIMPCHINESE} "zh-CN"
 LangString GhosiumLocale ${LANG_TRADCHINESE} "zh-TW"
 LangString GhosiumLocale ${LANG_ARABIC} "ar"
 LangString GhosiumLocale ${LANG_HEBREW} "he"
+LangString GhosiumLocale ${LANG_SERBIAN} "sr"
+LangString GhosiumLocale ${LANG_CATALAN} "ca"
+LangString GhosiumLocale ${LANG_ESTONIAN} "et"
+LangString GhosiumLocale ${LANG_LATVIAN} "lv"
+LangString GhosiumLocale ${LANG_LITHUANIAN} "lt"
+LangString GhosiumLocale ${LANG_INDONESIAN} "id"
+LangString GhosiumLocale ${LANG_THAI} "th"
+LangString GhosiumLocale ${LANG_VIETNAMESE} "vi"
 
 Function LaunchCleanup
   StrCpy $R4 "0"
@@ -154,6 +177,93 @@ cleanup_copy_failed:
 
 cleanup_launch_failed:
   DetailPrint "Unable to launch the Ghosium setup cleanup process."
+FunctionEnd
+
+Function StopGhosiumBrowser
+  ; Ask the Ghosium process tree to terminate without /F first. This gives the
+  ; browser a normal local shutdown path and avoids an unconditional hard kill
+  ; during update/uninstall. The forceful command remains a bounded fallback.
+  DetailPrint "Closing Ghosium Browser..."
+  nsExec::ExecToStack '"$SYSDIR\taskkill.exe" /IM "Ghosium-Browser.exe" /T'
+  Pop $R8
+  Pop $R9
+  StrCmp $R8 "0" ghosium_close_wait
+
+  DetailPrint "Normal Ghosium Browser close did not complete; using maintenance fallback."
+  nsExec::ExecToLog '"$SYSDIR\taskkill.exe" /IM "Ghosium-Browser.exe" /T /F'
+
+ghosium_close_wait:
+  Sleep 1200
+FunctionEnd
+
+Function ValidateUpdateTarget
+  ReadRegStr $R2 HKCU "${UNINSTALL_KEY}" "InstallLocation"
+  StrCmp $R2 "" update_target_missing
+  GetFullPathName $R2 $R2
+  StrCpy $INSTDIR $R2
+
+  IfFileExists "$INSTDIR\${INSTALL_MARKER}" 0 update_target_invalid
+  IfFileExists "$INSTDIR\${INSTALLED_SETUP}" 0 update_target_invalid
+  IfFileExists "$INSTDIR\${PRODUCT_EXE}" 0 update_target_invalid
+
+  ClearErrors
+  FileOpen $R5 "$INSTDIR\${INSTALL_MARKER}" r
+  IfErrors update_target_invalid
+  FileRead $R5 $R6
+  FileClose $R5
+  StrCpy $R7 $R6 16
+  StrCmp $R7 "Ghosium Browser|" update_target_verified update_target_invalid
+
+update_target_missing:
+  IfSilent +2
+    MessageBox MB_ICONSTOP "Ghosium Browser is not installed for this Windows account. Use the normal Setup mode first."
+  SetErrorLevel 4
+  Quit
+
+update_target_invalid:
+  IfSilent +2
+    MessageBox MB_ICONSTOP "Ghosium Browser could not verify the existing installation. The update was cancelled without changing files."
+  SetErrorLevel 5
+  Quit
+
+update_target_verified:
+  ; /UPDATE must be run from a newly downloaded Setup package. Running the
+  ; installed maintenance copy would only reinstall its old embedded payload.
+  StrCmp "$EXEPATH" "$INSTDIR\${INSTALLED_SETUP}" update_requires_new_setup
+  Return
+
+update_requires_new_setup:
+  IfSilent +2
+    MessageBox MB_ICONSTOP "Download the newest Ghosium Browser Setup package before updating."
+  SetErrorLevel 6
+  Quit
+FunctionEnd
+
+Function CleanupDownloadedUpdate
+  ; Only the installed copy of the standard Setup package may perform this
+  ; maintenance cleanup. The path to delete is fixed and never taken from a
+  ; command-line value, so /CLEANUPDATE cannot be abused as an arbitrary file
+  ; deletion primitive.
+  ReadRegStr $R2 HKCU "${UNINSTALL_KEY}" "InstallLocation"
+  StrCmp $R2 "" update_cleanup_invalid
+  GetFullPathName $R2 $R2
+  GetFullPathName $R3 "$R2\${INSTALLED_SETUP}"
+  GetFullPathName $R4 "$EXEPATH"
+  StrCmp $R4 $R3 update_cleanup_verified update_cleanup_invalid
+
+update_cleanup_invalid:
+  SetErrorLevel 7
+  Quit
+
+update_cleanup_verified:
+  ; Wait for the browser-downloaded Setup process to release its image before
+  ; deleting the fixed update package. This is still the same standard Setup
+  ; executable, not a separately built updater helper.
+  Sleep 1200
+  Delete /REBOOTOK "${UPDATE_SETUP}"
+  RMDir /REBOOTOK "${UPDATE_DIR}"
+  SetErrorLevel 0
+  Quit
 FunctionEnd
 
 Function RemoveGhosium
@@ -195,9 +305,7 @@ remove_now:
   ; Give the installed Setup process time to exit after it launched this same
   ; Setup from the temp directory, avoiding a locked-image cleanup race.
   Sleep 1200
-
-  nsExec::ExecToLog '"$SYSDIR\taskkill.exe" /IM "Ghosium-Browser.exe" /T /F'
-  nsExec::ExecToLog '"$SYSDIR\taskkill.exe" /IM "Ghosium-Engine.exe" /T /F'
+  Call StopGhosiumBrowser
 
   Delete "$DESKTOP\Ghosium Browser.lnk"
   RMDir /r "$SMPROGRAMS\Ghosium Browser"
@@ -219,7 +327,24 @@ FunctionEnd
 
 Function .onInit
   ${GetParameters} $R0
+  StrCpy $GhosiumUpdateMode "0"
+  StrCpy $GhosiumDeleteSelf "0"
 
+  ; /DELETESELF is only meaningful for a browser-downloaded /UPDATE package.
+  ; It is recorded first, then the normal maintenance-mode dispatch continues.
+  ClearErrors
+  ${GetOptions} $R0 "/DELETESELF" $R1
+  IfErrors delete_self_checked
+  StrCpy $GhosiumDeleteSelf "1"
+delete_self_checked:
+
+  ClearErrors
+  ${GetOptions} $R0 "/CLEANUPDATE" $R1
+  IfErrors check_cleanup
+  Call CleanupDownloadedUpdate
+  Quit
+
+check_cleanup:
   ClearErrors
   ${GetOptions} $R0 "/CLEANUP" $R1
   IfErrors check_uninstall
@@ -229,7 +354,7 @@ Function .onInit
 check_uninstall:
   ClearErrors
   ${GetOptions} $R0 "/UNINSTALL" $R1
-  IfErrors normal_install
+  IfErrors check_update
 
   Call LaunchCleanup
   StrCmp $R4 "1" cleanup_launched cleanup_failed
@@ -244,6 +369,18 @@ cleanup_failed:
   SetErrorLevel 1
   Quit
 
+check_update:
+  ClearErrors
+  ${GetOptions} $R0 "/UPDATE" $R1
+  IfErrors normal_install
+  StrCpy $GhosiumUpdateMode "1"
+  Call ValidateUpdateTarget
+  ; Product updates are maintenance operations and never need a second setup
+  ; wizard. The same downloaded Setup package performs the update silently.
+  SetSilent silent
+  StrCpy $LANGUAGE ${LANG_ENGLISH}
+  Goto installer_init_done
+
 normal_install:
   StrCpy $LANGUAGE ${LANG_ENGLISH}
   IfSilent installer_init_done
@@ -253,24 +390,48 @@ FunctionEnd
 
 Section "Ghosium Browser" SecMain
   SetShellVarContext current
+
+  StrCmp $GhosiumUpdateMode "1" prepare_update install_payload
+prepare_update:
+  DetailPrint "Preparing Ghosium Browser ${GHOSIUM_VERSION} update..."
+  ; Release the Ghosium process tree before replacing installed program files.
+  ; User profile data lives outside $INSTDIR and is never deleted by an update.
+  Call StopGhosiumBrowser
+
+install_payload:
   SetOutPath "$INSTDIR"
   SetOverwrite on
   File /r "${GHOSIUM_STAGE}\*"
 
+  ; Preserve the selected language during maintenance updates. A normal install
+  ; records the Setup selection and initializes the native browser's Local State
+  ; only when the user does not already have one, so reinstall/update never
+  ; overwrites a language later selected in Ghosium Settings.
+  StrCmp $GhosiumUpdateMode "1" language_ready
   FileOpen $0 "$INSTDIR\ghosium-language.txt" w
   FileWrite $0 "$(GhosiumLocale)$\r$\n"
   FileClose $0
 
+  CreateDirectory "$LOCALAPPDATA\Brendigo"
+  CreateDirectory "$LOCALAPPDATA\Brendigo\Ghosium"
+  CreateDirectory "${USER_DATA_DIR}"
+  IfFileExists "${USER_DATA_DIR}\Local State" language_ready 0
+  FileOpen $0 "${USER_DATA_DIR}\Local State" w
+  FileWrite $0 '{$\"intl$\":{$\"app_locale$\":$\"$(GhosiumLocale)$\"}}$\r$\n'
+  FileClose $0
+language_ready:
+
   ; Keep a copy of this same Setup executable inside the installation. Windows
-  ; invokes it with /UNINSTALL from Installed apps; no separate uninstaller
-  ; executable is generated or shipped.
+  ; invokes it with /UNINSTALL from Installed apps; a newer downloaded copy can
+  ; invoke /UPDATE. No separate uninstall.exe or update.exe is generated.
   CreateDirectory "$INSTDIR\Installer"
   StrCmp "$EXEPATH" "$INSTDIR\${INSTALLED_SETUP}" setup_ready
   CopyFiles /SILENT "$EXEPATH" "$INSTDIR\${INSTALLED_SETUP}"
 setup_ready:
 
-  ; This marker lets the temp cleanup instance prove it is deleting a Ghosium
-  ; installation built by the same Setup version rather than an arbitrary path.
+  ; This marker lets maintenance operations prove they are acting on a Ghosium
+  ; installation rather than an arbitrary directory. An update refreshes it to
+  ; the newly installed product version.
   FileOpen $0 "$INSTDIR\${INSTALL_MARKER}" w
   FileWrite $0 "Ghosium Browser|${GHOSIUM_VERSION}$\r$\n"
   FileClose $0
@@ -297,8 +458,30 @@ setup_ready:
   WriteRegStr HKCU "${UNINSTALL_KEY}" "QuietUninstallString" '$\"$INSTDIR\${INSTALLED_SETUP}$\" /S /UNINSTALL'
   WriteRegStr HKCU "${UNINSTALL_KEY}" "URLInfoAbout" "https://ghosium.com/"
   WriteRegStr HKCU "${UNINSTALL_KEY}" "HelpLink" "https://ghosium.com/support"
-  WriteRegStr HKCU "${UNINSTALL_KEY}" "URLUpdateInfo" "https://ghosium.com/security"
+  WriteRegStr HKCU "${UNINSTALL_KEY}" "URLUpdateInfo" "https://ghosium.com/update"
   WriteRegStr HKCU "${UNINSTALL_KEY}" "InstallLanguage" "$(GhosiumLocale)"
   WriteRegDWORD HKCU "${UNINSTALL_KEY}" "NoModify" 1
   WriteRegDWORD HKCU "${UNINSTALL_KEY}" "NoRepair" 1
+
+  StrCmp $GhosiumUpdateMode "1" update_complete section_done
+update_complete:
+  DetailPrint "Ghosium Browser was updated to ${GHOSIUM_VERSION} using the standard Setup package."
+  StrCmp $GhosiumDeleteSelf "1" launch_update_cleanup section_done
+
+launch_update_cleanup:
+  ; The downloaded Setup cannot remove its own running image. Ask the freshly
+  ; installed copy of that exact same Setup product to delete the fixed browser
+  ; update path after this process exits. This is not a separate updater binary.
+  ClearErrors
+  Exec '"$INSTDIR\${INSTALLED_SETUP}" /S /CLEANUPDATE'
+  IfErrors update_cleanup_fallback section_done
+
+update_cleanup_fallback:
+  ; If the installed maintenance copy could not start, at least schedule the
+  ; browser-downloaded package for Windows cleanup rather than leaving it
+  ; permanently in the temporary directory.
+  Delete /REBOOTOK "$EXEPATH"
+  RMDir /REBOOTOK "${UPDATE_DIR}"
+
+section_done:
 SectionEnd

@@ -1,43 +1,159 @@
 # Building Ghosium Browser
 
-## Production build definition
+## Current development line
 
-A Ghosium production release is a **full-source build**. Packaging a precompiled upstream browser snapshot is not a production build and must not be used to publish a stable Ghosium release.
+The active product version is `0.1.4`. Ghosium Browser is built as a full-source Windows x64 product. A source audit, patch-only result, historical precompiled package, renamed technical installer or wrapper executable is not a production Ghosium release.
 
-The canonical Windows release path is `.github/workflows/full-source-windows-build.yml`.
+The canonical production workflow is:
 
-It performs the following fail-closed sequence:
+```text
+.github/workflows/full-source-windows-build.yml
+```
 
-1. validate the Ghosium product version, bundled component versions and release legal contract;
-2. validate the Windows source-builder host;
-3. verify the pinned source patch anchors;
-4. checkout the exact revision from `ENGINE_SOURCE_REVISION` using pinned `depot_tools`;
-5. apply the Ghosium source fork;
-6. verify the resulting source tree and independent Windows executable identity contract;
-7. configure the reviewed Windows x64 GN arguments;
-8. compile the browser and installer from source;
-9. verify compiled product identity and run the runtime smoke test;
-10. copy and verify the Brendigo proprietary license plus third-party notices into the release payload;
-11. run a real source-built install/uninstall round trip;
-12. generate provenance records and SHA-256 hashes covering binaries, reports and legal payload;
-13. upload verified artifacts;
-14. on production `main`, create a new immutable `ghosium-v0.x.y` release only if that tag does not already exist.
+It is intentionally manual and runs on the controlled `ghosium-source-builder` Windows x64 runner.
 
-No source audit, patch verifier, launcher build, snapshot package, or installer-only test is sufficient evidence of a source-built Ghosium Browser.
+## Production build chain
 
-## Source revisions
+The release path is fail-closed:
 
-The production source toolchain is pinned by:
+1. validate `VERSION`, bundled component versions and Store metadata;
+2. validate Ghosium product licensing and required third-party legal payload;
+3. validate the controlled Windows builder and exact `DEPOT_TOOLS_REVISION`;
+4. validate revision-pinned transformation anchors;
+5. bootstrap/reset the source workspace to `ENGINE_SOURCE_REVISION`;
+6. apply Ghosium identity, branding, public-surface removal, localization, product version, native `ghost://` routing, Search, Store/update destinations and Windows executable identity;
+7. verify the transformed source, including canonical native profile/password WebUI hosts, and prove Ghosium transformations did not edit `third_party/`;
+8. apply/verify native performance defaults;
+9. configure the reviewed Windows x64 GN arguments;
+10. compile the browser and technical packaging targets from source;
+11. verify the compiled Ghosium binaries and run sandbox-preserving runtime smoke tests;
+12. benchmark the newly compiled runtime and require `GHOSIUM-PERFORMANCE.json`;
+13. verify the technical source-installer path as internal build evidence;
+14. extract and verify the newly built runtime archive;
+15. assemble the canonical Ghosium release stage;
+16. on production `main`, sign `Ghosium-Browser.exe` and `Ghosium-Proxy.exe`;
+17. build `Ghosium-Browser-Setup.exe` from `installer/ghosium.nsi`;
+18. prove the public Setup is not a renamed technical installer;
+19. on production `main`, sign the Setup and verify the publisher relationship;
+20. run install → runtime → update → runtime → uninstall smoke verification;
+21. verify locale/profile preservation and cleanup behavior;
+22. generate the production update manifest for the exact signed Setup;
+23. generate provenance, performance and SHA-256 evidence;
+24. publish a new immutable `ghosium-v0.x.y` release only if the tag does not already exist.
+
+The repository must not claim a source-built release until this controlled chain actually succeeds for the exact commit.
+
+## Source and toolchain pins
+
+The deterministic source build is controlled by:
 
 - `ENGINE_SOURCE_REVISION` — exact browser-engine source commit;
-- `DEPOT_TOOLS_REVISION` — exact build-tool revision;
-- `engine/build/windows-x64.args.gn` — reviewed Windows x64 build configuration.
+- `DEPOT_TOOLS_REVISION` — exact compatible build-tool commit;
+- `engine/build/windows-x64.args.gn` — reviewed Windows x64 build arguments;
+- `scripts/verify-source-builder-host.ps1` — controlled-builder preflight;
+- `scripts/verify-pinned-source-anchors.py` — revision compatibility audit.
 
-The historical `ENGINE_REVISION` snapshot mechanism belongs to the earlier packaging line and is not part of the new production release path.
+Production builds must not use floating branches, moving tags or unreviewed local source edits.
 
-## Windows source-builder requirements
+## Technical build names versus public identity
 
-The full-source workflow targets a controlled self-hosted runner labelled:
+Some source-tree paths, GN/Ninja targets and runtime libraries still use implementation names required by the upstream build graph. They remain internal engineering API and are not accepted as public Ghosium product branding.
+
+The public Windows product identity is:
+
+```text
+Ghosium-Browser.exe
+Ghosium-Proxy.exe
+Ghosium-Browser-Setup.exe
+```
+
+The technical source-runtime archive is retained only as workflow evidence. It is not a stable end-user release asset.
+
+Do not globally rename an internal build target or DLL name without a coordinated migration that proves dependency resolution, process spawning, DLL loading, installer layout, sandbox/crash integration and runtime behavior.
+
+## Native internal WebUI hosts
+
+The product namespace is `ghost://` / `ghost-untrusted://`.
+
+`ghost://profiles/` is bound to the existing native profile-picker controller by changing the canonical host constant used by its WebUI config and data source. `ghost://passwords/` is bound the same way to the native password-manager controller. The source transform removes the old `browser_about_handler.cc` redirect aliases, and `verify-engine-fork.ps1` rejects their return.
+
+This preserves the maintained profile/password implementations while making the Ghosium URLs canonical product hosts instead of redirect shims.
+
+## 38-language contract
+
+Ghosium 0.1.4 supports 38 locales. English (`en-US`) is the primary/default language and Croatian (`hr`) is mandatory.
+
+The browser and interactive Setup must expose the same locale set. CI verifies that contract and verifies the corresponding pinned source translation bundles before an expensive build.
+
+A fresh install initializes the native browser locale from the Setup selection. Reinstall/update preserves an existing browser language preference.
+
+## Performance defaults and evidence
+
+Performance work uses native engine mechanisms and must be benchmark-driven.
+
+The 0.1.4 Windows source configuration includes:
+
+```text
+enable_background_mode = false
+```
+
+This removes legacy background-app keep-alive behavior after the last window closes.
+
+`scripts/rewrite-engine-performance-defaults.ps1` enables native Memory Saver by default only when a profile has not explicitly selected another state. Medium aggressiveness, existing discard timing, tab freezing, user exceptions and explicit user preferences remain unchanged.
+
+The following are forbidden performance shortcuts:
+
+- disabling browser or renderer sandboxing;
+- disabling GPU sandboxing;
+- disabling site/process isolation;
+- bypassing TLS/certificate validation;
+- disabling extension or update trust verification;
+- applying a renderer-process cap solely to improve RAM numbers.
+
+Do not publish performance claims until the compiled source-built 0.1.4 binary is measured with the same benchmark methodology as the accepted baseline.
+
+The full-source workflow requires `GHOSIUM-PERFORMANCE.json` from the newly compiled runtime. Benchmark schema v2 records cold/warm first-usable-window startup, memory, process count, handles, CPU, process I/O, 1/5/10-tab scenarios, 60-second idle activity, best-effort per-process GPU memory and Ghosium-owned TCP/UDP endpoint activity. Unsupported GPU telemetry is reported as unavailable rather than as zero. Endpoint counts are not represented as byte-level network attribution.
+
+## Native update and same-Setup maintenance
+
+The browser-owned update endpoint is:
+
+```text
+https://updates.ghosium.com/windows/stable.json
+```
+
+The updater validates product/channel/platform/version, trusted URL, byte size, SHA-256, Authenticode publisher relationship and signed product metadata before executing the verified Setup package.
+
+`Ghosium-Browser-Setup.exe` is the single public maintenance package and handles:
+
+```text
+normal install
+/S /UPDATE
+/S /UNINSTALL
+```
+
+No separately distributed updater or uninstaller executable is part of the Ghosium product.
+
+Update/uninstall first requests normal shutdown of the `Ghosium-Browser.exe` process tree. Forced termination is retained only as a maintenance fallback. The user profile lives outside the install directory and is preserved by normal update/uninstall.
+
+The checked-in `updates-web/windows/stable.json` remains disabled. Enabled production metadata is generated only from a verified signed canonical Setup.
+
+## Production signing
+
+Production `main` requires:
+
+- `GHOSIUM_SIGN_CERT_THUMBPRINT` in GitHub Actions secrets;
+- `GHOSIUM_TIMESTAMP_URL` in GitHub Actions variables;
+- an accessible code-signing private key for the controlled runner;
+- the required Windows SDK `signtool.exe`.
+
+The signing process uses SHA-256 file digests and RFC3161 timestamping. Browser, proxy and Setup signatures must validate and use the expected publisher relationship.
+
+Never commit a PFX, private key, password or other signing secret.
+
+## Windows builder
+
+The full-source workflow targets:
 
 ```text
 self-hosted
@@ -46,23 +162,13 @@ X64
 ghosium-source-builder
 ```
 
-The builder must pass `scripts/verify-source-builder-host.ps1` before any source checkout/build is trusted. Persistent workspaces are reset to the pinned dependency state before use.
+The builder must pass `scripts/verify-source-builder-host.ps1`. It must use an interactive Windows desktop session for first-usable-window benchmark evidence. Detailed provisioning is maintained in `docs/SOURCE_BUILDER_SETUP.md`.
 
-The source tree and build output require substantially more disk space, memory, and build time than the historical snapshot package. Do not weaken verification to make a constrained builder appear healthy.
+A constrained or misconfigured host must fail preflight; do not weaken checks to make a machine appear build-ready.
 
-## Technical upstream build names
+## Local controlled build
 
-The pinned upstream build graph still uses technical target/intermediate names such as `chrome`, `mini_installer`, `chrome.dll`, `chrome_elf.dll` and `chrome.7z`. Those implementation names must not be presented as public Ghosium product identity.
-
-The public Windows primary executable contract is `Ghosium-Browser.exe`, with `Ghosium-Proxy.exe` for the Windows proxy helper. Do not globally rename remaining technical DLL/target names without a coordinated compile/runtime migration. A technical rename is complete only after the full dependency chain, process spawning, DLL loading, installer logic, sandbox/crash integration, tests, and runtime behavior have been rebuilt and verified successfully.
-
-## Desktop source language
-
-Ghosium-owned launcher code is C++20. HTML, CSS and JSON are presentation/configuration assets. PHP is used only by the separate Ghosium Search and Store web services.
-
-## Local source build
-
-Use the repository scripts rather than reproducing ad-hoc commands:
+Use repository scripts rather than ad-hoc source edits:
 
 ```powershell
 ./scripts/verify-source-builder-host.ps1
@@ -70,21 +176,51 @@ Use the repository scripts rather than reproducing ad-hoc commands:
 ./scripts/apply-engine-branding.ps1 -SourceRoot <work-root>\src
 ./scripts/verify-engine-fork.ps1 -SourceRoot <work-root>\src
 ./scripts/verify-engine-windows-executable.ps1 -SourceRoot <work-root>\src
+./scripts/verify-engine-version-updater.ps1 -SourceRoot <work-root>\src
 ./scripts/configure-engine-build.ps1 -SourceRoot <work-root>\src -OutDir out/Ghosium
 ```
 
-Then run the same compile and verification sequence used by CI. A local result must not be called a stable release unless the corresponding production workflow also succeeds for the exact release commit.
+`apply-engine-branding.ps1` already invokes the product-version and internal-scheme rewrites; do not invoke those transforms a second time in the normal build sequence.
 
-## Performance measurement
+The pinned build graph currently requires the technical targets:
 
-Use `scripts/benchmark-ghosium-windows.ps1` for comparable Windows startup/resource measurements. The benchmark uses the launcher's validated `--ghosium-portable-profile` control to isolate profiles without bypassing the launcher's profile-security boundary.
+```powershell
+autoninja -C out/Ghosium chrome mini_installer
+```
 
-The current benchmark reports startup time, RAM, process/handle count, CPU, disk transfer counters and active TCP connections. It intentionally does not claim reliable GPU-memory or per-process network-byte measurements yet.
+Those target names are internal build API. After compilation, run the same compiled-output verification, source-built benchmark, staging, Setup packaging and maintenance smoke sequence used by the production workflow.
+
+## Release evidence
+
+The controlled build produces evidence including:
+
+```text
+GHOSIUM-BUILDER-READY.json
+GHOSIUM-SOURCE-BUILD.json
+GHOSIUM-PERFORMANCE.json
+GHOSIUM-UPSTREAM-MINI-INSTALLER-SMOKE.json
+GHOSIUM-SOURCE-STAGE.json
+GHOSIUM-PUBLIC-SETUP.json
+GHOSIUM-CANONICAL-SETUP-SMOKE.json
+GHOSIUM-UPDATE-MANIFEST.json
+GHOSIUM-VERSION.txt
+GHOSIUM-LICENSE.txt
+THIRD_PARTY_NOTICES.md
+SHA256SUMS.txt
+```
+
+The raw source-runtime archive may be retained as an internal workflow artifact for diagnosis/provenance, but it is not the stable end-user release.
+
+## Benchmarking
+
+Use `scripts/benchmark-ghosium-windows.ps1` for comparable Windows measurements. Direct source-built binaries use `-ProfileMode UserDataDir`; historical packaged baselines can use the portable-profile mode where required by that retained binary's profile boundary.
+
+The benchmark records startup, first usable window, memory, process count, handles, CPU, process I/O and idle behavior. It also attempts Windows per-process GPU-memory counters and records Ghosium-owned TCP/UDP endpoint activity. If GPU counters cannot be mapped reliably, the result is explicitly unavailable. Precise byte-level network attribution is not claimed by the endpoint telemetry.
 
 ## Legal and security requirements
 
-Brendigo-authored proprietary portions of Ghosium Browser are governed by the Brendigo Proprietary Commercial Software License Agreement in `LICENSE`, unless a separate written license explicitly states otherwise. Production release payloads include a verified copy as `GHOSIUM-LICENSE.txt`.
+Brendigo-authored proprietary portions are governed by the Brendigo Proprietary Commercial Software License Agreement in `LICENSE` unless a separate written license states otherwise.
 
-Chromium and all other third-party/open-source components remain governed by their respective licenses. `THIRD_PARTY_NOTICES.md`, upstream copyright notices and other required license material must not be removed or rewritten as Ghosium ownership. The proprietary Ghosium license cannot be used to narrow rights granted directly by those third-party licenses.
+Required third-party licenses, copyright notices and attribution must remain intact in their legal context. They are not Ghosium product branding and must not be rewritten as Brendigo ownership.
 
-Performance, branding and packaging work must preserve sandboxing, site isolation, certificate validation and other browser security invariants.
+Security boundaries take priority over synthetic performance numbers.

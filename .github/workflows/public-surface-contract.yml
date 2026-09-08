@@ -1,0 +1,218 @@
+name: Ghosium Public Surface Contract
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'ENGINE_SOURCE_REVISION'
+      - 'engine/branding/**'
+      - 'scripts/rewrite-engine-public-surfaces.ps1'
+      - 'scripts/verify-engine-public-surfaces.ps1'
+      - 'scripts/rewrite-engine-upstream-public-actions.ps1'
+      - 'scripts/verify-engine-upstream-public-actions.ps1'
+      - 'scripts/rewrite-engine-disable-unowned-promos.ps1'
+      - 'scripts/verify-engine-disable-unowned-promos.ps1'
+      - 'scripts/rewrite-engine-browser-signin.ps1'
+      - 'scripts/verify-engine-browser-signin.ps1'
+      - 'scripts/rewrite-engine-local-profile-surfaces.ps1'
+      - 'scripts/verify-engine-local-profile-surfaces.ps1'
+      - 'scripts/rewrite-engine-profile-picker-local-only.ps1'
+      - 'scripts/verify-engine-profile-picker-local-only.ps1'
+      - 'scripts/rewrite-engine-app-menu-account-surfaces.ps1'
+      - 'scripts/verify-engine-app-menu-account-surfaces.ps1'
+      - 'scripts/rebrand-engine-locales.ps1'
+      - 'scripts/verify-engine-locales.ps1'
+      - 'scripts/generate-engine-brand-assets.py'
+      - '.github/workflows/public-surface-contract.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'ENGINE_SOURCE_REVISION'
+      - 'engine/branding/**'
+      - 'scripts/rewrite-engine-public-surfaces.ps1'
+      - 'scripts/verify-engine-public-surfaces.ps1'
+      - 'scripts/rewrite-engine-upstream-public-actions.ps1'
+      - 'scripts/verify-engine-upstream-public-actions.ps1'
+      - 'scripts/rewrite-engine-disable-unowned-promos.ps1'
+      - 'scripts/verify-engine-disable-unowned-promos.ps1'
+      - 'scripts/rewrite-engine-browser-signin.ps1'
+      - 'scripts/verify-engine-browser-signin.ps1'
+      - 'scripts/rewrite-engine-local-profile-surfaces.ps1'
+      - 'scripts/verify-engine-local-profile-surfaces.ps1'
+      - 'scripts/rewrite-engine-profile-picker-local-only.ps1'
+      - 'scripts/verify-engine-profile-picker-local-only.ps1'
+      - 'scripts/rewrite-engine-app-menu-account-surfaces.ps1'
+      - 'scripts/verify-engine-app-menu-account-surfaces.ps1'
+      - 'scripts/rebrand-engine-locales.ps1'
+      - 'scripts/verify-engine-locales.ps1'
+      - 'scripts/generate-engine-brand-assets.py'
+      - '.github/workflows/public-surface-contract.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  public-surfaces:
+    name: Verify Ghosium-owned public surfaces
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - name: Checkout Ghosium tooling
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Validate transformation tooling
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $scripts = @(
+            'scripts/rewrite-engine-public-surfaces.ps1',
+            'scripts/verify-engine-public-surfaces.ps1',
+            'scripts/rewrite-engine-upstream-public-actions.ps1',
+            'scripts/verify-engine-upstream-public-actions.ps1',
+            'scripts/rewrite-engine-disable-unowned-promos.ps1',
+            'scripts/verify-engine-disable-unowned-promos.ps1',
+            'scripts/rewrite-engine-browser-signin.ps1',
+            'scripts/verify-engine-browser-signin.ps1',
+            'scripts/rewrite-engine-local-profile-surfaces.ps1',
+            'scripts/verify-engine-local-profile-surfaces.ps1',
+            'scripts/rewrite-engine-profile-picker-local-only.ps1',
+            'scripts/verify-engine-profile-picker-local-only.ps1',
+            'scripts/rewrite-engine-app-menu-account-surfaces.ps1',
+            'scripts/verify-engine-app-menu-account-surfaces.ps1',
+            'scripts/rebrand-engine-locales.ps1',
+            'scripts/verify-engine-locales.ps1'
+          )
+          foreach ($path in $scripts) {
+            $tokens = $null
+            $errors = $null
+            [void][System.Management.Automation.Language.Parser]::ParseFile(
+              (Resolve-Path $path), [ref]$tokens, [ref]$errors)
+            if ($errors.Count -gt 0) {
+              $errors | ForEach-Object { Write-Error $_.Message }
+              throw "PowerShell parser errors found in $path"
+            }
+          }
+          python3 -m py_compile scripts/generate-engine-brand-assets.py
+          if ($LASTEXITCODE -ne 0) {
+            throw 'Ghosium deterministic brand-asset generator has syntax errors.'
+          }
+
+      - name: Sparse checkout pinned Chromium public surfaces
+        shell: bash
+        run: |
+          set -euo pipefail
+          src="${RUNNER_TEMP}/ghosium-public-source"
+          revision="$(tr -d '\r\n ' < ENGINE_SOURCE_REVISION)"
+
+          git init "$src"
+          git -C "$src" remote add origin https://github.com/chromium/chromium.git
+          git -C "$src" config core.sparseCheckout true
+          mkdir -p "$src/.git/info"
+          cat > "$src/.git/info/sparse-checkout" <<'EOF'
+          /chrome/app/chromium_strings.grd
+          /chrome/app/settings_chromium_strings.grdp
+          /chrome/app/settings_strings.grdp
+          /chrome/app/shared_settings_strings.grdp
+          /chrome/app/glic_strings.grdp
+          /chrome/app/resources/
+          /chrome/app/theme/chromium/
+          /chrome/app/theme/default_100_percent/chromium/
+          /chrome/app/theme/default_200_percent/chromium/
+          /chrome/browser/extensions/extension_ui_util.cc
+          /chrome/browser/resources/settings/settings_menu/
+          /chrome/browser/resources/settings/route.ts
+          /chrome/browser/resources/settings/privacy_page/personalization_options.html
+          /chrome/browser/ui/webui/settings/settings_ui.cc
+          /chrome/browser/resources/new_tab_page/app.html
+          /chrome/browser/ui/webui/new_tab_footer/footer_context_menu.cc
+          /chrome/browser/ui/browser_actions.cc
+          /chrome/browser/ui/browser_command_controller.cc
+          /chrome/browser/ui/views/toolbar/app_menu.cc
+          /chrome/browser/ui/toolbar/app_menu_model.cc
+          /chrome/browser/signin/account_consistency_mode_manager.cc
+          /chrome/browser/ui/webui/intro/intro_ui.cc
+          /chrome/browser/resources/intro/sign_in_promo.html.ts
+          /chrome/browser/resources/intro/sign_in_promo.ts
+          /chrome/browser/resources/intro/sign_in_promo_refresh.html.ts
+          /chrome/browser/resources/intro/sign_in_promo_refresh.ts
+          /chrome/browser/ui/views/profiles/profile_menu_view.cc
+          /chrome/browser/ui/profiles/profile_view_utils.cc
+          /chrome/browser/ui/webui/signin/profile_picker_ui.cc
+          /components/desktop_to_mobile_promos/features.cc
+          /components/subscription_eligibility/subscription_eligibility_service.cc
+          /components/strings/
+          /extensions/strings/
+          EOF
+
+          git -C "$src" fetch --depth=1 --filter=blob:none origin "$revision"
+          git -C "$src" checkout --detach FETCH_HEAD
+          test "$(git -C "$src" rev-parse HEAD)" = "$revision"
+          echo "PUBLIC_ENGINE_SRC=$src" >> "$GITHUB_ENV"
+
+      - name: Stage canonical Ghosium product assets
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $targetLogo = Join-Path $env:PUBLIC_ENGINE_SRC 'chrome/app/theme/chromium/product_logo.svg'
+          New-Item -ItemType Directory -Force -Path (Split-Path -Parent $targetLogo) | Out-Null
+          Copy-Item (Resolve-Path 'engine/branding/ghosium-mark.svg') $targetLogo -Force
+          python3 ./scripts/generate-engine-brand-assets.py $env:PUBLIC_ENGINE_SRC
+          if ($LASTEXITCODE -ne 0) {
+            throw "Ghosium brand-asset generation failed with exit code $LASTEXITCODE"
+          }
+
+      - name: Apply transformation twice and verify every contract
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          ./scripts/rebrand-engine-locales.ps1 -SourceRoot $env:PUBLIC_ENGINE_SRC
+          ./scripts/rebrand-engine-locales.ps1 -SourceRoot $env:PUBLIC_ENGINE_SRC
+
+          $verifiers = @(
+            'verify-engine-public-surfaces.ps1',
+            'verify-engine-upstream-public-actions.ps1',
+            'verify-engine-disable-unowned-promos.ps1',
+            'verify-engine-browser-signin.ps1',
+            'verify-engine-local-profile-surfaces.ps1',
+            'verify-engine-profile-picker-local-only.ps1',
+            'verify-engine-app-menu-account-surfaces.ps1',
+            'verify-engine-locales.ps1'
+          )
+          foreach ($script in $verifiers) {
+            & (Join-Path './scripts' $script) -SourceRoot $env:PUBLIC_ENGINE_SRC
+            if ($LASTEXITCODE -ne 0) {
+              throw "Ghosium verifier failed: $script"
+            }
+          }
+
+      - name: Final source smoke contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          src="$PUBLIC_ENGINE_SRC"
+
+          grep -F 'About Ghosium Browser' "$src/chrome/app/settings_chromium_strings.grdp"
+          grep -F 'return routes.PRIVACY;' "$src/chrome/browser/resources/settings/route.ts"
+          grep -F 'html_source->AddBoolean("showAiPage", false);' "$src/chrome/browser/ui/webui/settings/settings_ui.cc"
+          grep -F 'return false;' "$src/chrome/browser/signin/account_consistency_mode_manager.cc" >/dev/null
+          grep -F 'Ghosium profile identity is local-first.' "$src/chrome/browser/ui/views/profiles/profile_menu_view.cc"
+          grep -F 'Ghosium does not consume Google AI subscription entitlements.' "$src/components/subscription_eligibility/subscription_eligibility_service.cc"
+          grep -F 'html_source->AddBoolean("signInProfileCreationFlowSupported", false);' "$src/chrome/browser/ui/webui/signin/profile_picker_ui.cc"
+          grep -F 'html_source->AddBoolean("isBrowserSigninAllowed", false);' "$src/chrome/browser/ui/webui/signin/profile_picker_ui.cc"
+          grep -F 'Ghosium profile rows are local-only; browser-account status chips are not' "$src/chrome/browser/ui/views/toolbar/app_menu.cc"
+          grep -F 'Ghosium does not expose Google browser-account or Sync actions.' "$src/chrome/browser/ui/toolbar/app_menu_model.cc"
+          grep -F 'command_updater_->UpdateCommandEnabled(IDC_TURN_ON_SYNC, false);' "$src/chrome/browser/ui/browser_command_controller.cc"
+          grep -F 'command_updater_->UpdateCommandEnabled(IDC_MANAGE_GOOGLE_ACCOUNT, false);' "$src/chrome/browser/ui/browser_command_controller.cc"
+
+          git -C "$src" diff --check
+          if git -C "$src" status --porcelain=v1 -- third_party | grep -q .; then
+            echo 'Ghosium public-surface transformation modified third_party source.' >&2
+            exit 1
+          fi
+
+          echo 'Ghosium public-surface contract: browser-owned identity only; unowned Google/Chromium account, Sync, AI, mobile, customization and cloud-profile entry points are removed, hidden or unreachable.'

@@ -65,6 +65,7 @@ function ghosium_config(): array
         'site_name' => 'Ghosium Search',
         'base_url' => 'https://search.ghosium.com',
         'max_results' => 20,
+        'max_results_per_host' => 3,
         'cache_ttl_seconds' => 600,
         'rate_limit' => ['enabled' => true, 'requests' => 120, 'window_seconds' => 600],
         'provider' => [
@@ -76,7 +77,14 @@ function ghosium_config(): array
             'query_param' => 'q',
             'timeout_seconds' => 6,
         ],
-        'crawler' => ['max_pages' => 40, 'max_depth' => 2, 'user_agent' => 'GhosiumSearchBot/0.6'],
+        'crawler' => [
+            'max_pages' => 40,
+            'max_depth' => 2,
+            'max_pages_per_host' => 20,
+            'respect_robots' => true,
+            'request_delay_ms' => 350,
+            'user_agent' => 'GhosiumSearchBot/0.7',
+        ],
     ];
     $stored = json_read(GHOSIUM_DATA . '/config.json');
     $config = array_replace_recursive($defaults, $stored);

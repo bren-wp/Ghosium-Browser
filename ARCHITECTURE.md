@@ -1,56 +1,121 @@
 # Ghosium Browser Architecture
 
-## Goal
+## Scope
 
-Ghosium Browser keeps the Ghosium-owned desktop layer small, auditable and native while reusing a pinned upstream open-source browser engine.
+Ghosium Browser 0.1.2 is designed as a direct source-built Windows x64 browser product. The production architecture no longer uses a separate wrapper launcher or a second Portable packaging path.
 
-## Runtime layout
+## Runtime and distribution
+
+Public Windows product identity is intentionally small:
 
 ```text
-Ghosium-Browser.exe            native C++20 launcher
-runtime/Ghosium-Engine.exe     bundled browser engine entry point
-extension/                     Ghosium Privacy + branded New Tab
-search-provider/               Ghosium Search default-provider component
+Ghosium-Browser.exe
+Ghosium-Proxy.exe
+Ghosium-Browser-Setup.exe
 ```
 
-The launcher owns profile selection, language selection, privacy switches, weak-PC resource limits, protected command-line arguments and process startup.
+`Ghosium-Browser.exe` is the primary native browser executable produced by the transformed source build. `Ghosium-Proxy.exe` is the compatible helper used where the Windows browser integration requires it. `Ghosium-Browser-Setup.exe` is the single installation/maintenance package.
 
-## Trust boundaries
+The Setup package performs install, update and uninstall. There is no separately distributed updater or uninstaller executable.
 
-### Ghosium-owned executable code
+## Source transformation boundary
 
-`launcher/main.cpp` is the only Ghosium-owned executable desktop source layer. CI rejects Rust, TypeScript and JavaScript executable source inside the desktop launcher/component paths.
+The repository does not vendor the complete engine source tree. Instead it stores:
 
-### Bundled presentation/configuration
+- an exact source revision;
+- an exact build-tool revision;
+- Ghosium product metadata and artwork;
+- reviewed source transformations;
+- independent verification scripts;
+- deterministic Windows build arguments;
+- release and runtime contracts.
 
-`extension/` and `search-provider/` contain HTML/CSS/JSON/Manifest resources. They remain script-free.
+The controlled source builder fetches the exact pinned source, applies the Ghosium transformations, verifies the resulting tree, compiles it, tests the runtime and then packages the canonical Setup.
 
-### Web services
+Technical identifiers required by the upstream build API can remain inside engineering tooling until a coordinated replacement is proven by compile/runtime testing. They are not accepted on Ghosium-owned public surfaces.
 
-`search-web/` and `store-web/` are separate PHP shared-hosting applications. They are not linked into the browser executable.
+## Public UI boundary
 
-## Product links
+Ghosium-owned UI uses Ghosium/Brendigo identity and the `ghost://` namespace. Unowned cloud/account/AI/mobile promotional features are removed or made unreachable rather than falsely relabeled.
 
-Ghosium-controlled UI may link only to:
+Primary routes include:
 
-- `ghosium.com`
-- `search.ghosium.com`
-- `store.ghosium.com`
+```text
+ghost://newtab/
+ghost://history/
+ghost://bookmarks/
+ghost://downloads/
+ghost://settings/
+ghost://profiles/
+ghost://extensions/
+ghost://passwords/
+```
 
-Websites entered by the user and search results are ordinary web content and are not restricted to those domains.
+## Local profile boundary
 
-## Privacy
+The canonical per-user profile root is:
 
-The launcher disables selected background network/reporting features while preserving the sandbox, certificate validation and core process isolation. The privacy component uses declarative request rules rather than an always-running custom script.
+```text
+%LOCALAPPDATA%\Brendigo\Ghosium\User Data
+```
+
+Profiles remain local-first. Browser-level external account onboarding, external Sync promotions and related cloud-profile surfaces are not part of the Ghosium product contract.
+
+Normal sign-in to websites remains ordinary web functionality and is not disabled by the local-profile product policy.
 
 ## Languages
 
-Setup writes `ghosium-language.txt`. The launcher validates the locale before adding `--lang=<locale>`. Invalid/missing values fall back to `en-US`.
+Ghosium defines one product locale list in `engine/branding/product.json`. Version 0.1.2 supports 38 locales. English (`en-US`) is the primary/default locale and Croatian (`hr`) is required.
 
-## Portable mode
+Interactive Setup presents the same locale set. A fresh installation initializes the browser's native application locale from the Setup selection. Existing browser locale preferences are not overwritten by maintenance updates or reinstalls.
 
-The Portable EXE extracts the application runtime temporarily and starts the native launcher with a dedicated portable profile path. The launcher can wait for the engine process, allowing the wrapper to remove temporary runtime files when the browser closes.
+## Search, Store and update services
 
-## Branding boundary
+The independently deployable shared-hosting services live in separate repository folders:
 
-Ghosium-owned surfaces use Ghosium branding. Required upstream license/attribution text remains in `THIRD_PARTY_NOTICES.md` and installed third-party license files. A future full-source engine build can replace additional upstream internal strings/resources that cannot safely be changed at the distribution layer.
+```text
+search-web/      search.ghosium.com
+store-web/       store.ghosium.com
+updates-web/     updates.ghosium.com
+```
+
+These web applications are not linked into the browser executable and can be deployed independently.
+
+## Update trust boundary
+
+The browser-native update flow validates:
+
+1. Ghosium-owned HTTPS endpoint and exact download path;
+2. manifest schema/product/platform/channel;
+3. strictly newer product version;
+4. exact package byte size;
+5. SHA-256;
+6. Authenticode validity and expected publisher relationship;
+7. signed PE product/company/version metadata;
+8. canonical same-Setup update mode.
+
+A failed check stops the update before execution.
+
+## Performance model
+
+Performance work uses native source/build mechanisms rather than security-reducing command-line shortcuts.
+
+For 0.1.2:
+
+- native Memory Saver defaults to enabled unless the user explicitly chose another state;
+- native medium aggressiveness and tab-freezing semantics are preserved;
+- legacy background-app keep-alive is disabled at build configuration level;
+- renderer/site isolation and sandboxing remain mandatory;
+- the product does not impose a renderer-process cap merely to make RAM numbers look lower.
+
+A source-level optimization is not considered a performance improvement until the compiled binary is benchmarked using the repository methodology.
+
+## Release boundary
+
+Hosted CI proves source-transform, localization, installer, updater and security contracts. It does **not** prove that the final browser binary compiled successfully.
+
+Production status requires the controlled full-source Windows workflow to complete compile, runtime smoke, canonical Setup assembly, signing, install/update/uninstall round trip, provenance and hashes for the exact release commit.
+
+## Legal boundary
+
+Brendigo-authored Ghosium material is governed by the Ghosium product license. Third-party components remain governed by their own terms. Required attribution and notices are kept in dedicated legal/license payloads rather than used as product identity.

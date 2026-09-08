@@ -150,7 +150,7 @@ jobs:
           $src = Join-Path $env:WORK_ROOT 'src'
           ./scripts/configure-engine-build.ps1 -SourceRoot $src -OutDir 'out/Ghosium'
 
-      - name: Compile Ghosium Browser and mini installer
+      - name: Compile Ghosium Browser and source archive
         shell: pwsh
         env:
           WORK_ROOT: ${{ steps.builder.outputs.work_root }}
@@ -160,8 +160,10 @@ jobs:
           $src = Join-Path $env:WORK_ROOT 'src'
           Push-Location $src
           try {
-            # The upstream GN/Ninja target names remain technical build-system
-            # dependencies. They are not accepted as public Ghosium identity.
+            # Upstream GN/Ninja target names remain technical build-system
+            # dependencies. mini_installer is built only because it owns the
+            # canonical chrome.7z runtime archive generation; it is not the
+            # public Ghosium installer artifact.
             autoninja -C out/Ghosium chrome mini_installer
             if ($LASTEXITCODE -ne 0) {
               throw "Pinned full-source browser compile failed with exit code $LASTEXITCODE"
@@ -170,7 +172,7 @@ jobs:
             Pop-Location
           }
 
-      - name: Verify branded source-built binaries
+      - name: Verify source-built binaries and stage evidence
         shell: pwsh
         env:
           WORK_ROOT: ${{ steps.builder.outputs.work_root }}
@@ -184,13 +186,93 @@ jobs:
             -RunRuntimeSmoke
 
           $out = Join-Path $src 'out/Ghosium'
-          Copy-Item (Join-Path $out 'mini_installer.exe') 'artifacts/full-source/Ghosium-Browser-Setup.exe' -Force
           Copy-Item (Join-Path $out 'chrome.7z') 'artifacts/full-source/Ghosium-Browser-Source-Runtime.7z' -Force
           Copy-Item 'LICENSE' 'artifacts/full-source/GHOSIUM-LICENSE.txt' -Force
           Copy-Item 'THIRD_PARTY_NOTICES.md' 'artifacts/full-source/THIRD_PARTY_NOTICES.md' -Force
           Set-Content 'artifacts/full-source/GHOSIUM-VERSION.txt' $env:GHOSIUM_VERSION -Encoding ascii
 
-      - name: Verify release legal payload
+          if (Test-Path 'artifacts/full-source/Ghosium-Browser-Setup.exe') {
+            throw 'Public Setup must not exist before the canonical source-release packaging step.'
+          }
+
+      - name: Benchmark source-built Ghosium Browser
+        shell: pwsh
+        env:
+          WORK_ROOT: ${{ steps.builder.outputs.work_root }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $src = Join-Path $env:WORK_ROOT 'src'
+          $browser = Join-Path $src 'out/Ghosium/Ghosium-Browser.exe'
+          if (!(Test-Path $browser -PathType Leaf)) {
+            throw "Source-built browser is missing before performance measurement: $browser"
+          }
+          ./scripts/benchmark-ghosium-windows.ps1 `
+            -BrowserPath $browser `
+            -OutputPath (Join-Path $PWD 'artifacts/full-source/GHOSIUM-PERFORMANCE.json') `
+            -ProfileMode UserDataDir `
+            -IdleSeconds 60 `
+            -StartupTimeoutSeconds 30
+
+          $performance = Get-Content 'artifacts/full-source/GHOSIUM-PERFORMANCE.json' -Raw | ConvertFrom-Json
+          if ($performance.schemaVersion -ne 2 -or $performance.profileMode -ne 'UserDataDir') {
+            throw 'Source-built performance evidence does not satisfy the Ghosium benchmark schema/profile contract.'
+          }
+          if (@($performance.tabs).Count -ne 3) {
+            throw 'Source-built performance evidence must contain 1/5/10-tab scenarios.'
+          }
+
+      - name: Smoke test technical source mini-installer
+        shell: pwsh
+        env:
+          WORK_ROOT: ${{ steps.builder.outputs.work_root }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $src = Join-Path $env:WORK_ROOT 'src'
+          ./scripts/smoke-test-source-windows-installer.ps1 `
+            -MiniInstallerPath (Join-Path $src 'out/Ghosium/mini_installer.exe') `
+            -ReportPath (Join-Path $PWD 'artifacts/full-source/GHOSIUM-UPSTREAM-MINI-INSTALLER-SMOKE.json')
+
+      - name: Build canonical Ghosium same-Setup package
+        shell: pwsh
+        env:
+          WORK_ROOT: ${{ steps.builder.outputs.work_root }}
+          GHOSIUM_SIGN_CERT_THUMBPRINT: ${{ secrets.GHOSIUM_SIGN_CERT_THUMBPRINT }}
+          GHOSIUM_TIMESTAMP_URL: ${{ vars.GHOSIUM_TIMESTAMP_URL }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $src = Join-Path $env:WORK_ROOT 'src'
+          $params = @{
+            SourceRoot = $src
+            OutDir = 'out/Ghosium'
+            ArtifactsDir = (Join-Path $PWD 'artifacts/full-source')
+            StageDir = (Join-Path $env:RUNNER_TEMP 'ghosium-canonical-source-stage')
+            ReportPath = (Join-Path $PWD 'artifacts/full-source/GHOSIUM-PUBLIC-SETUP.json')
+          }
+          if ($env:GITHUB_REF -eq 'refs/heads/main') {
+            $params.RequireSigning = $true
+          }
+          ./scripts/build-source-release-installer.ps1 @params
+
+          $publicSetup = Join-Path $PWD 'artifacts/full-source/Ghosium-Browser-Setup.exe'
+          $miniInstaller = Join-Path $src 'out/Ghosium/mini_installer.exe'
+          if (!(Test-Path $publicSetup -PathType Leaf)) {
+            throw 'Canonical public Ghosium Setup was not produced.'
+          }
+          if ((Get-FileHash $publicSetup -Algorithm SHA256).Hash -eq
+              (Get-FileHash $miniInstaller -Algorithm SHA256).Hash) {
+            throw 'Canonical public Setup must never be a renamed Chromium mini_installer.exe.'
+          }
+
+      - name: Smoke test canonical install update and uninstall
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          ./scripts/smoke-test-windows-installer.ps1 `
+            -SetupPath (Join-Path $PWD 'artifacts/full-source/Ghosium-Browser-Setup.exe') `
+            -Version $env:GHOSIUM_VERSION `
+            -ReportPath (Join-Path $PWD 'artifacts/full-source/GHOSIUM-CANONICAL-SETUP-SMOKE.json')
+
+      - name: Verify release legal and packaging payload
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
@@ -208,16 +290,33 @@ jobs:
             throw 'Verified release third-party notices are unexpectedly small.'
           }
 
-      - name: Smoke test source-built install and setup-based uninstall
+          $public = Get-Content 'artifacts/full-source/GHOSIUM-PUBLIC-SETUP.json' -Raw | ConvertFrom-Json
+          if ($public.product -ne 'Ghosium Browser' -or
+              $public.productVersion -ne $env:GHOSIUM_VERSION -or
+              !$public.maintenance.sameSetupExecutable -or
+              $public.publicSetupIsChromiumMiniInstallerRename) {
+            throw 'Canonical public Setup provenance failed the release contract.'
+          }
+          if ($env:GITHUB_REF -eq 'refs/heads/main' -and
+              (!$public.signing.applied -or $public.signing.setupStatus -ne 'Valid')) {
+            throw 'Production main release requires a Valid Authenticode canonical Setup package.'
+          }
+
+          $performance = Get-Content 'artifacts/full-source/GHOSIUM-PERFORMANCE.json' -Raw | ConvertFrom-Json
+          if ($performance.schemaVersion -ne 2 -or @($performance.tabs).Count -ne 3) {
+            throw 'Verified release payload is missing valid source-built performance evidence.'
+          }
+
+      - name: Generate signed production update manifest
+        if: github.ref == 'refs/heads/main'
         shell: pwsh
-        env:
-          WORK_ROOT: ${{ steps.builder.outputs.work_root }}
         run: |
           $ErrorActionPreference = 'Stop'
-          $src = Join-Path $env:WORK_ROOT 'src'
-          ./scripts/smoke-test-source-windows-installer.ps1 `
-            -MiniInstallerPath (Join-Path $src 'out/Ghosium/mini_installer.exe') `
-            -ReportPath (Join-Path $PWD 'artifacts/full-source/GHOSIUM-SOURCE-INSTALLER-SMOKE.json')
+          ./scripts/generate-update-manifest.ps1 `
+            -SetupPath (Join-Path $PWD 'artifacts/full-source/Ghosium-Browser-Setup.exe') `
+            -Version $env:GHOSIUM_VERSION `
+            -OutputPath (Join-Path $PWD 'artifacts/full-source/GHOSIUM-UPDATE-MANIFEST.json') `
+            -RequireAuthenticode
 
       - name: Generate verified full-source SHA-256 manifest
         shell: pwsh
@@ -227,12 +326,20 @@ jobs:
             'artifacts/full-source/Ghosium-Browser-Setup.exe',
             'artifacts/full-source/Ghosium-Browser-Source-Runtime.7z',
             'artifacts/full-source/GHOSIUM-SOURCE-BUILD.json',
+            'artifacts/full-source/GHOSIUM-PERFORMANCE.json',
             'artifacts/full-source/GHOSIUM-BUILDER-READY.json',
-            'artifacts/full-source/GHOSIUM-SOURCE-INSTALLER-SMOKE.json',
+            'artifacts/full-source/GHOSIUM-UPSTREAM-MINI-INSTALLER-SMOKE.json',
+            'artifacts/full-source/GHOSIUM-SOURCE-STAGE.json',
+            'artifacts/full-source/GHOSIUM-PUBLIC-SETUP.json',
+            'artifacts/full-source/GHOSIUM-CANONICAL-SETUP-SMOKE.json',
             'artifacts/full-source/GHOSIUM-VERSION.txt',
             'artifacts/full-source/GHOSIUM-LICENSE.txt',
             'artifacts/full-source/THIRD_PARTY_NOTICES.md'
           )
+          if (Test-Path 'artifacts/full-source/GHOSIUM-UPDATE-MANIFEST.json' -PathType Leaf) {
+            $filesToHash += 'artifacts/full-source/GHOSIUM-UPDATE-MANIFEST.json'
+          }
+
           $hashLines = foreach ($file in $filesToHash) {
             if (!(Test-Path $file -PathType Leaf)) {
               throw "Expected verified full-source artifact is missing before hashing: $file"
@@ -286,24 +393,48 @@ jobs:
           for required in \
             artifacts/Ghosium-Browser-Setup.exe \
             artifacts/GHOSIUM-SOURCE-BUILD.json \
-            artifacts/GHOSIUM-SOURCE-INSTALLER-SMOKE.json \
+            artifacts/GHOSIUM-PERFORMANCE.json \
+            artifacts/GHOSIUM-PUBLIC-SETUP.json \
+            artifacts/GHOSIUM-CANONICAL-SETUP-SMOKE.json \
+            artifacts/GHOSIUM-UPDATE-MANIFEST.json \
             artifacts/GHOSIUM-LICENSE.txt \
             artifacts/THIRD_PARTY_NOTICES.md \
             artifacts/SHA256SUMS.txt; do
             test -f "$required"
           done
 
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          public = json.loads(Path('artifacts/GHOSIUM-PUBLIC-SETUP.json').read_text(encoding='utf-8'))
+          update = json.loads(Path('artifacts/GHOSIUM-UPDATE-MANIFEST.json').read_text(encoding='utf-8'))
+          performance = json.loads(Path('artifacts/GHOSIUM-PERFORMANCE.json').read_text(encoding='utf-8-sig'))
+          if public['signing']['setupStatus'] != 'Valid' or not public['signing']['applied']:
+              raise SystemExit('Refusing release: canonical Setup is not proven Authenticode-signed.')
+          if public['publicSetupIsChromiumMiniInstallerRename']:
+              raise SystemExit('Refusing release: public Setup is an upstream mini-installer rename.')
+          if update['sha256'] != public['packageSha256'] or update['size'] != public['packageBytes']:
+              raise SystemExit('Refusing release: update manifest does not describe the exact canonical Setup package.')
+          if performance.get('schemaVersion') != 2 or performance.get('profileMode') != 'UserDataDir':
+              raise SystemExit('Refusing release: source-built performance evidence is missing or invalid.')
+          PY
+
           gh release create "$GHOSIUM_TAG" \
             artifacts/Ghosium-Browser-Setup.exe \
-            artifacts/Ghosium-Browser-Source-Runtime.7z \
             artifacts/GHOSIUM-SOURCE-BUILD.json \
+            artifacts/GHOSIUM-PERFORMANCE.json \
             artifacts/GHOSIUM-BUILDER-READY.json \
-            artifacts/GHOSIUM-SOURCE-INSTALLER-SMOKE.json \
+            artifacts/GHOSIUM-UPSTREAM-MINI-INSTALLER-SMOKE.json \
+            artifacts/GHOSIUM-SOURCE-STAGE.json \
+            artifacts/GHOSIUM-PUBLIC-SETUP.json \
+            artifacts/GHOSIUM-CANONICAL-SETUP-SMOKE.json \
+            artifacts/GHOSIUM-UPDATE-MANIFEST.json \
             artifacts/GHOSIUM-VERSION.txt \
             artifacts/GHOSIUM-LICENSE.txt \
             artifacts/THIRD_PARTY_NOTICES.md \
             artifacts/SHA256SUMS.txt \
             --target "$GITHUB_SHA" \
             --title "Ghosium Browser $GHOSIUM_VERSION" \
-            --notes $'Verified Ghosium Browser Windows x64 release built from the pinned source revision.\n\nRelease gate: pinned source checkout, Ghosium fork application, source verification, Windows executable identity verification, full compile, runtime smoke test, installer install/uninstall smoke test, proprietary Ghosium license + preserved third-party notices, SHA-256 manifest, and provenance must all succeed before this release job runs.\n\nTechnical upstream GN/Ninja target names and internal DLL/archive names may remain where a safe coordinated rename has not yet been proven, but they are not treated as public Ghosium product identity. Third-party/open-source components remain governed by their own licenses.' \
+            --notes $'Verified Ghosium Browser Windows x64 release built from the pinned source revision.\n\nThe public Ghosium-Browser-Setup.exe is the canonical Brendigo same-Setup package. It performs install, /UPDATE and /UNINSTALL maintenance, is Authenticode-signed for production, and has passed an installed runtime + update + uninstall round-trip smoke test.\n\nRelease gate: pinned source checkout, Ghosium fork application, source verification, full compile, runtime smoke, measured source-built performance evidence, canonical source-stage assembly, source-runtime-to-Setup packaging, Authenticode publisher verification, same-Setup update/profile-preservation smoke, legal payload verification, production update-manifest binding, SHA-256 manifest, and provenance must all succeed before publication.\n\nTechnical upstream GN/Ninja target names and internal DLL/archive names may remain where a safe coordinated rename has not yet been compile/runtime proven. Third-party/open-source components remain governed by their own licenses.' \
             --repo "$GITHUB_REPOSITORY"

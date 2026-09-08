@@ -67,8 +67,6 @@ jobs:
                       f'PR still uses base version {version}.'
                   )
 
-              # One intentional reset is allowed when migrating from the old v0.8.0
-              # development line to the new ghosium-v0.1.0 product namespace.
               migration_reset = base_version == '0.8.0' and version == '0.1.0'
               if not migration_reset:
                   current = tuple(map(int, version.split('.')))
@@ -138,7 +136,7 @@ jobs:
 
           print('Ghosium proprietary product license + preserved third-party rights contract: OK')
 
-      - name: Verify source-built-only release architecture
+      - name: Verify source-built-only canonical release architecture
         shell: python
         run: |
           from pathlib import Path
@@ -151,11 +149,10 @@ jobs:
           release_workflow = workflows / 'full-source-windows-build.yml'
           text = release_workflow.read_text(encoding='utf-8')
 
-          forbidden_release_inputs = (
+          for value in (
               'storage.googleapis.com/chromium-browser-snapshots',
               'chrome-win.zip',
-          )
-          for value in forbidden_release_inputs:
+          ):
               if value in text:
                   raise SystemExit(
                       f'Production source-built release workflow references precompiled snapshot input: {value}'
@@ -166,38 +163,59 @@ jobs:
               'ghosium-source-builder',
               'ghosium-v',
               'GHOSIUM-SOURCE-BUILD.json',
-              'GHOSIUM-SOURCE-INSTALLER-SMOKE.json',
+              'GHOSIUM-UPSTREAM-MINI-INSTALLER-SMOKE.json',
+              'GHOSIUM-SOURCE-STAGE.json',
+              'GHOSIUM-PUBLIC-SETUP.json',
+              'GHOSIUM-CANONICAL-SETUP-SMOKE.json',
+              'GHOSIUM-UPDATE-MANIFEST.json',
               'GHOSIUM-LICENSE.txt',
               'THIRD_PARTY_NOTICES.md',
-              'Verify release legal payload',
+              'Verify release legal and packaging payload',
               'SHA256SUMS.txt',
               'Release $GHOSIUM_TAG already exists',
               'refusing to overwrite it',
               'autoninja -C out/Ghosium chrome mini_installer',
               '-RunRuntimeSmoke',
+              './scripts/build-source-release-installer.ps1',
+              './scripts/smoke-test-windows-installer.ps1',
+              './scripts/generate-update-manifest.ps1',
+              '-RequireAuthenticode',
+              '$params.RequireSigning = $true',
+              'publicSetupIsChromiumMiniInstallerRename',
               "if: github.ref == 'refs/heads/main'",
           )
           for value in required:
               if value not in text:
-                  raise SystemExit(f'Full-source release invariant missing: {value}')
+                  raise SystemExit(f'Full-source canonical release invariant missing: {value}')
+
+          forbidden_public_setup = "Copy-Item (Join-Path $out 'mini_installer.exe') 'artifacts/full-source/Ghosium-Browser-Setup.exe'"
+          if forbidden_public_setup in text:
+              raise SystemExit('Public Ghosium Setup must never be a renamed Chromium mini_installer.exe.')
 
           if '\n  pull_request:' in text or '\n  push:' in text:
               raise SystemExit(
                   'Heavy full-source build must remain an explicit manual/self-hosted workflow.'
               )
 
-          legacy_tag_fragments = (
+          release_start = text.index('gh release create "$GHOSIUM_TAG"')
+          release_end = text.index('--repo "$GITHUB_REPOSITORY"', release_start)
+          release_block = text[release_start:release_end]
+          if 'Ghosium-Browser-Source-Runtime.7z' in release_block:
+              raise SystemExit('Technical source runtime archive must not be a stable public release asset.')
+          if 'Ghosium-Browser-Setup.exe' not in release_block:
+              raise SystemExit('Stable release must publish the canonical Ghosium Setup package.')
+
+          for value in (
               'tag="v$GHOSIUM_VERSION"',
               'tag="v$version"',
               'gh release create "v$',
-          )
-          for value in legacy_tag_fragments:
+          ):
               if value in text:
                   raise SystemExit(
                       f'Legacy v0.x.y release namespace returned in production release workflow: {value}'
                   )
 
-          print('Ghosium source-built release architecture: OK')
+          print('Ghosium canonical source-built release architecture: OK')
 
       - name: Verify immutable action references
         shell: python

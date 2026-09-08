@@ -1,0 +1,221 @@
+name: Ghosium Canonical Release Contract
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'installer/**'
+      - 'scripts/assemble-source-release-stage.ps1'
+      - 'scripts/build-source-release-installer.ps1'
+      - 'scripts/smoke-test-windows-installer.ps1'
+      - 'scripts/generate-update-manifest.ps1'
+      - '.github/workflows/full-source-windows-build.yml'
+      - '.github/workflows/canonical-release-contract.yml'
+  push:
+    branches:
+      - main
+      - ghosium/0.1.1-public-branding
+    paths:
+      - 'installer/**'
+      - 'scripts/assemble-source-release-stage.ps1'
+      - 'scripts/build-source-release-installer.ps1'
+      - 'scripts/smoke-test-windows-installer.ps1'
+      - 'scripts/generate-update-manifest.ps1'
+      - '.github/workflows/full-source-windows-build.yml'
+      - '.github/workflows/canonical-release-contract.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  canonical-release-contract:
+    name: Verify source runtime to signed same-Setup release chain
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Parse release PowerShell tooling
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          foreach ($path in @(
+            'scripts/assemble-source-release-stage.ps1',
+            'scripts/build-source-release-installer.ps1',
+            'scripts/smoke-test-windows-installer.ps1',
+            'scripts/generate-update-manifest.ps1'
+          )) {
+            $tokens = $null
+            $errors = $null
+            [void][System.Management.Automation.Language.Parser]::ParseFile(
+              (Resolve-Path $path), [ref]$tokens, [ref]$errors)
+            if ($errors.Count -gt 0) {
+              $errors | ForEach-Object { Write-Error $_.Message }
+              throw "PowerShell parser errors found in $path"
+            }
+          }
+
+      - name: Verify canonical full-source release workflow
+        shell: python
+        run: |
+          from pathlib import Path
+
+          path = Path('.github/workflows/full-source-windows-build.yml')
+          text = path.read_text(encoding='utf-8')
+          required = [
+              'autoninja -C out/Ghosium chrome mini_installer',
+              './scripts/build-source-release-installer.ps1',
+              '$params.RequireSigning = $true',
+              'GHOSIUM_SIGN_CERT_THUMBPRINT: ${{ secrets.GHOSIUM_SIGN_CERT_THUMBPRINT }}',
+              'GHOSIUM_TIMESTAMP_URL: ${{ vars.GHOSIUM_TIMESTAMP_URL }}',
+              'GHOSIUM-PUBLIC-SETUP.json',
+              'GHOSIUM-CANONICAL-SETUP-SMOKE.json',
+              './scripts/smoke-test-windows-installer.ps1',
+              './scripts/generate-update-manifest.ps1',
+              'GHOSIUM-UPDATE-MANIFEST.json',
+              '-RequireAuthenticode',
+              "if: github.ref == 'refs/heads/main'",
+              'publicSetupIsChromiumMiniInstallerRename',
+          ]
+          missing = [item for item in required if item not in text]
+          if missing:
+              raise SystemExit('Canonical full-source workflow is missing:\n' + '\n'.join(missing))
+
+          forbidden_copy = "Copy-Item (Join-Path $out 'mini_installer.exe') 'artifacts/full-source/Ghosium-Browser-Setup.exe'"
+          if forbidden_copy in text:
+              raise SystemExit('Public Setup is still produced by renaming Chromium mini_installer.exe.')
+
+          release_start = text.index('gh release create "$GHOSIUM_TAG"')
+          release_end = text.index('--repo "$GITHUB_REPOSITORY"', release_start)
+          release_block = text[release_start:release_end]
+          if 'Ghosium-Browser-Source-Runtime.7z' in release_block:
+              raise SystemExit('Unsigned technical source runtime archive must not be published as a stable public release asset.')
+          if 'Ghosium-Browser-Setup.exe' not in release_block:
+              raise SystemExit('Stable release lost the canonical Ghosium Setup package.')
+
+          print('Canonical full-source release workflow: OK')
+
+      - name: Verify pinned source-runtime stage assembly
+        shell: python
+        run: |
+          from pathlib import Path
+
+          text = Path('scripts/assemble-source-release-stage.ps1').read_text(encoding='utf-8')
+          required = [
+              "Join-Path $outPath 'chrome.7z'",
+              "Join-Path $outPath 'Ghosium-Browser.exe'",
+              "third_party/lzma_sdk/bin/host_platform/7za.exe",
+              "third_party/lzma_sdk/bin/win64/7za.exe",
+              "Join-Path $chromeBin 'Ghosium-Browser.exe'",
+              "Join-Path $chromeBin 'chrome.exe'",
+              'archiveBrowserHash',
+              'compiledBrowserHash',
+              'Source runtime archive is missing Ghosium-Browser.exe',
+              "Copy-Item (Join-Path $repoRoot 'LICENSE')",
+              "Copy-Item (Join-Path $repoRoot 'THIRD_PARTY_NOTICES.md')",
+              "'update.exe'",
+              "'updater.exe'",
+              "'uninstall.exe'",
+              'ReparsePoint',
+              'sourceArchiveSha256',
+          ]
+          missing = [item for item in required if item not in text]
+          if missing:
+              raise SystemExit('Source-stage assembly contract is missing:\n' + '\n'.join(missing))
+          print('Pinned source-runtime stage assembly: OK')
+
+      - name: Verify canonical Setup signing and identity contract
+        shell: python
+        run: |
+          from pathlib import Path
+
+          text = Path('scripts/build-source-release-installer.ps1').read_text(encoding='utf-8')
+          required = [
+              '[switch]$RequireSigning',
+              'GHOSIUM_SIGN_CERT_THUMBPRINT',
+              'GHOSIUM_TIMESTAMP_URL',
+              "'/fd', 'SHA256'",
+              "'/tr', $timestampUrl",
+              "'/td', 'SHA256'",
+              "Sign-GhosiumFile -Path $browserPath",
+              "Sign-GhosiumFile -Path $proxyPath",
+              "Sign-GhosiumFile -Path $setupPath",
+              'SignerCertificate.Subject',
+              "ProductName -ne 'Ghosium Browser'",
+              "CompanyName -ne 'Brendigo'",
+              "Join-Path $outPath 'mini_installer.exe'",
+              'Public Ghosium Setup is still only a renamed Chromium mini_installer.exe.',
+              'sameSetupExecutable = $true',
+              "updateSwitch = '/UPDATE'",
+              "uninstallSwitch = '/UNINSTALL'",
+              'publicSetupIsChromiumMiniInstallerRename = $false',
+          ]
+          missing = [item for item in required if item not in text]
+          if missing:
+              raise SystemExit('Canonical Setup signing/identity contract is missing:\n' + '\n'.join(missing))
+          print('Canonical Setup signing and identity contract: OK')
+
+      - name: Verify browser-equivalent update smoke path
+        shell: python
+        run: |
+          from pathlib import Path
+
+          text = Path('scripts/smoke-test-windows-installer.ps1').read_text(encoding='utf-8')
+          required = [
+              "Ghosium Browser Update",
+              "Ghosium-Browser-Setup.exe",
+              "@('/S', '/UPDATE', '/DELETESELF')",
+              'profileSentinel',
+              'preserve-across-ghosium-update',
+              'installedSetupHash',
+              'setupHash',
+              'languageBeforeUpdate',
+              'languageAfterUpdate',
+              'Invoke-InstalledRuntimeSmoke',
+              "@('/S', '/UNINSTALL')",
+              'normalUninstallPreservedProfile',
+              'forbiddenStandaloneMaintenanceExecutables = $false',
+          ]
+          missing = [item for item in required if item not in text]
+          if missing:
+              raise SystemExit('Canonical Setup smoke contract is missing:\n' + '\n'.join(missing))
+          print('Browser-equivalent same-Setup update smoke path: OK')
+
+      - name: Verify production update manifest fails closed on signature
+        shell: python
+        run: |
+          from pathlib import Path
+
+          text = Path('scripts/generate-update-manifest.ps1').read_text(encoding='utf-8')
+          required = [
+              '[switch]$RequireAuthenticode',
+              'Get-AuthenticodeSignature',
+              'SignatureStatus]::Valid',
+              "ProductName -ne 'Ghosium Browser'",
+              "CompanyName -ne 'Brendigo'",
+              "enabled = $true",
+              "url = 'https://updates.ghosium.com/windows/Ghosium-Browser-Setup.exe'",
+              'Get-FileHash $resolvedSetup -Algorithm SHA256',
+          ]
+          missing = [item for item in required if item not in text]
+          if missing:
+              raise SystemExit('Production update-manifest contract is missing:\n' + '\n'.join(missing))
+
+          signature_check = text.index('if ($RequireAuthenticode)')
+          manifest_creation = text.index('$manifest = [ordered]@{')
+          if signature_check > manifest_creation:
+              raise SystemExit('Authenticode gate must run before an enabled production update manifest is created.')
+          print('Production signed update-manifest contract: OK')
+
+      - name: Verify repository formatting
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --check
