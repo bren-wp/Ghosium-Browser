@@ -1,18 +1,19 @@
 {
   "schemaVersion": 1,
-  "updatedAt": "2026-09-08T21:04:00Z",
+  "updatedAt": "2026-09-08T21:50:00Z",
   "extensions": [
     {
       "id": "ghosium-privacy",
       "name": "Ghosium Privacy",
-      "version": "0.1.8",
+      "version": "0.1.9",
       "manifestVersion": 3,
       "status": "built_in",
-      "description": "Built-in declarative tracker protection and Ghosium new-tab experience.",
+      "description": "Built-in declarative tracker protection, Ghosium new-tab experience and local customization.",
       "publisher": "Brendigo",
       "homepage": "https://ghosium.com/security",
       "permissions": [
-        "declarativeNetRequest"
+        "declarativeNetRequest",
+        "storage"
       ],
       "hostPermissions": [
         "<all_urls>"
