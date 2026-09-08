@@ -172,7 +172,7 @@ autoninja -C out/Ghosium chrome mini_installer
 
 The target names are upstream technical build-system identifiers. They are not public Ghosium branding. The public Windows executable produced by the fork is `Ghosium-Browser.exe`.
 
-`verify-engine-build-output.ps1 -RunRuntimeSmoke` validates the compiled output and preserves the runtime sandbox.
+`verify-engine-build-output.ps1 -RunRuntimeSmoke` validates the compiled output and runs a sandbox-preserving runtime smoke test.
 
 ### 2. Measure the compiled Ghosium runtime
 
