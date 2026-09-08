@@ -85,20 +85,26 @@ jobs:
             return ([System.Uri]::new($absolute)).AbsoluteUri
           }
 
-          function Assert-GhosiumPage([string]$Url, [string]$Output, [string]$Needle) {
-            $domPath = Join-Path $env:RUNNER_TEMP ([IO.Path]::GetFileNameWithoutExtension($Output) + '.html')
-            $stderrPath = Join-Path $env:RUNNER_TEMP ([IO.Path]::GetFileNameWithoutExtension($Output) + '.stderr.txt')
-            & $chrome @common '--dump-dom' $Url 1> $domPath 2> $stderrPath
-            if ($LASTEXITCODE -ne 0) {
-              if (Test-Path $stderrPath) { Get-Content $stderrPath | Write-Host }
-              throw "DOM render failed for $Url with exit code $LASTEXITCODE"
+          function Invoke-Chromium([string[]]$Arguments, [string]$StdoutPath, [string]$StderrPath) {
+            Remove-Item $StdoutPath,$StderrPath -Force -ErrorAction SilentlyContinue
+            $process = Start-Process -FilePath $chrome -ArgumentList $Arguments -Wait -PassThru -RedirectStandardOutput $StdoutPath -RedirectStandardError $StderrPath
+            if ($process.ExitCode -ne 0) {
+              if (Test-Path $StderrPath) { Get-Content $StderrPath | Write-Host }
+              throw "Chromium renderer failed with exit code $($process.ExitCode)"
             }
+          }
+
+          function Assert-GhosiumPage([string]$Url, [string]$Output, [string]$Needle) {
+            $base = [IO.Path]::GetFileNameWithoutExtension($Output)
+            $domPath = Join-Path $env:RUNNER_TEMP ($base + '.html')
+            $stderrPath = Join-Path $env:RUNNER_TEMP ($base + '.stderr.txt')
+            Invoke-Chromium ($common + @('--dump-dom', $Url)) $domPath $stderrPath
             $dom = Get-Content $domPath -Raw
             if (!$dom.Contains($Needle)) { throw "Rendered page is not the expected Ghosium surface: $Url" }
-            & $chrome @common "--screenshot=$Output" $Url 2> $stderrPath | Out-Null
-            if ($LASTEXITCODE -ne 0 -or !(Test-Path $Output -PathType Leaf) -or (Get-Item $Output).Length -lt 10000) {
-              if (Test-Path $stderrPath) { Get-Content $stderrPath | Write-Host }
-              throw "Screenshot generation failed or produced an invalid image: $Output"
+            $stdoutPath = Join-Path $env:RUNNER_TEMP ($base + '.screenshot.stdout.txt')
+            Invoke-Chromium ($common + @("--screenshot=$Output", $Url)) $stdoutPath $stderrPath
+            if (!(Test-Path $Output -PathType Leaf) -or (Get-Item $Output).Length -lt 10000) {
+              throw "Screenshot generation produced an invalid image: $Output"
             }
           }
 
