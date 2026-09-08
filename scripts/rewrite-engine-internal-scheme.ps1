@@ -48,7 +48,7 @@ function Get-RelativeSourcePath {
   param([Parameter(Mandatory = $true)][string]$FullName)
 
   $relative = $FullName.Substring($sourceRootResolved.Length)
-  $relative = $relative.TrimStart([char[]]@('\\', '/'))
+  $relative = $relative.TrimStart([char[]]@([char]92, [char]47))
   return ($relative -replace '\\', '/')
 }
 
