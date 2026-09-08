@@ -1,0 +1,275 @@
+name: Ghosium 0.1.9 Source and Asset Migration
+
+on:
+  push:
+    branches:
+      - ghosium/release/0.1.9
+    paths:
+      - '.release/ghosium-v0.1.9.migrate'
+
+permissions:
+  contents: write
+
+jobs:
+  patch-source:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout 0.1.9 branch
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: ghosium/release/0.1.9
+          fetch-depth: 1
+
+      - name: Connect native branding and performance transforms
+        shell: python
+        run: |
+          from pathlib import Path
+          import re
+
+          apply_path = Path('scripts/apply-engine-branding.ps1')
+          apply = apply_path.read_text(encoding='utf-8')
+          anchor = """& (Join-Path $PSScriptRoot 'rebrand-engine-locales.ps1') -SourceRoot $sourceRootResolved
+          if ($LASTEXITCODE -ne 0) {
+            throw 'Ghosium supported locale branding failed.'
+          }
+
+          # Convert the complete production WebUI namespace after all targeted branding
+          """
+          replacement = """& (Join-Path $PSScriptRoot 'rebrand-engine-locales.ps1') -SourceRoot $sourceRootResolved
+          if ($LASTEXITCODE -ne 0) {
+            throw 'Ghosium supported locale branding failed.'
+          }
+
+          # Apply the complete user-facing UI rewrite before ghost:// conversion so
+          # reviewed pinned Chromium anchors are still available. This covers About,
+          # Customize, Settings, Extensions and other product-owned surfaces.
+          & (Join-Path $PSScriptRoot 'rewrite-engine-public-surfaces.ps1') -SourceRoot $sourceRootResolved
+          if ($LASTEXITCODE -ne 0) {
+            throw 'Ghosium public-surface branding failed.'
+          }
+
+          # Enable only reviewed native low-overhead defaults. Security process
+          # isolation, sandboxing and explicit user preferences stay intact.
+          & (Join-Path $PSScriptRoot 'rewrite-engine-performance-defaults.ps1') -SourceRoot $sourceRootResolved
+          if ($LASTEXITCODE -ne 0) {
+            throw 'Ghosium performance-default rewrite failed.'
+          }
+
+          # Convert the complete production WebUI namespace after all targeted branding
+          """
+          if anchor not in apply:
+            if 'rewrite-engine-public-surfaces.ps1' not in apply or 'rewrite-engine-performance-defaults.ps1' not in apply:
+              raise SystemExit('apply-engine-branding.ps1 integration anchor changed')
+          else:
+            apply = apply.replace(anchor, replacement, 1)
+          apply_path.write_text(apply, encoding='utf-8', newline='\n')
+
+          public_path = Path('scripts/rewrite-engine-public-surfaces.ps1')
+          public = public_path.read_text(encoding='utf-8')
+          public = public.replace(
+            "$ntpAppHtml = Join-Path $sourceRootResolved 'chrome/browser/resources/new_tab_page/app.html'\n"
+            "$ntpFooterContextMenu = Join-Path $sourceRootResolved 'chrome/browser/ui/webui/new_tab_footer/footer_context_menu.cc'\n",
+            ''
+          )
+          public = public.replace(
+            "# Explicitly normalize customize copy even though the Chromium NTP entry points\n"
+            "# are removed below. This prevents a future accidental re-exposure from showing\n"
+            "# upstream product branding.\n",
+            "# Keep the maintained native customization feature, but make every public label\n"
+            "# Ghosium-owned. The 0.1.9 New Tab also exposes first-party local options.\n"
+          )
+          pattern = re.compile(
+            r"# The user explicitly requested the Chromium NTP customization surface to be\n"
+            r"# removed\..*?"
+            r"(?=\$publicStringFiles = @\()",
+            re.S,
+          )
+          if pattern.search(public):
+            public = pattern.sub(
+              "# Native customization remains available in 0.1.9 because its visible copy is\n"
+              "# now Ghosium-branded. Do not delete the maintained Chromium implementation;\n"
+              "# removing functionality is reserved for surfaces that cannot be safely owned.\n\n",
+              public,
+              count=1,
+            )
+          if 'upstream Chromium NTP customization entry intentionally removed' in public:
+            raise SystemExit('Legacy Customize removal block still exists')
+          public = public.replace(
+            "Write-Host 'Ghosium public surfaces applied: branded product identity; Chromium customization, Google account nav, Gemini/AI and Web Store tile removed.'",
+            "Write-Host 'Ghosium public surfaces applied: branded product identity and Customize; Google account nav, Gemini/AI and upstream Web Store tile removed.'"
+          )
+          public_path.write_text(public, encoding='utf-8', newline='\n')
+
+          verify_path = Path('scripts/verify-engine-fork.ps1')
+          verify = verify_path.read_text(encoding='utf-8')
+          needle = "$internalSchemeRewritePath = Join-Path $repoRoot 'scripts/rewrite-engine-internal-scheme.ps1'\n"
+          addition = (
+            needle +
+            "$publicSurfacesRewritePath = Join-Path $repoRoot 'scripts/rewrite-engine-public-surfaces.ps1'\n"
+            "$performanceDefaultsRewritePath = Join-Path $repoRoot 'scripts/rewrite-engine-performance-defaults.ps1'\n"
+          )
+          if '$publicSurfacesRewritePath' not in verify:
+            if needle not in verify:
+              raise SystemExit('verify-engine-fork.ps1 path anchor changed')
+            verify = verify.replace(needle, addition, 1)
+          list_anchor = "  $internalSchemeRewritePath\n)) {"
+          if '$performanceDefaultsRewritePath\n)) {' not in verify:
+            if list_anchor not in verify:
+              raise SystemExit('verify-engine-fork.ps1 required-file list anchor changed')
+            verify = verify.replace(
+              list_anchor,
+              "  $internalSchemeRewritePath,\n  $publicSurfacesRewritePath,\n  $performanceDefaultsRewritePath\n)) {",
+              1,
+            )
+          required_anchor = "    'components/vector_icons/chromium/product_refresh.icon'\n"
+          ext_string = "    'extensions/strings/extensions_chromium_strings.grdp'\n"
+          if ext_string not in verify:
+            verify = verify.replace(required_anchor, required_anchor.rstrip('\n') + ",\n" + ext_string, 1)
+          assert_anchor = "  Assert-NoLegacyVisibleBrand -Path $settingsStringsPath\n"
+          ext_assert = (
+            assert_anchor +
+            "  Assert-NoLegacyVisibleBrand -Path (Join-Path $resolvedSourceRoot 'extensions/strings/extensions_chromium_strings.grdp')\n"
+          )
+          if "extensions/strings/extensions_chromium_strings.grdp')" not in verify.split('Assert-NoLegacyVisibleBrand -Path $settingsStringsPath', 1)[-1]:
+            if assert_anchor not in verify:
+              raise SystemExit('verify-engine-fork.ps1 visible-brand assertion anchor changed')
+            verify = verify.replace(assert_anchor, ext_assert, 1)
+          verify_path.write_text(verify, encoding='utf-8', newline='\n')
+
+          for path in (apply_path, public_path, verify_path):
+            text = path.read_text(encoding='utf-8')
+            if '\r' in text:
+              raise SystemExit(f'Unexpected CR remained in {path}')
+          print('0.1.9 native source migration prepared')
+
+      - name: Validate source migration diff
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --check
+          grep -F "rewrite-engine-public-surfaces.ps1" scripts/apply-engine-branding.ps1
+          grep -F "rewrite-engine-performance-defaults.ps1" scripts/apply-engine-branding.ps1
+          grep -F "Customize Ghosium" scripts/rewrite-engine-public-surfaces.ps1
+          ! grep -F "customization entry intentionally removed" scripts/rewrite-engine-public-surfaces.ps1
+
+      - name: Commit source migration
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git diff --quiet; then
+            echo 'No source migration changes required.'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add scripts/apply-engine-branding.ps1 scripts/rewrite-engine-public-surfaces.ps1 scripts/verify-engine-fork.ps1
+          git commit -m 'engine: apply complete Ghosium UI and performance transforms'
+          git push origin HEAD:ghosium/release/0.1.9
+
+  generate-assets:
+    needs: patch-source
+    runs-on: windows-2025
+    timeout-minutes: 10
+    steps:
+      - name: Checkout latest 0.1.9 branch
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: ghosium/release/0.1.9
+          fetch-depth: 1
+
+      - name: Generate deterministic Ghosium extension and Setup artwork
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Add-Type -AssemblyName System.Drawing
+          New-Item -ItemType Directory -Force -Path 'extension/icons' | Out-Null
+          New-Item -ItemType Directory -Force -Path 'installer/assets' | Out-Null
+
+          foreach ($size in @(16, 32, 48, 128)) {
+            $icon = [System.Drawing.Icon]::new((Resolve-Path 'ghosium.ico'), $size, $size)
+            try {
+              $bitmap = $icon.ToBitmap()
+              try {
+                $bitmap.Save((Join-Path $PWD "extension/icons/$size.png"), [System.Drawing.Imaging.ImageFormat]::Png)
+              } finally {
+                $bitmap.Dispose()
+              }
+            } finally {
+              $icon.Dispose()
+            }
+          }
+
+          function New-GhosiumBitmap {
+            param([string]$Path, [int]$Width, [int]$Height, [bool]$Compact)
+            $bitmap = [System.Drawing.Bitmap]::new($Width, $Height)
+            $graphics = [System.Drawing.Graphics]::FromImage($bitmap)
+            try {
+              $graphics.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
+              $graphics.Clear([System.Drawing.Color]::FromArgb(17,16,22))
+              $rect = [System.Drawing.Rectangle]::new(0,0,$Width,$Height)
+              $brush = [System.Drawing.Drawing2D.LinearGradientBrush]::new(
+                $rect,
+                [System.Drawing.Color]::FromArgb(138,240,199),
+                [System.Drawing.Color]::FromArgb(181,140,255),
+                12.0
+              )
+              try {
+                $graphics.FillRectangle($brush, 0, [math]::Max(0,$Height-7), $Width, 7)
+              } finally { $brush.Dispose() }
+
+              $iconSize = if ($Compact) { 38 } else { 76 }
+              $icon = [System.Drawing.Icon]::new((Resolve-Path 'ghosium.ico'), $iconSize, $iconSize)
+              try {
+                $x = if ($Compact) { 8 } else { [int](($Width-$iconSize)/2) }
+                $y = if ($Compact) { [int](($Height-$iconSize)/2) } else { 48 }
+                $graphics.DrawIcon($icon, $x, $y)
+              } finally { $icon.Dispose() }
+
+              $fontSize = if ($Compact) { 12.0 } else { 15.0 }
+              $font = [System.Drawing.Font]::new('Segoe UI Semibold', $fontSize, [System.Drawing.FontStyle]::Bold)
+              $subFont = [System.Drawing.Font]::new('Segoe UI', $(if($Compact){7.5}else{9.0}))
+              $white = [System.Drawing.SolidBrush]::new([System.Drawing.Color]::FromArgb(248,250,252))
+              $muted = [System.Drawing.SolidBrush]::new([System.Drawing.Color]::FromArgb(165,175,190))
+              try {
+                if ($Compact) {
+                  $graphics.DrawString('GHOSIUM', $font, $white, 54, 10)
+                  $graphics.DrawString('Browser by Brendigo', $subFont, $muted, 54, 31)
+                } else {
+                  $format = [System.Drawing.StringFormat]::new()
+                  $format.Alignment = [System.Drawing.StringAlignment]::Center
+                  $graphics.DrawString('GHOSIUM', $font, $white, [System.Drawing.RectangleF]::new(8,142,$Width-16,30), $format)
+                  $graphics.DrawString('Browse freely. Stay private.', $subFont, $muted, [System.Drawing.RectangleF]::new(8,176,$Width-16,44), $format)
+                  $format.Dispose()
+                }
+              } finally {
+                $font.Dispose(); $subFont.Dispose(); $white.Dispose(); $muted.Dispose()
+              }
+              $bitmap.Save((Join-Path $PWD $Path), [System.Drawing.Imaging.ImageFormat]::Bmp)
+            } finally {
+              $graphics.Dispose(); $bitmap.Dispose()
+            }
+          }
+
+          New-GhosiumBitmap -Path 'installer/assets/header.bmp' -Width 150 -Height 57 -Compact $true
+          New-GhosiumBitmap -Path 'installer/assets/welcome.bmp' -Width 164 -Height 314 -Compact $false
+
+          foreach ($path in @('extension/icons/16.png','extension/icons/32.png','extension/icons/48.png','extension/icons/128.png','installer/assets/header.bmp','installer/assets/welcome.bmp')) {
+            if (!(Test-Path $path -PathType Leaf) -or (Get-Item $path).Length -le 100) {
+              throw "Generated Ghosium asset is invalid: $path"
+            }
+          }
+
+      - name: Commit generated assets
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if (!(git status --porcelain)) {
+            Write-Host 'No generated asset changes required.'
+            exit 0
+          }
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add extension/icons installer/assets
+          git commit -m 'assets: add Ghosium extension and Setup artwork'
+          git push origin HEAD:ghosium/release/0.1.9
