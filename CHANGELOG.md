@@ -1,5 +1,33 @@
 # Changelog
 
+## 0.1.4 — native internal hosts and source-contract hardening
+
+### Native Ghosium WebUI
+- Promoted `ghost://profiles/` from a redirect shim to the canonical host used by the existing native profile-picker WebUI controller.
+- Promoted `ghost://passwords/` from a redirect shim to the canonical host used by the existing native password-manager WebUI controller.
+- Removed the former `browser_about_handler.cc` redirects to Settings/manageProfile and password-manager routes.
+- Kept the maintained profile/password controller implementations instead of duplicating security-sensitive logic in parallel Ghosium-only controllers.
+- Strengthened `verify-engine-fork.ps1` to require the native host/controller registrations and reject restoration of the old redirects.
+
+### Pinned source compatibility
+- Updated Search fallback anchors to the actual pinned `GetPrepopulatedFallbackSearch()` implementation and its reviewed fallback path.
+- Updated Windows install-mode anchors to the current `browser_prog_id_*`, PDF ProgID, direct-launch and product/company identity fields used by the pinned source.
+- Updated Windows executable/build anchors to the current PE/PDB output, reorder-imports, mini-installer, central filename constants, VisualElements, launcher fallback and proxy build path used by the source transformation.
+- Added revision-pinned anchors for the profile-picker and password-manager WebUI registrations used by the new native `profiles` and `passwords` hosts.
+- Kept source-anchor changes tied to exact transform inputs instead of weakening the verifier to broad or incidental strings.
+
+### Localization and build documentation
+- Tightened source/fork verification to require exactly **38 supported locales** with English (`en-US`) default and Croatian (`hr`) required.
+- Aligned `BUILDING.md`, source-builder documentation and release procedure with the actual transform sequence.
+- Removed the redundant documented second invocation of the product-version rewrite because `apply-engine-branding.ps1` already applies it as a mandatory transform.
+- Kept the controlled Windows full-source build manual/self-hosted and retained sandbox-preserving runtime smoke, source-built performance evidence and signing as release gates.
+
+### Versioning
+- Advanced `VERSION`, Ghosium Privacy, Ghosium Search, built-in Store metadata and the disabled Windows update baseline to `0.1.4`.
+- The checked-in update baseline remains `enabled:false` with empty SHA-256 and zero size until a real verified signed 0.1.4 Setup exists.
+
+> `0.1.4` is not considered a released source-built browser until the controlled full-source Windows workflow compiles, measures, signs and runtime-tests the exact production commit.
+
 ## 0.1.3 — Search redesign, measured performance gate and release hardening
 
 ### Ghosium Search
