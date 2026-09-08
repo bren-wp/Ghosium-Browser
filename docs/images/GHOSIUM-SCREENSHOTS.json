@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "product": "Ghosium Browser",
+  "productVersion": "0.1.9",
+  "repositoryCommit": "0757ea1f90c31c6bfdc4d750235fa4ec933cb45f",
+  "engineSnapshotRevision": "1693066",
+  "renderer": "pinned Chromium Windows x64 snapshot",
+  "renderingMode": "checked-in Ghosium surface files rendered with relative CSS/SVG assets",
+  "javascriptEnabled": false,
+  "surfaces": [
+    "extension/newtab.html",
+    "extension/options.html",
+    "extension/popup.html"
+  ],
+  "fullSourceBrowserShellScreenshot": false,
+  "note": "These images are actual Chromium-rendered checked-in Ghosium-owned UI surfaces, not design mockups. They do not claim to show the canonical full-source native browser chrome."
+}
