@@ -63,10 +63,10 @@ FILE_ANCHORS: dict[str, tuple[str, ...]] = {
         'chrome_logo_dark.svg',
     ),
     "components/search_engines/template_url_prepopulate_data.cc": (
-        "google.com",
-        "bing.com",
-        "yahoo.com",
-        "duckduckgo.com",
+        "std::unique_ptr<TemplateURLData> GetPrepopulatedFallbackSearch(",
+        "return FindPrepopulatedEngineInternal(prefs, regional_prepopulated_engines,",
+        "google.id,",
+        "/*use_first_as_fallback=*/true",
     ),
     "chrome/install_static/chromium_install_modes.h": (
         'kCompanyPathName[] = L"Chromium"',
@@ -174,7 +174,7 @@ FILE_ANCHORS: dict[str, tuple[str, ...]] = {
     "components/vector_icons/chromium/product_refresh.icon": (),
 }
 
-SEARCH_FALLBACK_BLOCK = "TemplateURLPrepopulateData::GetPrepopulatedEngines"
+SEARCH_FALLBACK_BLOCK = "std::unique_ptr<TemplateURLData> GetPrepopulatedFallbackSearch("
 LOCALE_DIRECTORIES: tuple[tuple[str, str], ...] = (
     ("chrome/app/resources", "chromium_strings_"),
     ("chrome/app/resources", "generated_resources_"),
