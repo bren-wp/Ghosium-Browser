@@ -54,8 +54,8 @@ FILE_ANCHORS: dict[str, tuple[str, ...]] = {
         "MAC_BUNDLE_ID=org.chromium.Chromium",
     ),
     "chrome/browser/resources/signin/managed_user_profile_notice/managed_user_profile_notice_value_prop.html.ts": (
-        "managedUserProfileNoticeValuePropTitle",
-        "managedUserProfileNoticeValuePropSubtitle",
+        'alt="Chrome logo"',
+        'src="chrome://theme/current-channel-logo@2x"',
     ),
     "chrome/browser/resources/contextual_tasks/top_toolbar_logo.html.ts": (
         "chromeProductLogo",
@@ -317,8 +317,8 @@ def parse_args() -> argparse.Namespace:
 
 
 def main() -> int:
-    args = parser_args = parse_args()
-    revision = parser_args.revision or (
+    args = parse_args()
+    revision = args.revision or (
         REPO_ROOT / "ENGINE_SOURCE_REVISION"
     ).read_text(encoding="utf-8").strip()
     if not re.fullmatch(r"[0-9a-f]{40}", revision):
