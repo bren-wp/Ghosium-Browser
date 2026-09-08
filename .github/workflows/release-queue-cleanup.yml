@@ -1,0 +1,168 @@
+name: Ghosium 0.1.9 Release Queue Cleanup
+
+on:
+  push:
+    branches:
+      - 'ghosium/ops/cleanup-0.1.9-queue'
+    paths:
+      - '.release/queue-cleanup-0.1.9.request'
+
+permissions:
+  actions: write
+  contents: read
+
+concurrency:
+  group: ghosium-release-queue-cleanup-0.1.9
+  cancel-in-progress: false
+
+jobs:
+  cleanup:
+    name: Cancel only verified superseded full-source runs
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout ops request
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Validate cleanup request and canonical candidate
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          marker='.release/queue-cleanup-0.1.9.request'
+          test -f "$marker"
+          grep -Fxq 'version=0.1.9' "$marker"
+          grep -Fxq 'canonical_run=34290511163' "$marker"
+          grep -Fxq 'canonical_sha=727db780ad022642bd7d2a20ea9fc59124b244bb' "$marker"
+          test "$(tr -d '\r\n ' < VERSION)" = '0.1.9'
+
+          canonical_run=34290511163
+          canonical_sha='727db780ad022642bd7d2a20ea9fc59124b244bb'
+          canonical_ref='ghosium/release/0.1.9'
+          canonical="$(gh api "/repos/$GITHUB_REPOSITORY/actions/runs/$canonical_run")"
+
+          test "$(jq -r '.name' <<<"$canonical")" = 'Ghosium Full-Source Windows Build'
+          test "$(jq -r '.path' <<<"$canonical")" = '.github/workflows/full-source-windows-build.yml'
+          test "$(jq -r '.head_branch' <<<"$canonical")" = "$canonical_ref"
+          test "$(jq -r '.head_sha' <<<"$canonical")" = "$canonical_sha"
+
+          canonical_status="$(jq -r '.status' <<<"$canonical")"
+          case "$canonical_status" in
+            queued|in_progress|waiting|pending|requested)
+              ;;
+            completed)
+              if [[ "$(jq -r '.conclusion // empty' <<<"$canonical")" == 'cancelled' ]]; then
+                echo 'Canonical 0.1.9 run is cancelled; refusing stale-run cleanup.' >&2
+                exit 1
+              fi
+              ;;
+            *)
+              echo "Unexpected canonical run status: $canonical_status" >&2
+              exit 1
+              ;;
+          esac
+
+          echo "Canonical 0.1.9 run $canonical_run is protected: $canonical_ref @ $canonical_sha ($canonical_status)."
+
+      - name: Cancel exact superseded full-source runs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          canonical_run=34290511163
+          workflow_path='.github/workflows/full-source-windows-build.yml'
+
+          targets=(
+            '34179316895|ghosium/0.1.1-public-branding|e06dfc13e8ab3eb4854c354ec99cd32f94417c8b'
+            '34183762471|main|fc0d9af56984ba150bddbb317de53a7cf1c79f4e'
+            '34279324268|ghosium/release/0.1.8|60c163973841fcb7624449d9c81695b99613dd5d'
+          )
+
+          for target in "${targets[@]}"; do
+            IFS='|' read -r run_id expected_ref expected_sha <<<"$target"
+
+            if [[ "$run_id" == "$canonical_run" ]]; then
+              echo 'Safety violation: canonical run appeared in stale target set.' >&2
+              exit 1
+            fi
+
+            run="$(gh api "/repos/$GITHUB_REPOSITORY/actions/runs/$run_id")"
+            name="$(jq -r '.name' <<<"$run")"
+            path="$(jq -r '.path' <<<"$run")"
+            ref="$(jq -r '.head_branch' <<<"$run")"
+            sha="$(jq -r '.head_sha' <<<"$run")"
+            status="$(jq -r '.status' <<<"$run")"
+
+            test "$name" = 'Ghosium Full-Source Windows Build'
+            test "$path" = "$workflow_path"
+            test "$ref" = "$expected_ref"
+            test "$sha" = "$expected_sha"
+
+            case "$status" in
+              queued|in_progress|waiting|pending|requested)
+                echo "Cancelling verified superseded run $run_id: $ref @ $sha ($status)."
+                gh api --method POST "/repos/$GITHUB_REPOSITORY/actions/runs/$run_id/cancel"
+                ;;
+              completed)
+                echo "Superseded run $run_id is already completed; no cancellation needed."
+                ;;
+              *)
+                echo "Unexpected status for superseded run $run_id: $status" >&2
+                exit 1
+                ;;
+            esac
+          done
+
+      - name: Verify queue cleanup without touching canonical candidate
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          active_status() {
+            case "$1" in
+              queued|in_progress|waiting|pending|requested) return 0 ;;
+              *) return 1 ;;
+            esac
+          }
+
+          stale_runs=(34179316895 34183762471 34279324268)
+          for run_id in "${stale_runs[@]}"; do
+            inactive=false
+            for _ in {1..12}; do
+              status="$(gh api "/repos/$GITHUB_REPOSITORY/actions/runs/$run_id" --jq '.status')"
+              if ! active_status "$status"; then
+                inactive=true
+                break
+              fi
+              sleep 5
+            done
+            if [[ "$inactive" != true ]]; then
+              echo "Superseded run $run_id is still active after cancellation request." >&2
+              exit 1
+            fi
+            echo "Superseded run $run_id is inactive."
+          done
+
+          canonical_run=34290511163
+          canonical="$(gh api "/repos/$GITHUB_REPOSITORY/actions/runs/$canonical_run")"
+          test "$(jq -r '.head_branch' <<<"$canonical")" = 'ghosium/release/0.1.9'
+          test "$(jq -r '.head_sha' <<<"$canonical")" = '727db780ad022642bd7d2a20ea9fc59124b244bb'
+          test "$(jq -r '.path' <<<"$canonical")" = '.github/workflows/full-source-windows-build.yml'
+
+          canonical_status="$(jq -r '.status' <<<"$canonical")"
+          canonical_conclusion="$(jq -r '.conclusion // empty' <<<"$canonical")"
+          if [[ "$canonical_status" == 'completed' && "$canonical_conclusion" == 'cancelled' ]]; then
+            echo 'Canonical 0.1.9 run was cancelled unexpectedly.' >&2
+            exit 1
+          fi
+
+          echo "Canonical 0.1.9 run remains protected with status $canonical_status."
