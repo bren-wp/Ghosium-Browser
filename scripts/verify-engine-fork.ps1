@@ -73,7 +73,6 @@ if ($config.product.publisher -ne 'Brendigo' -or $config.product.windowsCompanyN
 
 $expectedUrls = @(
   'https://ghosium.com/',
-  'https://search.ghosium.com/',
   'https://store.ghosium.com/',
   'https://ghosium.com/legal/terms',
   'https://ghosium.com/legal/privacy-policy',
@@ -356,20 +355,24 @@ if ($SourceRoot) {
   }
 
   $searchSource = Get-Content (Join-Path $resolvedSourceRoot 'components/search_engines/template_url_prepopulate_data.cc') -Raw
-  foreach ($requiredSearchIdentity in @(
+  foreach ($requiredGoogleFallback in @(
+    'return FindPrepopulatedEngineInternal(prefs, regional_prepopulated_engines,',
+    'google.id,',
+    '/*use_first_as_fallback=*/true'
+  )) {
+    if (!$searchSource.Contains($requiredGoogleFallback)) {
+      throw "Google Search fallback integration is missing: $requiredGoogleFallback"
+    }
+  }
+  foreach ($forbiddenSearchIdentity in @(
     'Ghosium Search',
-    'u"search.ghosium.com"',
-    'https://search.ghosium.com/?q={searchTerms}',
-    'https://search.ghosium.com/api/suggest.php?q={searchTerms}',
+    'search.ghosium.com',
     'prepopulate_id = 1101',
     '9e993bd9-c256-42d7-a1b1-000000001101'
   )) {
-    if (!$searchSource.Contains($requiredSearchIdentity)) {
-      throw "Ghosium Search source integration is missing: $requiredSearchIdentity"
+    if ($searchSource.Contains($forbiddenSearchIdentity)) {
+      throw "Retired Ghosium Search integration remains in engine source: $forbiddenSearchIdentity"
     }
-  }
-  if ($searchSource -match '(?s)Ghosium Search.*?send_x_geo_header\s*=\s*true') {
-    throw 'Ghosium Search must not enable the privacy-sensitive X-Geo header.'
   }
 
   $windowsIdentity = Get-Content (Join-Path $resolvedSourceRoot 'chrome/install_static/chromium_install_modes.h') -Raw

@@ -7,8 +7,6 @@ on:
     paths:
       - 'README.md'
       - 'extension/**'
-      - 'search-provider/**'
-      - 'search-web/**'
       - 'store-web/**'
       - 'updates-web/**'
       - 'installer/**'
@@ -22,8 +20,6 @@ on:
     paths:
       - 'README.md'
       - 'extension/**'
-      - 'search-provider/**'
-      - 'search-web/**'
       - 'store-web/**'
       - 'updates-web/**'
       - 'installer/**'
@@ -57,8 +53,6 @@ jobs:
 
           roots = (
               Path('extension'),
-              Path('search-provider'),
-              Path('search-web'),
               Path('store-web'),
               Path('updates-web'),
               Path('installer'),
@@ -71,9 +65,7 @@ jobs:
           )
           failures = []
 
-          # Research and automated test fixtures may discuss external projects.
-          # They are never distributed as browser UI/product identity.
-          explicit_non_product = {Path('search-web/RESEARCH.md')}
+          explicit_non_product = set()
 
           def is_non_product(path: Path) -> bool:
               if path in explicit_non_product:
@@ -102,8 +94,6 @@ jobs:
               for number, line in enumerate(public_readme.splitlines(), 1):
                   if legacy.search(line):
                       failures.append(f'README.md:{number}: {line.strip()}')
-              # The legal section is the one intentional exception: third-party
-              # attribution must remain accurate even though product UI is clean.
               if 'Chromium' not in legal_readme or 'third-party' not in legal_readme.lower():
                   failures.append('README.md: required third-party attribution is missing from the legal-only section')
 
@@ -115,35 +105,45 @@ jobs:
 
           print('Ghosium public/distributable branding: zero legacy product names; legal attribution isolated.')
 
-      - name: Verify Ghosium product destinations
+      - name: Verify first-party destinations and Google Search boundary
         shell: python
         run: |
           from pathlib import Path
           import re
 
-          files = (
-              Path('extension/newtab.html'),
-              Path('search-provider/manifest.json'),
-              Path('search-web/index.php'),
+          ghosium_files = (
               Path('store-web/index.php'),
               Path('updates-web/index.php'),
           )
-          allowed_hosts = {
+          allowed_ghosium_hosts = {
               'ghosium.com',
-              'search.ghosium.com',
               'store.ghosium.com',
               'updates.ghosium.com',
           }
-          url_re = re.compile(r'https://([a-z0-9.-]+)(?:/[^\s"\'<>)]*)?', re.I)
+          url_re = re.compile(r"https://([a-z0-9.-]+)(?:/[^\s\"'<>)]*)?", re.I)
 
-          for path in files:
+          for path in ghosium_files:
               text = path.read_text(encoding='utf-8')
               for host in url_re.findall(text):
-                  host = host.lower()
-                  if host not in allowed_hosts:
+                  if host.lower() not in allowed_ghosium_hosts:
                       raise SystemExit(f'Non-Ghosium product URL in {path}: https://{host}')
 
-          print('Ghosium public product destinations: OK')
+          newtab = Path('extension/newtab.html').read_text(encoding='utf-8')
+          if 'action="https://www.google.com/search"' not in newtab:
+              raise SystemExit('New Tab must submit search queries directly to Google Search.')
+          if 'name="q"' not in newtab:
+              raise SystemExit('New Tab Google Search form must submit the q parameter.')
+          for forbidden in ('search.ghosium.com', 'Ghosium Search', 'Search with Ghosium'):
+              if forbidden in newtab:
+                  raise SystemExit(f'Retired first-party Search surface remains in New Tab: {forbidden}')
+
+          newtab_hosts = {host.lower() for host in url_re.findall(newtab)}
+          allowed_newtab_hosts = allowed_ghosium_hosts | {'www.google.com'}
+          unexpected = sorted(newtab_hosts - allowed_newtab_hosts)
+          if unexpected:
+              raise SystemExit('Unexpected New Tab external destination(s): ' + ', '.join(unexpected))
+
+          print('Ghosium destinations + explicit Google Search boundary: OK')
 
       - name: Verify Ghost route contract is documented
         shell: bash

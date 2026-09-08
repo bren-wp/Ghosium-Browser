@@ -39,7 +39,7 @@ jobs:
           if not re.fullmatch(r'0\.[1-9]\d*\.\d+', version):
               raise SystemExit(f'Invalid Ghosium product VERSION: {version!r}')
 
-          for path in (Path('extension/manifest.json'), Path('search-provider/manifest.json')):
+          for path in (Path('extension/manifest.json'),):
               data = json.loads(path.read_text(encoding='utf-8'))
               if data.get('version') != version:
                   raise SystemExit(f'{path}: {data.get("version")!r} != VERSION {version}')

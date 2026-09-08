@@ -8,7 +8,6 @@ on:
       - 'store-web/**'
       - 'scripts/verify-store.php'
       - 'extension/manifest.json'
-      - 'search-provider/manifest.json'
       - '.github/workflows/store-trust-audit.yml'
   push:
     branches:
@@ -17,7 +16,6 @@ on:
       - 'store-web/**'
       - 'scripts/verify-store.php'
       - 'extension/manifest.json'
-      - 'search-provider/manifest.json'
       - '.github/workflows/store-trust-audit.yml'
   workflow_dispatch:
 
@@ -76,7 +74,7 @@ jobs:
 
           curl --fail --silent --show-error http://127.0.0.1:8100/ | grep -Fq 'Ghosium Store'
           curl --fail --silent --show-error http://127.0.0.1:8100/api/catalog.php | grep -Fq '"schemaVersion":1'
-          curl --fail --silent --show-error 'http://127.0.0.1:8100/api/update.php?id=ghosium-search&version=0.7.0' | grep -Fq '"updateAvailable":false'
+          curl --fail --silent --show-error 'http://127.0.0.1:8100/api/update.php?id=ghosium-privacy&version=0.1.6' | grep -Fq '"updateAvailable":false'
           curl --fail --silent --show-error http://127.0.0.1:8100/api/revocations.php | grep -Fq '"revocations":[]'
           curl --fail --silent --show-error http://127.0.0.1:8100/api/keys.php | grep -Fq '"keys":[]'
 

@@ -6,34 +6,41 @@ Only the newest stable Ghosium Browser release is supported with security fixes.
 
 ## Security baseline
 
-Ghosium inherits a large security surface from its pinned upstream open-source browser engine. Each release therefore pins a specific `ENGINE_REVISION`; updating that revision and rerunning the complete CI pipeline is part of Ghosium security maintenance.
+Ghosium inherits a large security surface from its pinned upstream open-source browser engine. Each release therefore pins an exact `ENGINE_SOURCE_REVISION`; updating that revision and rerunning the complete source/CI pipeline is part of Ghosium security maintenance.
 
-Ghosium does not disable the browser sandbox, certificate validation or core process isolation in order to save memory.
+Ghosium does not disable the browser sandbox, GPU sandbox, certificate validation, site/process isolation or update verification to improve performance or reduce memory use.
 
-## Launcher protections
+## Source-built protections
 
-The native launcher:
+The controlled Windows source build and verification chain preserves:
 
-- is compiled with `/GS`, `/sdl`, Control Flow Guard, ASLR, NX compatibility and CET compatibility
-- rejects caller switches that would disable the sandbox, web security or certificate validation
-- controls its own profile path, bundled components and selected language
-- applies Windows image-load mitigation policy
-- disables selected background networking/reporting features
-- validates required runtime files before launch
+- compiler/toolchain memory-safety and control-flow mitigations;
+- browser, renderer and GPU sandbox boundaries;
+- site/process isolation and TLS/certificate validation;
+- extension permission and package-trust checks;
+- fail-closed update size, SHA-256, Authenticode publisher and PE metadata validation;
+- Ghosium/Brendigo executable identity and canonical same-Setup maintenance;
+- pinned-source verification before product transforms are applied.
+
+Search-provider customization does not weaken these boundaries. Ghosium keeps Chromium's reviewed Google Search fallback and does not inject a first-party search engine into source.
 
 ## Release verification
 
-CI verifies:
+Hosted CI verifies source transforms, public surfaces, JSON/PHP syntax where applicable, Store trust, updater behavior, installer contracts, localization, release metadata and security invariants.
 
-- Ghosium-owned desktop executable source remains C++ only
-- bundled browser components remain script-free
-- manifests and JSON parse successfully
-- Ghosium Search and Ghosium Store PHP sources pass syntax tests
-- web-service smoke tests pass
-- the native launcher self-test passes
-- the bundled engine starts in a headless smoke test
-- Setup and Portable EXEs are produced and have plausible sizes
-- stable Release publication attaches only the two intended EXE assets
+The controlled full-source Windows release additionally requires:
+
+- source-builder preflight and exact pinned source/tool revisions;
+- successful native browser/runtime compilation;
+- source-built runtime smoke;
+- measured performance evidence;
+- canonical Setup assembly from verified source-built runtime;
+- install/update/uninstall round-trip validation;
+- valid production Authenticode signing on `main`;
+- exact update-manifest and SHA-256 provenance;
+- immutable release publication.
+
+Hosted contracts alone are not proof that a production binary was built or signed.
 
 ## Reporting
 

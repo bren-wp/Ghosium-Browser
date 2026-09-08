@@ -13,7 +13,6 @@
   },
   "productUrls": {
     "home": "https://ghosium.com/",
-    "search": "https://search.ghosium.com/",
     "store": "https://store.ghosium.com/",
     "terms": "https://ghosium.com/legal/terms",
     "privacy": "https://ghosium.com/legal/privacy-policy",
@@ -23,7 +22,6 @@
   },
   "allowedProductUrls": [
     "https://ghosium.com/",
-    "https://search.ghosium.com/",
     "https://store.ghosium.com/",
     "https://ghosium.com/legal/terms",
     "https://ghosium.com/legal/privacy-policy",
@@ -101,5 +99,11 @@
     "certificateValidation": "required",
     "extensionSignatureVerification": "required",
     "updateSignatureVerification": "required"
+  },
+  "externalServices": {
+    "defaultSearch": {
+      "name": "Google Search",
+      "searchUrl": "https://www.google.com/search?q={searchTerms}"
+    }
   }
 }

@@ -2,7 +2,7 @@
 
 This directory contains the Ghosium-owned product configuration, localization contract, brand assets and reviewed Windows build arguments used to transform the exact source revision pinned in `ENGINE_SOURCE_REVISION`.
 
-The active development version is `0.1.2`. A source patch or audit is not a finished browser build; production status requires the controlled full-source Windows compile, runtime verification, canonical Setup round trip and release evidence for the exact commit.
+The active development version is `0.1.6`. A source patch or audit is not a finished browser build; production status requires the controlled full-source Windows compile, runtime verification, canonical Setup round trip and release evidence for the exact commit.
 
 ## Source lock
 
@@ -22,7 +22,7 @@ The transformation owns the Ghosium product layer, including:
 - canonical `Ghosium-Browser.exe` and `Ghosium-Proxy.exe` Windows identities;
 - product artwork and Windows icon resources;
 - `ghost://` and `ghost-untrusted://` internal WebUI namespace;
-- Ghosium Search, Store, Support, Security, Terms, Privacy and update destinations;
+- Google Search as the explicit external default search service plus Ghosium Store, Support, Security, Terms, Privacy and update destinations;
 - local-only profile/account surfaces where cloud services are not owned by Ghosium;
 - native Ghosium product-version reporting;
 - native same-product update integration;
@@ -33,7 +33,7 @@ Normal web navigation is never restricted to Ghosium-owned hosts. Host restricti
 
 ## Public branding boundary
 
-Public Ghosium product surfaces must not expose legacy upstream browser product branding. This includes About, Settings, New Tab, installer UI, shortcuts, public executable metadata, Search/Store/Update pages and first-party help links.
+Public Ghosium product surfaces must not expose legacy upstream browser product branding. This includes About, Settings, New Tab, installer UI, shortcuts, public executable metadata, Store/Update pages and first-party help links. External services such as Google Search must be named accurately rather than relabeled as Ghosium products.
 
 Technical source-tree paths, symbol names and GN/Ninja targets can retain upstream implementation names when changing them would require a coordinated build-system/runtime migration. Those names are engineering dependencies, not public product identity.
 
@@ -41,7 +41,7 @@ Required third-party copyright, license and attribution text is preserved only i
 
 ## Languages
 
-Ghosium `0.1.2` defines **38 supported locales**:
+Ghosium `0.1.6` defines **38 supported locales**:
 
 ```text
 en-US, hr, de, fr, es, it, pt-PT, pt-BR, nl, pl,
@@ -85,7 +85,7 @@ The current contract preserves:
 - user-configured exceptions;
 - explicit user preferences.
 
-Renderer process caps and security-disabling flags are forbidden as RAM shortcuts. Performance claims are valid only after a comparable benchmark of the compiled source-built `0.1.2` binary.
+Renderer process caps and security-disabling flags are forbidden as RAM shortcuts. Performance claims are valid only after a comparable benchmark of the compiled source-built `0.1.6` binary.
 
 ## Internal Ghosium URLs
 
@@ -179,11 +179,11 @@ Source, branding, performance and packaging changes must preserve:
 
 No performance result justifies disabling one of these boundaries.
 
-## Store and Search
+## Store and search
 
 `store.ghosium.com` is the first-party Ghosium extension-store surface. Package trust must remain fail-closed with explicit permission review, package integrity validation, signing/key trust, revocation and rollback-safe update behavior.
 
-`search.ghosium.com` is the Ghosium default search endpoint. Search results are ordinary user-requested web destinations and are not restricted by the product-link host allowlist.
+Google Search is the default external web search service. The Ghosium source transform keeps Chromium's reviewed Google fallback and does not inject a Ghosium-owned search provider. User, policy and extension search overrides retain native precedence.
 
 ## Release gate
 
@@ -204,4 +204,4 @@ A production candidate must provide all of the following for the exact commit:
 13. SHA-256 evidence;
 14. immutable release publication.
 
-Until that controlled compile and runtime chain succeeds, `0.1.2` remains a source-development milestone rather than a proven source-built release.
+Until that controlled compile and runtime chain succeeds, `0.1.6` remains a source-development milestone rather than a proven source-built release.

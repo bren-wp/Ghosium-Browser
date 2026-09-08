@@ -303,7 +303,13 @@ jobs:
           grep -F 'AppendArgNative(L"/DELETESELF")' "$updater"
 
           grep -F 'Customize Ghosium' "$src/chrome/app/chromium_strings.grd"
-          grep -F 'Ghosium Search' "$src/components/search_engines/template_url_prepopulate_data.cc"
+          grep -F 'google.id,' "$src/components/search_engines/template_url_prepopulate_data.cc"
+          grep -F '/*use_first_as_fallback=*/true' "$src/components/search_engines/template_url_prepopulate_data.cc"
+          if grep -Fq 'Ghosium Search' "$src/components/search_engines/template_url_prepopulate_data.cc" || \
+             grep -Fq 'search.ghosium.com' "$src/components/search_engines/template_url_prepopulate_data.cc"; then
+            echo 'Retired Ghosium Search source integration returned.' >&2
+            exit 1
+          fi
           grep -F 'kCompanyPathName[] = L"Brendigo"' "$src/chrome/install_static/chromium_install_modes.h"
           grep -F 'kProductPathName[] = L"Ghosium"' "$src/chrome/install_static/chromium_install_modes.h"
           grep -F '$root_out_dir/Ghosium-Browser.exe' "$src/chrome/BUILD.gn"
@@ -315,8 +321,6 @@ jobs:
           grep -F 'kChromeUIScheme[] = "ghost"' "$src/content/public/common/url_constants.h"
           grep -F 'kChromeUIUntrustedScheme[] = "ghost-untrusted"' "$src/content/public/common/url_constants.h"
 
-          # profiles/passwords must be actual native WebUI hosts using the
-          # existing maintained controllers, never browser_about_handler redirects.
           grep -F 'kChromeUIProfilePickerHost[] = "profiles"' "$webui_constants"
           grep -F 'kChromeUIProfilePickerUrl[] = "ghost://profiles/"' "$webui_constants"
           grep -F 'kChromeUIPasswordManagerHost[] = "passwords"' "$password_constants"

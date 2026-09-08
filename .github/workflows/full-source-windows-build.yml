@@ -41,7 +41,6 @@ jobs:
 
           manifests = [
               Path('extension/manifest.json'),
-              Path('search-provider/manifest.json'),
           ]
           for path in manifests:
               data = json.loads(path.read_text(encoding='utf-8'))

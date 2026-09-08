@@ -189,12 +189,12 @@ if ($LASTEXITCODE -ne 0) {
   throw 'Ghosium first-party product link routing failed.'
 }
 
-# Install Ghosium Search as the distribution fallback in the owned search layer.
-# This intentionally does not edit third_party engine data and does not use
-# enterprise policy to force the provider.
+# Preserve Chromium's reviewed Google Search fallback. This is a no-op source
+# guard: explicit user choices, policy and extension overrides keep their native
+# precedence and no Ghosium-owned search provider is injected.
 & (Join-Path $PSScriptRoot 'rewrite-engine-default-search.ps1') -SourceRoot $sourceRootResolved
 if ($LASTEXITCODE -ne 0) {
-  throw 'Ghosium Search source integration failed.'
+  throw 'Google Search fallback verification failed.'
 }
 
 # Rebrand Windows install paths, Default Programs identities, document ProgIDs

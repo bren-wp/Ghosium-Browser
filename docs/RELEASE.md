@@ -2,14 +2,14 @@
 
 ## Current product version
 
-The active development version is `0.1.5`.
+The active development version is `0.1.6`.
 
 Version policy:
 
 - `0.x.0` — meaningful product/security/performance milestone;
 - `0.x.y` — production correction or bounded product improvement.
 
-Every production PR must advance `VERSION`. Ghosium Privacy, Ghosium Search, built-in Store metadata and the disabled Windows update baseline must remain synchronized.
+Every production PR must advance `VERSION`. Ghosium Privacy, built-in Store metadata and the disabled Windows update baseline must remain synchronized.
 
 New releases use the immutable namespace:
 
@@ -20,27 +20,26 @@ ghosium-v0.1.2
 ghosium-v0.1.3
 ghosium-v0.1.4
 ghosium-v0.1.5
+ghosium-v0.1.6
 ghosium-v0.2.0
 ```
 
 Historical releases remain untouched.
 
-## 0.1.5 release scope
+## 0.1.6 release scope
 
-The 0.1.5 line carries forward the 0.1.4 native-host, Search, localization, performance and release hardening. Its bounded release-engineering change fixes candidate/production ordering:
+The 0.1.6 line simplifies the search architecture and removes obsolete release orchestration state:
 
-- release candidates use the exact branch `ghosium/release/0.1.5`;
-- the active request marker is exactly `.release/ghosium-v0.1.5.request`;
-- the request marker is version-bound to `VERSION` and exactly one active Ghosium request marker is allowed;
-- candidate dispatch refuses an already-published immutable release;
-- candidate dispatch runs only on `ghosium/release/<VERSION>`;
-- merging a candidate marker into `main` does not automatically dispatch production;
-- production remains a separate explicit gate after successful candidate source-build evidence and confirmation that the exact candidate tree is the intended `main` release tree;
-- the checked-in update baseline is synchronized to 0.1.5 but stays fail-closed with `enabled:false`, empty SHA-256 and zero size until a real signed package exists.
+- Google Search is the default external web search service;
+- Chromium's reviewed Google fallback remains intact instead of being replaced by a Ghosium-specific engine entry;
+- the former first-party search provider extension, PHP search service, Search-only deployment docs and Search-only CI are removed;
+- New Tab submits search queries directly to `https://www.google.com/search` using the standard `q` parameter;
+- explicit user search-engine choices, enterprise policy and extension overrides retain native precedence;
+- Ghosium Privacy tracker/campaign-parameter rules remain independent of the search provider;
+- stale 0.1.5 candidate/production markers and the hard-coded 0.1.5 production dispatcher are removed;
+- the 0.1.6 checked-in update baseline remains fail-closed with `enabled:false`, empty SHA-256 and zero size until a real signed package exists.
 
-The product behavior inherited from 0.1.4 includes canonical native `ghost://profiles/` and `ghost://passwords/` hosts, 38 product locales, Ghosium Search, native Memory Saver defaults, source-built benchmark evidence and production signing gates.
-
-These changes are not a production-binary or numerical performance claim until the controlled full-source candidate and production workflows succeed for the exact release tree.
+This scope is not a production-binary or performance claim. Canonical release status still requires the controlled full-source candidate/production compile, runtime, performance, installer, signing and provenance gates for the exact 0.1.6 release tree.
 
 ## Candidate before production
 
@@ -178,17 +177,14 @@ Renderer-process limits are not accepted as a synthetic RAM optimization.
 
 ## Search gate
 
-The Ghosium Search production UI is deployed from `search-web/` and must remain:
+Ghosium Browser does not publish or bundle a first-party web search service. The release candidate must preserve all of the following:
 
-- visually aligned with Ghosium Browser;
-- responsive on desktop and mobile;
-- server-rendered with reusable components;
-- free of a public JavaScript runtime bundle;
-- free of inline JavaScript and inline CSS;
-- free of public developer/index-provider implementation details;
-- independent of Node/npm/Composer at request time.
-
-Advanced parser behavior such as `site:` and explicit `!bang` handling remains tested through the backend/API contract without being required on the public home page.
+- Chromium's reviewed Google fallback remains intact;
+- New Tab submits `q` directly to `https://www.google.com/search`;
+- no Ghosium-owned default-search provider is injected into engine source;
+- explicit user search-engine choices, enterprise policy and extension overrides retain native precedence;
+- no first-party Search server/deployment payload is packaged or published;
+- Google Search is described as an external service rather than a Ghosium privacy service.
 
 ## Update and uninstall gate
 

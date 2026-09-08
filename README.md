@@ -1,6 +1,6 @@
 # Ghosium Browser
 
-**Ghosium Browser by Brendigo** is a Windows x64 browser developed as a full-source Ghosium product. The current development version is **0.1.5**.
+**Ghosium Browser by Brendigo** is a Windows x64 browser developed as a full-source Ghosium product. The current development version is **0.1.6**.
 
 ## Product contract
 
@@ -9,7 +9,7 @@ Ghosium-controlled product surfaces use Ghosium/Brendigo identity:
 - product: **Ghosium Browser**
 - publisher: **Brendigo**
 - home: `https://ghosium.com/`
-- search: `https://search.ghosium.com/`
+- default search: **Google Search** (external service)
 - store: `https://store.ghosium.com/`
 - updates: `https://updates.ghosium.com/`
 - support: `https://ghosium.com/support`
@@ -31,12 +31,13 @@ ghosium-v0.1.2
 ghosium-v0.1.3
 ghosium-v0.1.4
 ghosium-v0.1.5
+ghosium-v0.1.6
 ghosium-v0.2.0
 ```
 
 Existing releases are never overwritten. A production release is allowed only after the exact commit passes the controlled full-source Windows compile, runtime checks, measured performance evidence, canonical Setup round trip, signing requirements, provenance and SHA-256 manifest generation.
 
-A source transformation audit or hosted CI contract is not proof that a production binary exists. **0.1.5 must not be described as a released source-built binary until the controlled Windows compile succeeds for the exact production commit.**
+A source transformation audit or hosted CI contract is not proof that a production binary exists. **0.1.6 must not be described as a released source-built binary until the controlled Windows compile succeeds for the exact production commit.**
 
 Release-candidate dispatch is version-bound to branches named `ghosium/release/<VERSION>`. Candidate request markers are not allowed to auto-dispatch a production build when merged into `main`; production is a separate explicit gate after candidate evidence has passed.
 
@@ -60,7 +61,7 @@ Runtime support is considered production-verified only after the full-source com
 
 ## Languages
 
-Ghosium 0.1.5 defines **38 supported product locales**. English (`en-US`) is the primary/default language and Croatian (`hr`) is required and selectable.
+Ghosium 0.1.6 defines **38 supported product locales**. English (`en-US`) is the primary/default language and Croatian (`hr`) is required and selectable.
 
 ```text
 en-US, hr, de, fr, es, it, pt-PT, pt-BR, nl, pl,
@@ -85,19 +86,13 @@ Ghosium-Browser-Setup.exe
 
 The production update path validates the Ghosium update manifest, newer version, exact byte size, SHA-256, Authenticode publisher and signed Ghosium/Brendigo PE metadata before executing the same Setup package in update mode. The checked-in update manifest is disabled until it describes a real signed package.
 
-## Ghosium Search
+## Search
 
-The first-party endpoint is:
+Ghosium Browser uses **Google Search** as its default web search service. New Tab queries are submitted directly to `https://www.google.com/search`; Ghosium does not proxy them and does not operate a first-party search endpoint.
 
-```text
-https://search.ghosium.com/?q={searchTerms}
-```
+The browser retains the pinned engine's reviewed Google Search fallback instead of injecting a Ghosium-specific provider. Explicit user search-engine choices, enterprise policy and extension overrides retain their native precedence.
 
-The 0.1.3 public Search interface was rebuilt from the ground up to match Ghosium Browser's dark surface and mint/teal/cyan visual language. The home page presents one focused search box and does not expose index/provider implementation details or developer-oriented operator examples.
-
-`search-web/` uses reusable server-rendered PHP UI components and modern responsive CSS. It has **no JavaScript runtime bundle or client-framework hydration layer** in the search request path. Advanced query parsing remains available in the backend/API without cluttering the public interface.
-
-See `search-web/README.md` for deployment and engine details.
+The retired first-party search extension and server application are not part of the current product architecture.
 
 ## Ghosium Store
 
@@ -148,7 +143,7 @@ Current conservative source-level defaults use native engine mechanisms: Memory 
 
 No performance optimization may disable or weaken sandboxing, renderer/site isolation, certificate validation, extension verification or update verification. Renderer-process caps are not used as a RAM shortcut.
 
-Every source-built release candidate must produce `GHOSIUM-PERFORMANCE.json` from the newly compiled `Ghosium-Browser.exe`. No numerical 0.1.5 performance claim is valid until that evidence exists.
+Every source-built release candidate must produce `GHOSIUM-PERFORMANCE.json` from the newly compiled `Ghosium-Browser.exe`. No numerical 0.1.6 performance claim is valid until that evidence exists.
 
 ## Production signing
 
@@ -181,10 +176,8 @@ Internal build intermediates are evidence only; the end-user Windows product is 
 .github/workflows/      CI, source-build, update, release and regression contracts
 engine/                 Ghosium product metadata, localization, branding and build configuration
 extension/              Ghosium Privacy and New Tab component
-search-provider/        Ghosium Search browser integration
 installer/              canonical same-Setup Windows installer/update/uninstall definition
 scripts/                source transformation, verification, packaging and benchmark tooling
-search-web/             shared-hosting Ghosium Search
 updates-web/            fail-closed Ghosium update endpoint
 store-web/              shared-hosting Ghosium Store
 docs/                   architecture, security, release, performance and build documentation

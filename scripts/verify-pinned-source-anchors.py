@@ -264,7 +264,7 @@ def verify_file_anchors(revision: str) -> None:
             )
         if path.endswith("template_url_prepopulate_data.cc") and SEARCH_FALLBACK_BLOCK not in text:
             raise RuntimeError(
-                "Pinned engine fallback-search implementation no longer matches the reviewed rewrite block."
+                "Pinned engine Google fallback-search implementation no longer matches the reviewed source contract."
             )
         print(f"OK source anchors: {path} ({len(anchors)} required literal(s))")
 

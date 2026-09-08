@@ -441,7 +441,6 @@ setup_ready:
   CreateShortcut "$DESKTOP\Ghosium Browser.lnk" "$INSTDIR\${PRODUCT_EXE}"
 
   WriteINIStr "$SMPROGRAMS\Ghosium Browser\Ghosium Home.url" "InternetShortcut" "URL" "https://ghosium.com/"
-  WriteINIStr "$SMPROGRAMS\Ghosium Browser\Ghosium Search.url" "InternetShortcut" "URL" "https://search.ghosium.com/"
   WriteINIStr "$SMPROGRAMS\Ghosium Browser\Ghosium Store.url" "InternetShortcut" "URL" "https://store.ghosium.com/"
   WriteINIStr "$SMPROGRAMS\Ghosium Browser\Support.url" "InternetShortcut" "URL" "https://ghosium.com/support"
   WriteINIStr "$SMPROGRAMS\Ghosium Browser\Security.url" "InternetShortcut" "URL" "https://ghosium.com/security"
