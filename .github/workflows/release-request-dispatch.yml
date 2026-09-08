@@ -1,24 +1,23 @@
-name: Ghosium 0.1.4 Release Request
+name: Ghosium Release Candidate Request
 
 on:
   push:
     branches:
-      - main
-      - ghosium/0.1.1-public-branding
+      - 'ghosium/release/**'
     paths:
-      - '.release/ghosium-v0.1.4.request'
+      - '.release/*.request'
 
 permissions:
   actions: write
   contents: read
 
 concurrency:
-  group: ghosium-0.1.4-release-request-${{ github.ref }}
+  group: ghosium-release-request-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
   dispatch-full-source:
-    name: Dispatch controlled full-source Windows build
+    name: Dispatch controlled full-source Windows candidate build
     runs-on: ubuntu-latest
     timeout-minutes: 5
 
@@ -29,24 +28,56 @@ jobs:
           persist-credentials: false
           fetch-depth: 1
 
-      - name: Validate immutable release request
+      - name: Validate version-bound release request
         shell: bash
         run: |
           set -euo pipefail
-          marker='.release/ghosium-v0.1.4.request'
+
+          version="$(tr -d '\r\n ' < VERSION)"
+          if [[ ! "$version" =~ ^0\.[1-9][0-9]*\.[0-9]+$ ]]; then
+            echo "Invalid Ghosium VERSION: $version" >&2
+            exit 1
+          fi
+
+          tag="ghosium-v${version}"
+          marker=".release/${tag}.request"
           test -f "$marker"
-          test "$(tr -d '\r\n ' < VERSION)" = '0.1.4'
-          test "$(tr -d '\r\n ' < "$marker")" = 'ghosium-v0.1.4'
+          test "$(tr -d '\r\n ' < "$marker")" = "$tag"
 
-          case "$GITHUB_REF" in
-            refs/heads/main|refs/heads/ghosium/0.1.1-public-branding) ;;
-            *)
-              echo "Refusing Ghosium 0.1.4 release request from unexpected ref: $GITHUB_REF" >&2
-              exit 1
-              ;;
-          esac
+          shopt -s nullglob
+          markers=(.release/ghosium-v*.request)
+          if (( ${#markers[@]} != 1 )); then
+            echo "Exactly one active Ghosium release request marker is required; found ${#markers[@]}." >&2
+            printf 'marker: %s\n' "${markers[@]:-<none>}" >&2
+            exit 1
+          fi
+          if [[ "${markers[0]}" != "$marker" ]]; then
+            echo "Active release marker does not match VERSION $version: ${markers[0]}" >&2
+            exit 1
+          fi
 
-      - name: Dispatch existing guarded production workflow
+          expected_ref="refs/heads/ghosium/release/${version}"
+          if [[ "$GITHUB_REF" != "$expected_ref" ]]; then
+            echo "Refusing release request from $GITHUB_REF; expected $expected_ref." >&2
+            exit 1
+          fi
+
+          echo "Validated Ghosium release candidate request: $tag on $GITHUB_REF_NAME"
+
+      - name: Refuse an already published immutable release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$(tr -d '\r\n ' < VERSION)"
+          tag="ghosium-v${version}"
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Release $tag already exists; immutable releases must never be rebuilt or overwritten." >&2
+            exit 1
+          fi
+
+      - name: Dispatch guarded full-source candidate workflow
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
@@ -59,4 +90,11 @@ jobs:
             "/repos/${GITHUB_REPOSITORY}/actions/workflows/full-source-windows-build.yml/dispatches" \
             -f ref="${GITHUB_REF_NAME}"
 
-          echo "Dispatched Ghosium 0.1.4 full-source workflow for ${GITHUB_REF_NAME}."
+          echo "Dispatched controlled Ghosium full-source candidate workflow for ${GITHUB_REF_NAME}."
+
+      - name: Document production separation
+        shell: bash
+        run: |
+          echo 'Candidate dispatch is intentionally limited to ghosium/release/<VERSION>.'
+          echo 'Merging the release marker into main does not auto-dispatch production.'
+          echo 'Production main must be dispatched only after candidate evidence is successful and the exact candidate tree is the intended main release tree.'
