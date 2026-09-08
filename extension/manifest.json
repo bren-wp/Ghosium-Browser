@@ -12,14 +12,18 @@
     "<all_urls>"
   ],
   "icons": {
-    "16": "ghosium.ico",
-    "32": "ghosium.ico",
-    "48": "ghosium.ico",
-    "128": "ghosium.ico"
+    "16": "icons/16.png",
+    "32": "icons/32.png",
+    "48": "icons/48.png",
+    "128": "icons/128.png"
   },
   "action": {
     "default_title": "Ghosium Privacy",
-    "default_icon": "ghosium.ico"
+    "default_icon": {
+      "16": "icons/16.png",
+      "32": "icons/32.png"
+    },
+    "default_popup": "popup.html"
   },
   "options_page": "options.html",
   "declarative_net_request": {
