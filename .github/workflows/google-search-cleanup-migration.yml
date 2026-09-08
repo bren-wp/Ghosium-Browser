@@ -24,8 +24,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python3 -m py_compile scripts/migrate-google-search-cleanup.py
+          python3 -m py_compile scripts/migrate-google-search-cleanup.py scripts/migrate-google-search-cleanup-pass2.py
           python3 scripts/migrate-google-search-cleanup.py
+          python3 scripts/migrate-google-search-cleanup-pass2.py
 
       - name: Validate cleanup quality
         shell: bash
@@ -37,6 +38,8 @@ jobs:
           python3 -m json.tool store-web/storage/data/extensions.json >/dev/null
           python3 -m json.tool updates-web/windows/stable.json >/dev/null
           python3 -m py_compile scripts/verify-pinned-source-anchors.py
+          php -l scripts/verify-store.php
+          php -l store-web/index.php
 
           pwsh -NoLogo -NoProfile -Command '
             $ErrorActionPreference = "Stop"
@@ -64,14 +67,30 @@ jobs:
           test ! -e .github/workflows/production-release-dispatch.yml
           test ! -e .release/ghosium-v0.1.5.request
           test ! -e .release/ghosium-v0.1.5.production
+          test ! -e scripts/migrate-google-search-cleanup.py
+          test ! -e scripts/migrate-google-search-cleanup-pass2.py
+          test ! -e .github/workflows/google-search-cleanup-migration.yml
 
           grep -Fq 'action="https://www.google.com/search"' extension/newtab.html
           grep -Fq 'Google Search' extension/newtab.html
           grep -Fq 'google.id,' scripts/rewrite-engine-default-search.ps1
           grep -Fq '/*use_first_as_fallback=*/true' scripts/rewrite-engine-default-search.ps1
 
-          if git grep -n -E 'search\.ghosium\.com|search-provider|search-web' -- . ':!CHANGELOG.md'; then
-            echo 'Active references to the retired Ghosium Search stack remain outside historical CHANGELOG entries.' >&2
+          if git grep -n -E 'search\.ghosium\.com|search-provider|search-web' -- . \
+              ':!CHANGELOG.md' \
+              ':!.github/workflows/brand-surface-contract.yml' \
+              ':!scripts/rewrite-engine-default-search.ps1' \
+              ':!scripts/verify-engine-fork.ps1'; then
+            echo 'Active references to the retired Ghosium Search stack remain.' >&2
+            exit 1
+          fi
+
+          if git grep -n -F 'Ghosium Search' -- . \
+              ':!CHANGELOG.md' \
+              ':!.github/workflows/brand-surface-contract.yml' \
+              ':!scripts/rewrite-engine-default-search.ps1' \
+              ':!scripts/verify-engine-fork.ps1'; then
+            echo 'Unexpected active Ghosium Search product references remain.' >&2
             exit 1
           fi
 
