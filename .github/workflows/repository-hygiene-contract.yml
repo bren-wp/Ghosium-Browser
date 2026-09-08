@@ -93,6 +93,46 @@ jobs:
 
           print(f'Fail-closed update baseline: OK ({version})')
 
+      - name: Verify active documentation follows VERSION
+        shell: python
+        run: |
+          from pathlib import Path
+
+          version = Path('VERSION').read_text(encoding='utf-8').strip()
+          checks = {
+              Path('README.md'): (
+                  f'current development version is **{version}**',
+                  f'**{version} must not be described as a released source-built binary',
+                  f'Ghosium {version} defines **38 supported product locales**',
+                  f'No numerical {version} performance claim is valid',
+              ),
+              Path('BUILDING.md'): (
+                  f'The active product version is `{version}`',
+                  f'Ghosium {version} supports 38 locales',
+                  f'The {version} Windows source configuration includes',
+                  f'compiled source-built {version} binary',
+              ),
+              Path('docs/RELEASE.md'): (
+                  f'The active development version is `{version}`',
+                  f'## {version} release scope',
+                  f'Do not merge or publish {version} merely because hosted source contracts are green',
+              ),
+          }
+          for path, required in checks.items():
+              text = path.read_text(encoding='utf-8')
+              for value in required:
+                  if value not in text:
+                      raise SystemExit(f'Active documentation version contract missing in {path}: {value}')
+
+          changelog = Path('CHANGELOG.md').read_text(encoding='utf-8')
+          first_release = next((line for line in changelog.splitlines() if line.startswith('## ')), '')
+          if not first_release.startswith(f'## {version} '):
+              raise SystemExit(
+                  f'CHANGELOG current entry must start with VERSION {version}; found {first_release!r}'
+              )
+
+          print(f'Active documentation version synchronization: OK ({version})')
+
       - name: Verify active release workflow hygiene
         shell: python
         run: |
