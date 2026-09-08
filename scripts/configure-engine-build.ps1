@@ -19,8 +19,17 @@ $argsTemplate = Join-Path $repoRoot 'engine/build/windows-x64.args.gn'
 $productLicense = Join-Path $repoRoot 'LICENSE'
 $thirdPartyNotices = Join-Path $repoRoot 'THIRD_PARTY_NOTICES.md'
 $legalPayloadRewrite = Join-Path $PSScriptRoot 'rewrite-engine-legal-payload.ps1'
+$performanceRewrite = Join-Path $PSScriptRoot 'rewrite-engine-performance-defaults.ps1'
+$performanceVerifier = Join-Path $PSScriptRoot 'verify-engine-performance-defaults.ps1'
 
-foreach ($requiredFile in @($argsTemplate, $productLicense, $thirdPartyNotices, $legalPayloadRewrite)) {
+foreach ($requiredFile in @(
+  $argsTemplate,
+  $productLicense,
+  $thirdPartyNotices,
+  $legalPayloadRewrite,
+  $performanceRewrite,
+  $performanceVerifier
+)) {
   if (!(Test-Path $requiredFile -PathType Leaf)) {
     throw "Missing deterministic Ghosium source-build input: $requiredFile"
   }
@@ -43,6 +52,18 @@ if (!(Test-Path (Join-Path $sourceRootResolved '.git'))) {
 $actualRevision = (& git -C $sourceRootResolved rev-parse HEAD).Trim()
 if ($LASTEXITCODE -ne 0 -or $actualRevision -ne $expectedRevision) {
   throw "Engine source must be detached at $expectedRevision; found $actualRevision"
+}
+
+# Apply only reviewed performance defaults that use native engine mechanisms.
+# This enables Memory Saver for new/default profiles while preserving explicit
+# user preferences and leaving sandbox/process-isolation behavior unchanged.
+& $performanceRewrite -SourceRoot $sourceRootResolved
+if ($LASTEXITCODE -ne 0) {
+  throw 'Ghosium native performance-default integration failed.'
+}
+& $performanceVerifier -SourceRoot $sourceRootResolved
+if ($LASTEXITCODE -ne 0) {
+  throw 'Ghosium native performance-default verification failed.'
 }
 
 # Integrate legal documents into the declared source archive graph before GN
@@ -146,5 +167,5 @@ try {
 
 Write-Host "Ghosium full-source Windows build configuration ready: $outPath"
 Write-Host 'Verified legal build inputs: GHOSIUM-LICENSE.txt + THIRD_PARTY_NOTICES.md'
-Write-Host 'Legacy background-app keep-alive is disabled for lower idle overhead and deterministic shutdown.'
+Write-Host 'Native Memory Saver defaults are enabled; legacy background-app keep-alive is disabled.'
 Write-Host "Build command: autoninja -C $relativeOut chrome mini_installer"
