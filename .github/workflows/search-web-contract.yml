@@ -18,7 +18,7 @@ permissions:
 
 jobs:
   search-web:
-    name: Verify PHP shared-hosting search
+    name: Verify production shared-hosting search
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
@@ -60,6 +60,8 @@ jobs:
           test -f search-web/inc/.htaccess
           test -f search-web/cron/.htaccess
           test -f search-web/index.php
+          test -f search-web/inc/ui.php
+          test -f search-web/assets/app.css
           test -f search-web/cron/reindex.php
           test -f search-web/api/search.php
           test -f search-web/api/suggest.php
@@ -75,7 +77,12 @@ jobs:
           grep -Fq 'Existing index was preserved' search-web/cron/reindex.php
 
           if find search-web -maxdepth 2 -type f \( -name 'package.json' -o -name 'package-lock.json' -o -name 'yarn.lock' -o -name 'pnpm-lock.yaml' -o -name 'composer.json' \) -print -quit | grep -q .; then
-            echo 'The production Ghosium Search shared-hosting app must not require Node/npm/Composer at request time.' >&2
+            echo 'Production Ghosium Search must not require Node/npm/Composer at request time.' >&2
+            exit 1
+          fi
+
+          if find search-web/assets -type f \( -name '*.js' -o -name '*.mjs' \) -print -quit | grep -q .; then
+            echo 'Ghosium Search public UI must remain server-rendered with no JavaScript runtime bundle.' >&2
             exit 1
           fi
 
@@ -85,7 +92,30 @@ jobs:
           fi
 
           if find search-web -type f \( -name 'Cargo.toml' -o -name 'Cargo.lock' -o -name '*.rs' \) -print -quit | grep -q .; then
-            echo 'Shared-hosting Ghosium Search must remain independent of AstianGO/Stract Rust runtime dependencies.' >&2
+            echo 'Shared-hosting Ghosium Search must remain independent of unrelated Rust runtime dependencies.' >&2
+            exit 1
+          fi
+
+      - name: Verify browser-aligned public UI
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -Fq 'Search without the noise.' search-web/index.php
+          grep -Fq 'same visual language as Ghosium Browser' search-web/index.php
+          grep -Fq 'No account required' search-web/index.php
+          grep -Fq 'browser-bar' search-web/index.php
+          grep -Fq 'search-box' search-web/inc/ui.php
+          grep -Fq -- '--surface-0: #111016' search-web/assets/app.css
+          grep -Fq -- '--mint: #8af0c7' search-web/assets/app.css
+          grep -Fq -- '--teal: #62e7d5' search-web/assets/app.css
+          grep -Fq -- '--cyan: #49d5f2' search-web/assets/app.css
+
+          if grep -Eqi 'site:example\.com|!gh query|indexed pages|First-party index mode|Hybrid provider enabled' search-web/index.php; then
+            echo 'Developer operators/index implementation details leaked into the public Search UI.' >&2
+            exit 1
+          fi
+          if grep -Eqi '<script\b|\sstyle=' search-web/index.php search-web/inc/ui.php; then
+            echo 'Ghosium Search public templates must not contain inline JavaScript or inline CSS.' >&2
             exit 1
           fi
 
@@ -104,8 +134,14 @@ jobs:
             sleep 0.25
           done
 
-          curl --fail --silent http://127.0.0.1:8765/ | grep -Fq 'site:example.com'
-          curl --fail --silent http://127.0.0.1:8765/ | grep -Fq '!gh query'
+          home="${RUNNER_TEMP}/home.html"
+          curl --fail --silent http://127.0.0.1:8765/ >"$home"
+          grep -Fq 'Search without the noise.' "$home"
+          grep -Fq 'Search the web' "$home"
+          if grep -Eqi 'site:example\.com|!gh query|indexed pages|First-party index mode|Hybrid provider enabled' "$home"; then
+            echo 'Public Search response exposed developer/query-engine implementation details.' >&2
+            exit 1
+          fi
 
           curl --fail --silent --get \
             --data-urlencode 'q=site:store.ghosium.com' \
