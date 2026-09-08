@@ -1,0 +1,420 @@
+name: Ghosium GitHub Preview Windows Build
+
+on:
+  push:
+    branches:
+      - ghosium/github-preview/0.1.5
+
+concurrency:
+  group: ghosium-github-preview-0.1.5
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+jobs:
+  verify-preview-contract:
+    name: Verify isolated preview contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
+      preview_tag: ${{ steps.meta.outputs.preview_tag }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Validate preview isolation and version
+        id: meta
+        shell: python
+        run: |
+          import json
+          import os
+          import re
+          from pathlib import Path
+
+          version = Path('VERSION').read_text(encoding='utf-8').strip()
+          if version != '0.1.5':
+              raise SystemExit(f'This isolated preview pipeline is locked to Ghosium 0.1.5; found {version!r}')
+          if not re.fullmatch(r'0\.[1-9]\d*\.\d+', version):
+              raise SystemExit(f'Unexpected product version: {version!r}')
+
+          for path in (Path('extension/manifest.json'), Path('search-provider/manifest.json')):
+              data = json.loads(path.read_text(encoding='utf-8'))
+              if data.get('version') != version:
+                  raise SystemExit(f'{path} version does not match VERSION')
+              if data.get('manifest_version') != 3:
+                  raise SystemExit(f'{path} must remain Manifest V3')
+
+          stable = json.loads(Path('updates-web/windows/stable.json').read_text(encoding='utf-8'))
+          if stable.get('enabled') is not False or stable.get('sha256') or stable.get('size') != 0:
+              raise SystemExit('Stable updater must remain fail-closed for the snapshot preview.')
+
+          required = [
+              Path('compat-preview/launcher/main.cpp'),
+              Path('compat-preview/launcher/ghosium.rc'),
+              Path('scripts/generate-engine-brand-assets.py'),
+              Path('ENGINE_REVISION'),
+              Path('LICENSE'),
+              Path('THIRD_PARTY_NOTICES.md'),
+          ]
+          for path in required:
+              if not path.is_file():
+                  raise SystemExit(f'Missing preview input: {path}')
+
+          engine_revision = Path('ENGINE_REVISION').read_text(encoding='utf-8').strip()
+          if not engine_revision.isdigit():
+              raise SystemExit(f'ENGINE_REVISION must be numeric for preview builds: {engine_revision!r}')
+
+          preview_tag = f'ghosium-v{version}-preview.1'
+          with Path(os.environ['GITHUB_OUTPUT']).open('a', encoding='utf-8') as out:
+              out.write(f'version={version}\n')
+              out.write(f'preview_tag={preview_tag}\n')
+
+          print(f'Isolated GitHub preview contract: {version} / {preview_tag} / engine {engine_revision}')
+
+  build-windows-preview:
+    name: Build verified snapshot Preview Setup and Portable
+    needs: verify-preview-contract
+    runs-on: windows-2025
+    timeout-minutes: 70
+    env:
+      GHOSIUM_VERSION: ${{ needs.verify-preview-contract.outputs.version }}
+      LEGACY_BUILD_COMMIT: b5346e604a24081cd50f5484e539f9f1e34754d8
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Materialize pinned preview build support
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          New-Item -ItemType Directory -Force -Path 'launcher', 'installer', 'compat-preview/vendor', 'downloads', 'staging/runtime', 'artifacts/preview', 'internal' | Out-Null
+          Copy-Item 'compat-preview/launcher/main.cpp' 'launcher/main.cpp' -Force
+          Copy-Item 'compat-preview/launcher/ghosium.rc' 'launcher/ghosium.rc' -Force
+
+          $raw = "https://raw.githubusercontent.com/$env:GITHUB_REPOSITORY/$env:LEGACY_BUILD_COMMIT"
+          $files = @{
+            'scripts/build-native-launcher.ps1' = 'compat-preview/vendor/build-native-launcher.ps1'
+            'scripts/resolve-nsis.ps1' = 'compat-preview/vendor/resolve-nsis.ps1'
+            'scripts/smoke-test-windows-installer.ps1' = 'compat-preview/vendor/smoke-test-windows-installer.ps1'
+            'installer/ghosium.nsi' = 'installer/ghosium.nsi'
+            'installer/portable.nsi' = 'installer/portable.nsi'
+          }
+          foreach ($entry in $files.GetEnumerator()) {
+            curl.exe --fail --silent --show-error --location --retry 5 --retry-all-errors "$raw/$($entry.Key)" --output $entry.Value
+            if ($LASTEXITCODE -ne 0 -or !(Test-Path $entry.Value -PathType Leaf)) {
+              throw "Unable to materialize pinned preview build input: $($entry.Key)"
+            }
+          }
+
+          if ((Get-FileHash 'compat-preview/launcher/main.cpp' -Algorithm SHA256).Hash -ne
+              (Get-FileHash 'launcher/main.cpp' -Algorithm SHA256).Hash) {
+            throw 'Isolated preview launcher copy changed unexpectedly.'
+          }
+
+      - name: Download verified pinned Chromium snapshot
+        id: engine
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $revision = (Get-Content 'ENGINE_REVISION' -Raw).Trim()
+          if ($revision -notmatch '^\d+$') {
+            throw "Invalid pinned snapshot revision: $revision"
+          }
+
+          function Download-VerifiedFile([string]$Url, [string]$Destination) {
+            curl.exe --fail --silent --show-error --location --retry 5 --retry-all-errors $Url --output $Destination
+            if ($LASTEXITCODE -ne 0 -or !(Test-Path $Destination -PathType Leaf)) {
+              throw "Download failed: $Url"
+            }
+          }
+
+          $base = "https://storage.googleapis.com/chromium-browser-snapshots/Win_x64/$revision"
+          $archive = 'downloads/engine-win.zip'
+          Download-VerifiedFile "$base/chrome-win.zip" $archive
+          $archiveHash = (Get-FileHash $archive -Algorithm SHA256).Hash.ToLowerInvariant()
+          Expand-Archive -Path $archive -DestinationPath 'downloads/engine' -Force
+
+          $sourceDirectory = 'downloads/engine/chrome-win'
+          if (!(Test-Path "$sourceDirectory/chrome.exe" -PathType Leaf)) {
+            throw 'Official Chromium snapshot archive is incomplete.'
+          }
+          Copy-Item "$sourceDirectory/*" 'staging/runtime' -Recurse -Force
+          Move-Item 'staging/runtime/chrome.exe' 'staging/runtime/Ghosium-Engine.exe' -Force
+
+          $engineVersion = (Get-Item 'staging/runtime/Ghosium-Engine.exe').VersionInfo.ProductVersion.Trim()
+          if (!$engineVersion) {
+            throw 'Unable to read pinned engine product version.'
+          }
+
+          $effectiveUrl = (& curl.exe --fail --silent --show-error --location --retry 5 --retry-all-errors --output NUL --write-out '%{url_effective}' "https://crrev.com/$revision").Trim()
+          if ($LASTEXITCODE -ne 0) {
+            throw 'Unable to resolve pinned snapshot source revision.'
+          }
+          $sourceMatch = [regex]::Match($effectiveUrl, '/\+/([0-9a-f]{40})(?:/|$)')
+          if (!$sourceMatch.Success) {
+            throw "Unexpected source revision response: $effectiveUrl"
+          }
+          $sourceRevision = $sourceMatch.Groups[1].Value
+
+          $licenseEncoded = 'downloads/upstream-license.b64'
+          Download-VerifiedFile "https://chromium.googlesource.com/chromium/src/+/$sourceRevision/LICENSE?format=TEXT" $licenseEncoded
+          [IO.File]::WriteAllBytes(
+            (Join-Path $PWD 'staging/UPSTREAM-LICENSE.txt'),
+            [Convert]::FromBase64String((Get-Content $licenseEncoded -Raw).Trim())
+          )
+
+          "revision=$revision" >> $env:GITHUB_OUTPUT
+          "engine_version=$engineVersion" >> $env:GITHUB_OUTPUT
+          "source_revision=$sourceRevision" >> $env:GITHUB_OUTPUT
+          "archive_sha256=$archiveHash" >> $env:GITHUB_OUTPUT
+          Write-Host "Verified pinned Chromium snapshot $engineVersion / revision $revision / source $sourceRevision"
+
+      - name: Assemble current Ghosium 0.1.5 browser surfaces
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Copy-Item 'extension' 'staging/extension' -Recurse -Force
+          Copy-Item 'search-provider' 'staging/search-provider' -Recurse -Force
+          Copy-Item 'LICENSE', 'PRIVACY.md', 'SECURITY.md', 'THIRD_PARTY_NOTICES.md' 'staging' -Force
+
+          $privacyManifest = Get-Content 'staging/extension/manifest.json' -Raw | ConvertFrom-Json
+          $searchManifest = Get-Content 'staging/search-provider/manifest.json' -Raw | ConvertFrom-Json
+          if ($privacyManifest.version -ne $env:GHOSIUM_VERSION -or $searchManifest.version -ne $env:GHOSIUM_VERSION) {
+            throw 'Staged bundled component versions do not match the preview version.'
+          }
+
+      - name: Compile Brendigo Ghosium C++20 launcher
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & ./compat-preview/vendor/build-native-launcher.ps1 -Version $env:GHOSIUM_VERSION -OutputPath 'staging/Ghosium-Browser.exe'
+          if ($LASTEXITCODE -ne 0 -or !(Test-Path 'staging/Ghosium-Browser.exe' -PathType Leaf)) {
+            throw 'Ghosium preview launcher compile failed.'
+          }
+
+      - name: Smoke test launcher and pinned engine
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $selfTest = Start-Process -FilePath (Resolve-Path 'staging/Ghosium-Browser.exe') -ArgumentList '--ghosium-self-test' -Wait -PassThru
+          if ($selfTest.ExitCode -ne 0) {
+            throw "Ghosium launcher self-test failed with code $($selfTest.ExitCode)"
+          }
+
+          $profile = Join-Path $env:RUNNER_TEMP 'ghosium-preview-engine-smoke'
+          $stdout = Join-Path $env:RUNNER_TEMP 'ghosium-preview-engine-smoke.stdout.txt'
+          $stderr = Join-Path $env:RUNNER_TEMP 'ghosium-preview-engine-smoke.stderr.txt'
+          $engineArgs = @(
+            '--headless=new',
+            '--disable-gpu',
+            '--disable-sync',
+            '--no-pings',
+            '--no-first-run',
+            "--user-data-dir=$profile",
+            '--dump-dom',
+            'data:text/html,<html><body>ghosium-preview-runtime-ok</body></html>'
+          )
+          $engine = Start-Process -FilePath (Resolve-Path 'staging/runtime/Ghosium-Engine.exe') -ArgumentList $engineArgs -Wait -PassThru -RedirectStandardOutput $stdout -RedirectStandardError $stderr
+          $smokeOutput = if (Test-Path $stdout) { Get-Content $stdout -Raw } else { '' }
+          if ($engine.ExitCode -ne 0 -or !$smokeOutput.Contains('ghosium-preview-runtime-ok')) {
+            $smokeError = if (Test-Path $stderr) { Get-Content $stderr -Raw } else { '' }
+            Write-Host $smokeOutput
+            Write-Host $smokeError
+            throw "Pinned engine smoke test failed with code $($engine.ExitCode)"
+          }
+          Remove-Item $profile -Recurse -Force -ErrorAction SilentlyContinue
+
+      - name: Build Preview Setup and Portable executables
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $resolverOutput = @(& ./compat-preview/vendor/resolve-nsis.ps1)
+          if ($LASTEXITCODE -ne 0 -or $resolverOutput.Count -eq 0) {
+            throw 'Verified NSIS resolver failed.'
+          }
+          $makensisPath = [string]$resolverOutput[-1]
+          if (!(Test-Path $makensisPath -PathType Leaf)) {
+            throw "Verified makensis.exe path is invalid: $makensisPath"
+          }
+
+          $stagePath = (Resolve-Path 'staging').Path
+          $artifactPath = (Resolve-Path 'artifacts/preview').Path
+          $iconPath = (Resolve-Path 'ghosium.ico').Path
+
+          foreach ($script in @('installer/ghosium.nsi', 'installer/portable.nsi')) {
+            & $makensisPath "/DGHOSIUM_VERSION=$env:GHOSIUM_VERSION" "/DGHOSIUM_STAGE=$stagePath" "/DGHOSIUM_ARTIFACTS=$artifactPath" "/DGHOSIUM_ICON=$iconPath" $script
+            if ($LASTEXITCODE -ne 0) {
+              throw "NSIS preview build failed for $script"
+            }
+          }
+
+          foreach ($file in @('artifacts/preview/Ghosium-Browser-Setup.exe', 'artifacts/preview/Ghosium-Browser-Portable.exe')) {
+            if (!(Test-Path $file -PathType Leaf)) {
+              throw "Expected preview executable is missing: $file"
+            }
+            if ((Get-Item $file).Length -lt 50MB) {
+              throw "Preview executable is unexpectedly small: $file"
+            }
+          }
+
+          $setupInfo = (Get-Item 'artifacts/preview/Ghosium-Browser-Setup.exe').VersionInfo
+          if ([string]$setupInfo.ProductName -ne 'Ghosium Browser' -or [string]$setupInfo.CompanyName -ne 'Brendigo') {
+            throw "Preview Setup metadata mismatch: '$($setupInfo.ProductName)' / '$($setupInfo.CompanyName)'"
+          }
+          $portableInfo = (Get-Item 'artifacts/preview/Ghosium-Browser-Portable.exe').VersionInfo
+          if ([string]$portableInfo.ProductName -ne 'Ghosium Browser Portable' -or [string]$portableInfo.CompanyName -ne 'Brendigo') {
+            throw "Preview Portable metadata mismatch: '$($portableInfo.ProductName)' / '$($portableInfo.CompanyName)'"
+          }
+
+      - name: Smoke test Preview install and same-Setup uninstall
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & ./compat-preview/vendor/smoke-test-windows-installer.ps1 -SetupPath 'artifacts/preview/Ghosium-Browser-Setup.exe' -Version $env:GHOSIUM_VERSION
+          if ($LASTEXITCODE -ne 0) {
+            throw 'Preview Setup install/uninstall smoke test failed.'
+          }
+
+      - name: Generate Preview provenance and SHA-256 evidence
+        shell: pwsh
+        env:
+          ENGINE_REVISION: ${{ steps.engine.outputs.revision }}
+          ENGINE_VERSION: ${{ steps.engine.outputs.engine_version }}
+          ENGINE_SOURCE_REVISION: ${{ steps.engine.outputs.source_revision }}
+          ENGINE_ARCHIVE_SHA256: ${{ steps.engine.outputs.archive_sha256 }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $setup = Get-Item 'artifacts/preview/Ghosium-Browser-Setup.exe'
+          $portable = Get-Item 'artifacts/preview/Ghosium-Browser-Portable.exe'
+          $setupHash = (Get-FileHash $setup.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+          $portableHash = (Get-FileHash $portable.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+
+          [ordered]@{
+            schemaVersion = 1
+            product = 'Ghosium Browser'
+            productVersion = $env:GHOSIUM_VERSION
+            releaseKind = 'github-snapshot-preview'
+            fullSourceBuild = $false
+            productionStable = $false
+            stableUpdaterEnabled = $false
+            repositoryCommit = $env:GITHUB_SHA
+            repositoryRef = $env:GITHUB_REF
+            architecture = 'windows-x64'
+            engine = [ordered]@{
+              snapshotRevision = $env:ENGINE_REVISION
+              productVersion = $env:ENGINE_VERSION
+              sourceRevision = $env:ENGINE_SOURCE_REVISION
+              archiveSha256 = $env:ENGINE_ARCHIVE_SHA256
+            }
+            setup = [ordered]@{
+              name = $setup.Name
+              bytes = $setup.Length
+              sha256 = $setupHash
+            }
+            portable = [ordered]@{
+              name = $portable.Name
+              bytes = $portable.Length
+              sha256 = $portableHash
+            }
+            notice = 'This artifact is a GitHub-hosted snapshot-based preview. It is not the canonical full-source production release.'
+          } | ConvertTo-Json -Depth 6 | Set-Content 'artifacts/preview/GHOSIUM-PREVIEW-BUILD.json' -Encoding utf8
+
+          @(
+            "$setupHash  $($setup.Name)",
+            "$portableHash  $($portable.Name)",
+            "$( (Get-FileHash 'artifacts/preview/GHOSIUM-PREVIEW-BUILD.json' -Algorithm SHA256).Hash.ToLowerInvariant() )  GHOSIUM-PREVIEW-BUILD.json"
+          ) | Set-Content 'artifacts/preview/SHA256SUMS.txt' -Encoding ascii
+
+          @(
+            'Ghosium Browser 0.1.5 Preview 1',
+            'Build kind: GitHub-hosted pinned Chromium snapshot + Ghosium C++ launcher',
+            'Canonical full-source production release: NO',
+            'Stable updater enabled: NO',
+            "Repository commit: $env:GITHUB_SHA",
+            "Engine snapshot revision: $env:ENGINE_REVISION",
+            "Engine source revision: $env:ENGINE_SOURCE_REVISION"
+          ) | Set-Content 'artifacts/preview/BUILD-STATUS.txt' -Encoding utf8
+
+      - name: Upload verified Preview executables
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: ghosium-github-preview-windows-x64-${{ env.GHOSIUM_VERSION }}
+          path: artifacts/preview/
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 0
+
+  publish-preview:
+    name: Publish Ghosium 0.1.5 Preview prerelease
+    needs:
+      - verify-preview-contract
+      - build-windows-preview
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download verified Preview artifacts
+        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
+        with:
+          name: ghosium-github-preview-windows-x64-${{ needs.verify-preview-contract.outputs.version }}
+          path: artifacts
+
+      - name: Validate Preview provenance
+        shell: python
+        env:
+          GHOSIUM_VERSION: ${{ needs.verify-preview-contract.outputs.version }}
+        run: |
+          import json
+          import os
+          from pathlib import Path
+
+          evidence = json.loads(Path('artifacts/GHOSIUM-PREVIEW-BUILD.json').read_text(encoding='utf-8-sig'))
+          if evidence.get('product') != 'Ghosium Browser':
+              raise SystemExit('Unexpected preview product identity.')
+          if evidence.get('productVersion') != os.environ['GHOSIUM_VERSION']:
+              raise SystemExit('Preview evidence version mismatch.')
+          if evidence.get('releaseKind') != 'github-snapshot-preview':
+              raise SystemExit('Preview evidence release kind mismatch.')
+          if evidence.get('fullSourceBuild') is not False or evidence.get('productionStable') is not False:
+              raise SystemExit('Preview evidence must not claim canonical production/full-source status.')
+          if evidence.get('stableUpdaterEnabled') is not False:
+              raise SystemExit('Preview must not enable the stable updater.')
+          for name in ('Ghosium-Browser-Setup.exe', 'Ghosium-Browser-Portable.exe', 'SHA256SUMS.txt', 'BUILD-STATUS.txt'):
+              if not Path('artifacts', name).is_file():
+                  raise SystemExit(f'Missing preview artifact: {name}')
+
+      - name: Publish immutable Preview prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PREVIEW_TAG: ${{ needs.verify-preview-contract.outputs.preview_tag }}
+          GHOSIUM_VERSION: ${{ needs.verify-preview-contract.outputs.version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if gh release view "$PREVIEW_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Preview release $PREVIEW_TAG already exists; refusing to overwrite it." >&2
+            exit 1
+          fi
+
+          gh release create "$PREVIEW_TAG" \
+            artifacts/Ghosium-Browser-Setup.exe \
+            artifacts/Ghosium-Browser-Portable.exe \
+            artifacts/GHOSIUM-PREVIEW-BUILD.json \
+            artifacts/SHA256SUMS.txt \
+            artifacts/BUILD-STATUS.txt \
+            --target "$GITHUB_SHA" \
+            --title "Ghosium Browser $GHOSIUM_VERSION Preview 1" \
+            --notes $'GitHub-hosted Windows x64 preview for Ghosium Browser 0.1.5.\n\nThis prerelease uses the repository-pinned official Chromium Windows snapshot plus the Brendigo Ghosium C++ launcher and current 0.1.5 bundled Ghosium surfaces. Setup and Portable executables are rebuilt and smoke-tested on GitHub Actions.\n\nIMPORTANT: this is intentionally marked as a preview and is not the canonical full-source production release. It does not enable the stable updater and does not satisfy or replace the controlled full-source release gate tracked by issue #30. GHOSIUM-PREVIEW-BUILD.json and SHA256SUMS.txt record the exact preview provenance.' \
+            --prerelease \
+            --repo "$GITHUB_REPOSITORY"
