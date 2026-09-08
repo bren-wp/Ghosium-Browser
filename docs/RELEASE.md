@@ -2,7 +2,7 @@
 
 ## Current product version
 
-The active development version is `0.1.3`.
+The active development version is `0.1.4`.
 
 Version policy:
 
@@ -18,24 +18,24 @@ ghosium-v0.1.0
 ghosium-v0.1.1
 ghosium-v0.1.2
 ghosium-v0.1.3
+ghosium-v0.1.4
 ghosium-v0.2.0
 ```
 
 Historical releases remain untouched.
 
-## 0.1.3 release scope
+## 0.1.4 release scope
 
-The 0.1.3 line includes:
+The 0.1.4 line carries forward the 0.1.3 Search/performance/release hardening and additionally:
 
-- the 38-locale browser/Setup contract from 0.1.2;
-- the browser-aligned Ghosium Search redesign;
-- a server-rendered Search UI with no JavaScript runtime bundle;
-- public removal of developer/index implementation details while retaining advanced backend/API query capabilities;
-- source-built performance evidence as a mandatory release gate;
-- benchmark schema v2 with cold/warm startup, 1/5/10 tabs, idle CPU/I/O, best-effort GPU process memory and TCP/UDP endpoint snapshots;
-- the persistent builder workspace renamed to `C:\src\ghosium-engine`;
-- interactive Windows desktop guidance for first-usable-window measurement;
-- synchronized fail-closed update baseline at 0.1.3.
+- makes `ghost://profiles/` the canonical native host for the existing profile-picker WebUI controller;
+- makes `ghost://passwords/` the canonical native host for the existing password-manager WebUI controller;
+- removes the former `browser_about_handler.cc` profile/password redirect aliases;
+- strengthens the fork verifier so native controller/host registration is required and restoration of redirect aliases is rejected;
+- expands revision-pinned source anchors to the actual 2026 profile/password controller registrations, Search fallback implementation and Windows install/executable build graph;
+- requires exactly 38 product locales across product configuration and source audits;
+- keeps the source-built benchmark evidence and signing gates unchanged and fail-closed;
+- synchronizes the disabled update baseline at 0.1.4 without inventing package hash/size evidence.
 
 These changes are not a production-binary or numerical performance claim until the controlled full-source compile and benchmark succeed for the exact candidate commit.
 
@@ -52,23 +52,24 @@ Required gate:
 5. complete Ghosium source transformation;
 6. public-surface/branding verification;
 7. 38-locale verification;
-8. Windows executable identity verification;
-9. native updater verification;
-10. performance-default verification;
-11. deterministic Windows x64 configuration;
-12. full browser compile;
-13. compiled-output verification;
-14. sandbox-preserving runtime smoke;
-15. source-built performance measurement and `GHOSIUM-PERFORMANCE.json` validation;
-16. internal technical installer verification;
-17. verified source-runtime extraction/staging;
-18. canonical `Ghosium-Browser-Setup.exe` build;
-19. production Authenticode signing on `main`;
-20. install → runtime → update → runtime → uninstall round trip;
-21. profile/language preservation and cleanup verification;
-22. exact update-manifest generation;
-23. provenance and SHA-256 evidence;
-24. immutable release publication.
+8. canonical native `ghost://profiles/` and `ghost://passwords/` host verification;
+9. Windows executable identity verification;
+10. native updater verification;
+11. performance-default verification;
+12. deterministic Windows x64 configuration;
+13. full browser compile;
+14. compiled-output verification;
+15. sandbox-preserving runtime smoke;
+16. source-built performance measurement and `GHOSIUM-PERFORMANCE.json` validation;
+17. internal technical installer verification;
+18. verified source-runtime extraction/staging;
+19. canonical `Ghosium-Browser-Setup.exe` build;
+20. production Authenticode signing on `main`;
+21. install → runtime → update → runtime → uninstall round trip;
+22. profile/language preservation and cleanup verification;
+23. exact update-manifest generation;
+24. provenance and SHA-256 evidence;
+25. immutable release publication.
 
 A source audit, patch-only result, historical package, technical archive or installer definition does not satisfy this gate.
 
@@ -116,6 +117,14 @@ required: hr
 ```
 
 Fresh installation can initialize the browser language from Setup. Update/reinstall must not overwrite an existing language selected by the user.
+
+## Internal WebUI gate
+
+The product scheme is `ghost://` with restricted surfaces under `ghost-untrusted://`.
+
+`ghost://profiles/` must be backed by the native profile-picker controller through its canonical host constant. `ghost://passwords/` must be backed by the native password-manager controller through its canonical host constant. Production source verification rejects a return to `browser_about_handler.cc` redirects for either route.
+
+The controller implementations remain maintained engine code; Ghosium changes the product-facing host contract rather than copying security-sensitive profile/password logic into parallel controllers.
 
 ## Performance gate
 
@@ -214,4 +223,4 @@ Required third-party attribution remains a legal requirement and must stay isola
 
 ## Release decision
 
-Do not merge or publish 0.1.3 merely because hosted source contracts are green. The production decision requires the controlled Windows full-source compile, source-built performance evidence and runtime/installer/signing evidence for the exact production commit.
+Do not merge or publish 0.1.4 merely because hosted source contracts are green. The production decision requires the controlled Windows full-source compile, source-built performance evidence and runtime/installer/signing evidence for the exact production commit.
