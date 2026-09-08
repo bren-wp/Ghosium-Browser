@@ -1,0 +1,67 @@
+:root {
+  color-scheme: dark;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --bg: #111016;
+  --panel: rgba(255,255,255,.055);
+  --line: rgba(255,255,255,.10);
+  --text: #f8fafc;
+  --muted: rgba(226,232,240,.58);
+  --accent: #8af0c7;
+}
+* { box-sizing: border-box; }
+body {
+  width: 310px;
+  margin: 0;
+  background: radial-gradient(360px 220px at 0% 0%, rgba(138,240,199,.12), transparent 70%), var(--bg);
+  color: var(--text);
+}
+.popup { padding: 16px; }
+header {
+  display: flex;
+  gap: 11px;
+  align-items: center;
+  padding: 4px 2px 14px;
+}
+header img { filter: drop-shadow(0 0 14px rgba(98,231,213,.2)); }
+header div { display: grid; gap: 3px; }
+header strong { font-size: 14px; }
+header span, small { color: var(--muted); font-size: 11px; }
+.status-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--panel);
+}
+.status-card > div { display: grid; gap: 3px; }
+.dot {
+  width: 9px;
+  height: 9px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 14px rgba(138,240,199,.55);
+}
+.actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-top: 10px;
+}
+button {
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  padding: 9px 10px;
+  background: rgba(255,255,255,.045);
+  color: var(--text);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+button:hover, button:focus-visible {
+  border-color: rgba(138,240,199,.42);
+  outline: none;
+  background: rgba(138,240,199,.08);
+}
