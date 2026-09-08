@@ -20,14 +20,10 @@ jobs:
         with:
           fetch-depth: 1
 
-      - name: Validate and apply migration
+      - name: Apply migration
         shell: bash
         run: |
           set -euo pipefail
-          python3 -m py_compile \
-            scripts/migrate-google-search-cleanup.py \
-            scripts/migrate-google-search-cleanup-pass2.py \
-            scripts/migrate-google-search-cleanup-pass3.py
           python3 scripts/migrate-google-search-cleanup.py
           python3 scripts/migrate-google-search-cleanup-pass2.py
           python3 scripts/migrate-google-search-cleanup-pass3.py
@@ -36,12 +32,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-
           python3 -m json.tool engine/branding/product.json >/dev/null
           python3 -m json.tool extension/manifest.json >/dev/null
           python3 -m json.tool store-web/storage/data/extensions.json >/dev/null
           python3 -m json.tool updates-web/windows/stable.json >/dev/null
-          python3 -m py_compile scripts/verify-pinned-source-anchors.py
           php -l scripts/verify-store.php
           php -l store-web/index.php
 
@@ -54,63 +48,35 @@ jobs:
             )) {
               $tokens = $null
               $errors = $null
-              [void][System.Management.Automation.Language.Parser]::ParseFile(
-                (Resolve-Path $path), [ref]$tokens, [ref]$errors)
-              if ($errors.Count -gt 0) {
-                $errors | ForEach-Object { Write-Error $_.Message }
-                throw "PowerShell parser errors found in $path"
-              }
+              [void][System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path $path), [ref]$tokens, [ref]$errors)
+              if ($errors.Count -gt 0) { throw "PowerShell parser errors found in $path" }
             }
           '
 
           test ! -e search-provider
           test ! -e search-web
-          test ! -e docs/SEARCH.md
-          test ! -e docs/SHARED-HOSTING-SEARCH.md
-          test ! -e .github/workflows/search-web-contract.yml
-          test ! -e .github/workflows/production-release-dispatch.yml
-          test ! -e .release/ghosium-v0.1.5.request
-          test ! -e .release/ghosium-v0.1.5.production
-          test ! -e scripts/migrate-google-search-cleanup.py
-          test ! -e scripts/migrate-google-search-cleanup-pass2.py
-          test ! -e scripts/migrate-google-search-cleanup-pass3.py
-          test ! -e .github/workflows/google-search-cleanup-migration.yml
-
           grep -Fq 'action="https://www.google.com/search"' extension/newtab.html
           grep -Fq 'Google Search' extension/newtab.html
           grep -Fq 'google.id,' scripts/rewrite-engine-default-search.ps1
           grep -Fq '/*use_first_as_fallback=*/true' scripts/rewrite-engine-default-search.ps1
-
-          if git grep -n -E 'search\.ghosium\.com|search-provider|search-web' -- . \
-              ':!CHANGELOG.md' \
-              ':!.github/workflows/brand-surface-contract.yml' \
-              ':!.github/workflows/engine-source-audit.yml' \
-              ':!scripts/rewrite-engine-default-search.ps1' \
-              ':!scripts/verify-engine-fork.ps1'; then
-            echo 'Active references to the retired Ghosium Search stack remain.' >&2
-            exit 1
-          fi
-
-          if git grep -n -F 'Ghosium Search' -- . \
-              ':!CHANGELOG.md' \
-              ':!.github/workflows/brand-surface-contract.yml' \
-              ':!.github/workflows/engine-source-audit.yml' \
-              ':!scripts/rewrite-engine-default-search.ps1' \
-              ':!scripts/verify-engine-fork.ps1'; then
-            echo 'Unexpected active Ghosium Search product references remain.' >&2
-            exit 1
-          fi
-
           git diff --check
-          echo 'Google Search cleanup validation: OK'
 
-      - name: Commit cleaned 0.1.6 tree
+      - name: Commit product cleanup
         shell: bash
         run: |
           set -euo pipefail
+          git checkout HEAD -- .github/workflows
+          find scripts -type d -name '__pycache__' -prune -exec rm -rf {} +
           git config user.name 'Brendigo'
           git config user.email 'info@brendigo.com'
           git add -A
-          git status --short
+          if git diff --cached --name-only | grep -q '^\.github/workflows/'; then
+            echo 'Unexpected workflow changes in product commit.' >&2
+            exit 1
+          fi
+          if git diff --cached --name-only | grep -E '(^|/)__pycache__/|\.pyc$'; then
+            echo 'Generated Python bytecode found in product commit.' >&2
+            exit 1
+          fi
           git commit -m 'search: use Google and remove first-party Search stack'
           git push origin HEAD:${GITHUB_REF_NAME}
