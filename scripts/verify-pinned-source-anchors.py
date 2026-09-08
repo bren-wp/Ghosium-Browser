@@ -50,7 +50,7 @@ FILE_ANCHORS: dict[str, tuple[str, ...]] = {
         "PRODUCT_FULLNAME=Chromium",
         "PRODUCT_SHORTNAME=Chromium",
         "PRODUCT_INSTALLER_FULLNAME=Chromium Installer",
-        "COPYRIGHT=Copyright 2026 The Chromium Authors. All rights reserved.",
+        "COPYRIGHT=Copyright @LASTCHANGE_YEAR@ The Chromium Authors. All rights reserved.",
         "MAC_BUNDLE_ID=org.chromium.Chromium",
     ),
     "chrome/browser/resources/signin/managed_user_profile_notice/managed_user_profile_notice_value_prop.html.ts": (
@@ -317,8 +317,8 @@ def parse_args() -> argparse.Namespace:
 
 
 def main() -> int:
-    args = parse_args()
-    revision = args.revision or (
+    args = parser_args = parse_args()
+    revision = parser_args.revision or (
         REPO_ROOT / "ENGINE_SOURCE_REVISION"
     ).read_text(encoding="utf-8").strip()
     if not re.fullmatch(r"[0-9a-f]{40}", revision):
