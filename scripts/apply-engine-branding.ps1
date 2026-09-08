@@ -245,6 +245,21 @@ if ($LASTEXITCODE -ne 0) {
   throw 'Ghosium supported locale branding failed.'
 }
 
+# Apply the complete user-facing UI rewrite before ghost:// conversion so
+# reviewed pinned Chromium anchors are still available. This covers About,
+# Customize, Settings, Extensions and other product-owned surfaces.
+& (Join-Path $PSScriptRoot 'rewrite-engine-public-surfaces.ps1') -SourceRoot $sourceRootResolved
+if ($LASTEXITCODE -ne 0) {
+  throw 'Ghosium public-surface branding failed.'
+}
+
+# Enable only reviewed native low-overhead defaults. Security process
+# isolation, sandboxing and explicit user preferences stay intact.
+& (Join-Path $PSScriptRoot 'rewrite-engine-performance-defaults.ps1') -SourceRoot $sourceRootResolved
+if ($LASTEXITCODE -ne 0) {
+  throw 'Ghosium performance-default rewrite failed.'
+}
+
 # Convert the complete production WebUI namespace after all targeted branding
 # replacements have consumed their reviewed upstream anchors.
 & (Join-Path $PSScriptRoot 'rewrite-engine-internal-scheme.ps1') -SourceRoot $sourceRootResolved

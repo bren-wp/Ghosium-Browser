@@ -112,8 +112,6 @@ $settingsMenuHtml = Join-Path $sourceRootResolved 'chrome/browser/resources/sett
 $settingsMenuTs = Join-Path $sourceRootResolved 'chrome/browser/resources/settings/settings_menu/settings_menu.ts'
 $settingsRouteTs = Join-Path $sourceRootResolved 'chrome/browser/resources/settings/route.ts'
 $settingsUiCc = Join-Path $sourceRootResolved 'chrome/browser/ui/webui/settings/settings_ui.cc'
-$ntpAppHtml = Join-Path $sourceRootResolved 'chrome/browser/resources/new_tab_page/app.html'
-$ntpFooterContextMenu = Join-Path $sourceRootResolved 'chrome/browser/ui/webui/new_tab_footer/footer_context_menu.cc'
 
 foreach ($path in @(
   $chromiumStrings,
@@ -139,9 +137,8 @@ Set-GritMessage -Path $settingsChromiumStrings -MessageId 'IDS_SETTINGS_GET_HELP
 # Chromium subsystems, but it is no longer a Ghosium product/navigation section.
 Set-GritMessage -Path $settingsStrings -MessageId 'IDS_SETTINGS_PEOPLE' -Value 'Profile'
 
-# Explicitly normalize customize copy even though the Chromium NTP entry points
-# are removed below. This prevents a future accidental re-exposure from showing
-# upstream product branding.
+# Keep the maintained native customization feature, but make every public label
+# Ghosium-owned. The 0.1.9 New Tab also exposes first-party local options.
 Set-GritMessage -Path $chromiumStrings -MessageId 'IDS_NTP_CUSTOMIZE_BUTTON_LABEL' -Value 'Customize Ghosium'
 Set-GritMessage -Path $chromiumStrings -MessageId 'IDS_SIDE_PANEL_CUSTOMIZE_CHROME_TITLE' -Value 'Customize Ghosium'
 Set-GritMessage -Path $chromiumStrings -MessageId 'IDS_NTP_MODULES_SETUP_LIST_TITLE' -Value 'Make Ghosium Yours'
@@ -227,21 +224,9 @@ Replace-RequiredRegex `
   -AlreadyPresent 'update.Set("showAiPage", false);' `
   -Description 'dynamic Glic AI Settings suppression'
 
-# The user explicitly requested the Chromium NTP customization surface to be
-# removed. Strip the visible customize button and its footer context-menu entry
-# rather than merely repainting or relabeling them.
-Replace-RequiredRegex `
-  -Path $ntpAppHtml `
-  -Pattern '(?s)\s*\$\{\s*this\.showCustomizeButton_\s*\?\s*html`\s*<ntp-customize-buttons\s+id="customizeButtons".*?</ntp-customize-buttons>\s*`\s*:\s*''''\s*\}' `
-  -Replacement "`n      <!-- Ghosium: upstream Chromium NTP customization entry intentionally removed. -->" `
-  -AlreadyPresent 'upstream Chromium NTP customization entry intentionally removed' `
-  -Description 'Chromium NTP customize-button removal'
-Replace-RequiredRegex `
-  -Path $ntpFooterContextMenu `
-  -Pattern '(?s)\s*AddSeparator\(ui::NORMAL_SEPARATOR\);\s*// Add item: customize chrome\.\s*AddItemWithStringIdAndIcon\(COMMAND_SHOW_CUSTOMIZE_CHROME,.*?kShowCustomizeChromeIdForTesting\);' `
-  -Replacement "`n  // Ghosium: upstream Chromium NTP customization context-menu entry removed." `
-  -AlreadyPresent 'upstream Chromium NTP customization context-menu entry removed' `
-  -Description 'Chromium NTP footer customize-menu removal'
+# Native customization remains available in 0.1.9 because its visible copy is
+# now Ghosium-branded. Do not delete the maintained Chromium implementation;
+# removing functionality is reserved for surfaces that cannot be safely owned.
 
 $publicStringFiles = @(
   $chromiumStrings,
@@ -314,4 +299,4 @@ if ($thirdPartyChanges) {
   throw 'Public-surface branding modified third_party sources; refusing to continue.'
 }
 
-Write-Host 'Ghosium public surfaces applied: branded product identity; Chromium customization, Google account nav, Gemini/AI and Web Store tile removed.'
+Write-Host 'Ghosium public surfaces applied: branded product identity and Customize; Google account nav, Gemini/AI and upstream Web Store tile removed.'

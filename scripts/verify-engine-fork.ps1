@@ -21,6 +21,8 @@ $defaultSearchRewritePath = Join-Path $repoRoot 'scripts/rewrite-engine-default-
 $windowsIdentityRewritePath = Join-Path $repoRoot 'scripts/rewrite-engine-windows-identity.ps1'
 $productVersionRewritePath = Join-Path $repoRoot 'scripts/rewrite-engine-product-version.ps1'
 $internalSchemeRewritePath = Join-Path $repoRoot 'scripts/rewrite-engine-internal-scheme.ps1'
+$publicSurfacesRewritePath = Join-Path $repoRoot 'scripts/rewrite-engine-public-surfaces.ps1'
+$performanceDefaultsRewritePath = Join-Path $repoRoot 'scripts/rewrite-engine-performance-defaults.ps1'
 
 foreach ($required in @(
   $configPath,
@@ -36,7 +38,9 @@ foreach ($required in @(
   $defaultSearchRewritePath,
   $windowsIdentityRewritePath,
   $productVersionRewritePath,
-  $internalSchemeRewritePath
+  $internalSchemeRewritePath,
+  $publicSurfacesRewritePath,
+  $performanceDefaultsRewritePath
 )) {
   if (!(Test-Path $required -PathType Leaf)) {
     throw "Required Ghosium fork file is missing: $required"
@@ -225,7 +229,8 @@ if ($SourceRoot) {
     'ui/webui/resources/images/chrome_logo_dark.svg',
     'components/search_engines/template_url_prepopulate_data.cc',
     'components/vector_icons/chromium/product.icon',
-    'components/vector_icons/chromium/product_refresh.icon'
+    'components/vector_icons/chromium/product_refresh.icon',
+    'extensions/strings/extensions_chromium_strings.grdp'
   )
   foreach ($relativePath in $requiredEngineFiles) {
     if (!(Test-Path (Join-Path $resolvedSourceRoot $relativePath) -PathType Leaf)) {
@@ -246,6 +251,7 @@ if ($SourceRoot) {
   }
   Assert-NoLegacyVisibleBrand -Path $productStringsPath
   Assert-NoLegacyVisibleBrand -Path $settingsStringsPath
+  Assert-NoLegacyVisibleBrand -Path (Join-Path $resolvedSourceRoot 'extensions/strings/extensions_chromium_strings.grdp')
 
   $settingsStrings = Get-Content $settingsStringsPath -Raw
   if (!$settingsStrings.Contains('About Ghosium Browser')) {
