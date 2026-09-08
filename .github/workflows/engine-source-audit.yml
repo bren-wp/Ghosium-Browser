@@ -172,8 +172,8 @@ jobs:
           if ([string]$config.locales.default -ne 'en-US' -or [string]$config.locales.required -ne 'hr') {
             throw 'Ghosium locale contract requires English primary/default and Croatian required.'
           }
-          if (@($config.locales.supported).Count -lt 31) {
-            throw 'Ghosium must keep more than 30 supported product locales.'
+          if (@($config.locales.supported).Count -ne 38) {
+            throw 'Ghosium product configuration must contain exactly 38 supported locales.'
           }
           foreach ($route in @(
             'ghost://newtab/',
@@ -243,10 +243,15 @@ jobs:
           /chrome/browser/ui/webui/help/version_updater_basic.cc
           /chrome/browser/ui/webui/side_panel/customize_chrome/customize_chrome_page_handler.cc
           /chrome/browser/ui/webui/extensions/extensions_ui.cc
+          /chrome/browser/ui/webui/password_manager/password_manager_ui.h
+          /chrome/browser/ui/webui/password_manager/password_manager_ui.cc
+          /chrome/browser/ui/webui/signin/profile_picker_ui.h
+          /chrome/browser/ui/webui/signin/profile_picker_ui.cc
           /chrome/browser/resources/settings/about_page/about_page.ts
           /chrome/browser/resources/signin/managed_user_profile_notice/managed_user_profile_notice_value_prop.html.ts
           /chrome/browser/resources/contextual_tasks/top_toolbar_logo.html.ts
           /components/components_chromium_strings.grd
+          /components/password_manager/content/common/web_ui_constants.h
           /components/performance_manager/user_tuning/prefs.cc
           /components/search_engines/template_url_prepopulate_data.cc
           /components/strings/
@@ -280,10 +285,14 @@ jobs:
           product_version="$(tr -d '\r\n ' < VERSION)"
           updater="$src/chrome/browser/ui/webui/help/version_updater_ghosium_win.cc"
           performance_prefs="$src/components/performance_manager/user_tuning/prefs.cc"
+          webui_constants="$src/chrome/common/webui_url_constants.h"
+          password_constants="$src/components/password_manager/content/common/web_ui_constants.h"
+          about_handler="$src/chrome/browser/browser_about_handler.cc"
 
           git -C "$src" diff --check
           test -f "$updater"
           test -f "$performance_prefs"
+          test -f "$password_constants"
           grep -F 'https://updates.ghosium.com/windows/stable.json' "$updater"
           grep -F 'CredentialsMode::kOmit' "$updater"
           grep -F 'crypto::hash::HashFile' "$updater"
@@ -305,6 +314,22 @@ jobs:
           grep -F 'kChromeProxyExe[] = L"Ghosium-Proxy.exe"' "$src/chrome/installer/util/util_constants.h"
           grep -F 'kChromeUIScheme[] = "ghost"' "$src/content/public/common/url_constants.h"
           grep -F 'kChromeUIUntrustedScheme[] = "ghost-untrusted"' "$src/content/public/common/url_constants.h"
+
+          # profiles/passwords must be actual native WebUI hosts using the
+          # existing maintained controllers, never browser_about_handler redirects.
+          grep -F 'kChromeUIProfilePickerHost[] = "profiles"' "$webui_constants"
+          grep -F 'kChromeUIProfilePickerUrl[] = "ghost://profiles/"' "$webui_constants"
+          grep -F 'kChromeUIPasswordManagerHost[] = "passwords"' "$password_constants"
+          grep -F 'ghost://passwords/checkup?start=true' "$webui_constants"
+          grep -F 'ghost://passwords/settings' "$webui_constants"
+          grep -F 'chrome::kChromeUIProfilePickerHost' "$src/chrome/browser/ui/webui/signin/profile_picker_ui.h"
+          grep -F 'password_manager::kChromeUIPasswordManagerHost' "$src/chrome/browser/ui/webui/password_manager/password_manager_ui.h"
+          if grep -Fq 'GURL("ghost://settings/manageProfile")' "$about_handler" ||
+             grep -Fq 'GURL("ghost://password-manager/")' "$about_handler"; then
+            echo 'Canonical profiles/passwords WebUIs regressed to redirect aliases.' >&2
+            exit 1
+          fi
+
           grep -F 'kMemorySaverModeState, static_cast<int>(MemorySaverModeState::kEnabled));' "$performance_prefs"
           grep -F 'static_cast<int>(MemorySaverModeAggressiveness::kMedium)' "$performance_prefs"
           grep -F 'RegisterBooleanPref(kTabFreezingEnabled, true)' "$performance_prefs"
