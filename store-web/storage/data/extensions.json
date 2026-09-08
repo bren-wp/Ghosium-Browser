@@ -1,11 +1,11 @@
 {
   "schemaVersion": 1,
-  "updatedAt": "2026-09-08T01:00:00Z",
+  "updatedAt": "2026-09-08T01:45:00Z",
   "extensions": [
     {
       "id": "ghosium-privacy",
       "name": "Ghosium Privacy",
-      "version": "0.1.3",
+      "version": "0.1.4",
       "manifestVersion": 3,
       "status": "built_in",
       "description": "Built-in declarative tracker protection and Ghosium new-tab experience.",
@@ -25,7 +25,7 @@
     {
       "id": "ghosium-search",
       "name": "Ghosium Search",
-      "version": "0.1.3",
+      "version": "0.1.4",
       "manifestVersion": 3,
       "status": "built_in",
       "description": "Built-in Ghosium Search integration for the browser search experience.",
