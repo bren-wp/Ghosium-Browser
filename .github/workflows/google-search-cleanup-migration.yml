@@ -24,9 +24,13 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python3 -m py_compile scripts/migrate-google-search-cleanup.py scripts/migrate-google-search-cleanup-pass2.py
+          python3 -m py_compile \
+            scripts/migrate-google-search-cleanup.py \
+            scripts/migrate-google-search-cleanup-pass2.py \
+            scripts/migrate-google-search-cleanup-pass3.py
           python3 scripts/migrate-google-search-cleanup.py
           python3 scripts/migrate-google-search-cleanup-pass2.py
+          python3 scripts/migrate-google-search-cleanup-pass3.py
 
       - name: Validate cleanup quality
         shell: bash
@@ -69,6 +73,7 @@ jobs:
           test ! -e .release/ghosium-v0.1.5.production
           test ! -e scripts/migrate-google-search-cleanup.py
           test ! -e scripts/migrate-google-search-cleanup-pass2.py
+          test ! -e scripts/migrate-google-search-cleanup-pass3.py
           test ! -e .github/workflows/google-search-cleanup-migration.yml
 
           grep -Fq 'action="https://www.google.com/search"' extension/newtab.html
@@ -79,6 +84,7 @@ jobs:
           if git grep -n -E 'search\.ghosium\.com|search-provider|search-web' -- . \
               ':!CHANGELOG.md' \
               ':!.github/workflows/brand-surface-contract.yml' \
+              ':!.github/workflows/engine-source-audit.yml' \
               ':!scripts/rewrite-engine-default-search.ps1' \
               ':!scripts/verify-engine-fork.ps1'; then
             echo 'Active references to the retired Ghosium Search stack remain.' >&2
@@ -88,6 +94,7 @@ jobs:
           if git grep -n -F 'Ghosium Search' -- . \
               ':!CHANGELOG.md' \
               ':!.github/workflows/brand-surface-contract.yml' \
+              ':!.github/workflows/engine-source-audit.yml' \
               ':!scripts/rewrite-engine-default-search.ps1' \
               ':!scripts/verify-engine-fork.ps1'; then
             echo 'Unexpected active Ghosium Search product references remain.' >&2
