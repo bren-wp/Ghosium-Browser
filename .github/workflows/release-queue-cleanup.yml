@@ -39,6 +39,7 @@ jobs:
           grep -Fxq 'version=0.1.9' "$marker"
           grep -Fxq 'canonical_run=34290511163' "$marker"
           grep -Fxq 'canonical_sha=727db780ad022642bd7d2a20ea9fc59124b244bb' "$marker"
+          grep -Fxq 'cleanup_revision=2' "$marker"
           test "$(tr -d '\r\n ' < VERSION)" = '0.1.9'
 
           canonical_run=34290511163
@@ -50,6 +51,7 @@ jobs:
           test "$(jq -r '.path' <<<"$canonical")" = '.github/workflows/full-source-windows-build.yml'
           test "$(jq -r '.head_branch' <<<"$canonical")" = "$canonical_ref"
           test "$(jq -r '.head_sha' <<<"$canonical")" = "$canonical_sha"
+          test "$(jq -r '.event' <<<"$canonical")" = 'workflow_dispatch'
 
           canonical_status="$(jq -r '.status' <<<"$canonical")"
           case "$canonical_status" in
@@ -80,13 +82,14 @@ jobs:
           workflow_path='.github/workflows/full-source-windows-build.yml'
 
           targets=(
-            '34179316895|ghosium/0.1.1-public-branding|e06dfc13e8ab3eb4854c354ec99cd32f94417c8b'
-            '34183762471|main|fc0d9af56984ba150bddbb317de53a7cf1c79f4e'
-            '34279324268|ghosium/release/0.1.8|60c163973841fcb7624449d9c81695b99613dd5d'
+            '34156008107|ghosium/0.1.0-foundation|052446265e4448a589b5a77bc8c092fa1a9644b2|pull_request'
+            '34179316895|ghosium/0.1.1-public-branding|e06dfc13e8ab3eb4854c354ec99cd32f94417c8b|workflow_dispatch'
+            '34183762471|main|fc0d9af56984ba150bddbb317de53a7cf1c79f4e|workflow_dispatch'
+            '34279324268|ghosium/release/0.1.8|60c163973841fcb7624449d9c81695b99613dd5d|workflow_dispatch'
           )
 
           for target in "${targets[@]}"; do
-            IFS='|' read -r run_id expected_ref expected_sha <<<"$target"
+            IFS='|' read -r run_id expected_ref expected_sha expected_event <<<"$target"
 
             if [[ "$run_id" == "$canonical_run" ]]; then
               echo 'Safety violation: canonical run appeared in stale target set.' >&2
@@ -98,16 +101,18 @@ jobs:
             path="$(jq -r '.path' <<<"$run")"
             ref="$(jq -r '.head_branch' <<<"$run")"
             sha="$(jq -r '.head_sha' <<<"$run")"
+            event="$(jq -r '.event' <<<"$run")"
             status="$(jq -r '.status' <<<"$run")"
 
             test "$name" = 'Ghosium Full-Source Windows Build'
             test "$path" = "$workflow_path"
             test "$ref" = "$expected_ref"
             test "$sha" = "$expected_sha"
+            test "$event" = "$expected_event"
 
             case "$status" in
               queued|in_progress|waiting|pending|requested)
-                echo "Cancelling verified superseded run $run_id: $ref @ $sha ($status)."
+                echo "Cancelling verified superseded run $run_id: $ref @ $sha [$event] ($status)."
                 gh api --method POST "/repos/$GITHUB_REPOSITORY/actions/runs/$run_id/cancel"
                 ;;
               completed)
@@ -134,7 +139,7 @@ jobs:
             esac
           }
 
-          stale_runs=(34179316895 34183762471 34279324268)
+          stale_runs=(34156008107 34179316895 34183762471 34279324268)
           for run_id in "${stale_runs[@]}"; do
             inactive=false
             for _ in {1..12}; do
@@ -157,6 +162,7 @@ jobs:
           test "$(jq -r '.head_branch' <<<"$canonical")" = 'ghosium/release/0.1.9'
           test "$(jq -r '.head_sha' <<<"$canonical")" = '727db780ad022642bd7d2a20ea9fc59124b244bb'
           test "$(jq -r '.path' <<<"$canonical")" = '.github/workflows/full-source-windows-build.yml'
+          test "$(jq -r '.event' <<<"$canonical")" = 'workflow_dispatch'
 
           canonical_status="$(jq -r '.status' <<<"$canonical")"
           canonical_conclusion="$(jq -r '.conclusion // empty' <<<"$canonical")"
