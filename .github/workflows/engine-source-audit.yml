@@ -57,6 +57,8 @@ jobs:
             'scripts/rewrite-engine-windows-executable.ps1',
             'scripts/rewrite-engine-product-version.ps1',
             'scripts/rewrite-engine-version-updater.ps1',
+            'scripts/rewrite-engine-public-surfaces.ps1',
+            'scripts/verify-engine-public-surfaces.ps1',
             'scripts/harden-engine-version-updater.ps1',
             'scripts/verify-engine-version-updater.ps1',
             'scripts/rewrite-engine-internal-scheme.ps1',
@@ -221,6 +223,8 @@ jobs:
           /chrome/app/chromium_strings.grd
           /chrome/app/settings_chromium_strings.grdp
           /chrome/app/settings_strings.grdp
+          /chrome/app/shared_settings_strings.grdp
+          /chrome/app/glic_strings.grdp
           /chrome/app/resources/
           /chrome/app/theme/chromium/
           /chrome/chrome_proxy/BUILD.gn
@@ -238,7 +242,12 @@ jobs:
           /chrome/installer/setup/install_worker.cc
           /chrome/installer/util/util_constants.h
           /chrome/browser/browser_about_handler.cc
+          /chrome/browser/extensions/extension_ui_util.cc
+          /chrome/browser/resources/settings/settings_menu/settings_menu.html
+          /chrome/browser/resources/settings/settings_menu/settings_menu.ts
+          /chrome/browser/resources/settings/route.ts
           /chrome/browser/ui/chrome_pages.cc
+          /chrome/browser/ui/webui/settings/settings_ui.cc
           /chrome/browser/ui/webui/version/version_ui.cc
           /chrome/browser/ui/webui/help/BUILD.gn
           /chrome/browser/ui/webui/help/version_updater_basic.cc
