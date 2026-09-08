@@ -1,0 +1,113 @@
+name: Ghosium 0.1.9 Asset Generation
+
+on:
+  push:
+    branches:
+      - ghosium/release/0.1.9
+    paths:
+      - '.release/ghosium-v0.1.9.assets'
+
+permissions:
+  contents: write
+
+jobs:
+  generate-assets:
+    runs-on: windows-2025
+    timeout-minutes: 10
+    steps:
+      - name: Checkout latest 0.1.9 branch
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: ghosium/release/0.1.9
+          fetch-depth: 1
+
+      - name: Generate deterministic Ghosium artwork
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Add-Type -AssemblyName System.Drawing
+          $ico = (Resolve-Path 'ghosium.ico').Path
+          New-Item -ItemType Directory -Force -Path 'extension/icons' | Out-Null
+          New-Item -ItemType Directory -Force -Path 'installer/assets' | Out-Null
+
+          foreach ($size in @(16, 32, 48, 128)) {
+            $icon = [System.Drawing.Icon]::new($ico, $size, $size)
+            try {
+              $bitmap = $icon.ToBitmap()
+              try {
+                $bitmap.Save((Join-Path $PWD "extension/icons/$size.png"), [System.Drawing.Imaging.ImageFormat]::Png)
+              } finally { $bitmap.Dispose() }
+            } finally { $icon.Dispose() }
+          }
+
+          function New-GhosiumBitmap {
+            param([string]$Path, [int]$Width, [int]$Height, [bool]$Compact, [string]$IconPath)
+            $bitmap = [System.Drawing.Bitmap]::new($Width, $Height)
+            $graphics = [System.Drawing.Graphics]::FromImage($bitmap)
+            try {
+              $graphics.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
+              $graphics.Clear([System.Drawing.Color]::FromArgb(17,16,22))
+              $rect = [System.Drawing.Rectangle]::new(0,0,$Width,$Height)
+              $brush = [System.Drawing.Drawing2D.LinearGradientBrush]::new(
+                $rect,
+                [System.Drawing.Color]::FromArgb(138,240,199),
+                [System.Drawing.Color]::FromArgb(181,140,255),
+                12.0
+              )
+              try { $graphics.FillRectangle($brush, 0, [math]::Max(0,$Height-7), $Width, 7) } finally { $brush.Dispose() }
+
+              $iconSize = if ($Compact) { 38 } else { 76 }
+              $icon = [System.Drawing.Icon]::new($IconPath, $iconSize, $iconSize)
+              try {
+                $x = if ($Compact) { 8 } else { [int](($Width-$iconSize)/2) }
+                $y = if ($Compact) { [int](($Height-$iconSize)/2) } else { 48 }
+                $graphics.DrawIcon($icon, $x, $y)
+              } finally { $icon.Dispose() }
+
+              $font = [System.Drawing.Font]::new('Segoe UI', $(if($Compact){11.0}else{14.0}), [System.Drawing.FontStyle]::Bold)
+              $subFont = [System.Drawing.Font]::new('Segoe UI', $(if($Compact){7.0}else{8.5}))
+              $white = [System.Drawing.SolidBrush]::new([System.Drawing.Color]::FromArgb(248,250,252))
+              $muted = [System.Drawing.SolidBrush]::new([System.Drawing.Color]::FromArgb(165,175,190))
+              try {
+                if ($Compact) {
+                  $graphics.DrawString('GHOSIUM', $font, $white, 52, 9)
+                  $graphics.DrawString('Browser by Brendigo', $subFont, $muted, 52, 30)
+                } else {
+                  $format = [System.Drawing.StringFormat]::new()
+                  try {
+                    $format.Alignment = [System.Drawing.StringAlignment]::Center
+                    $graphics.DrawString('GHOSIUM', $font, $white, [System.Drawing.RectangleF]::new(8,142,$Width-16,28), $format)
+                    $graphics.DrawString('Browse freely. Stay private.', $subFont, $muted, [System.Drawing.RectangleF]::new(8,175,$Width-16,42), $format)
+                  } finally { $format.Dispose() }
+                }
+              } finally {
+                $font.Dispose(); $subFont.Dispose(); $white.Dispose(); $muted.Dispose()
+              }
+              $bitmap.Save((Join-Path $PWD $Path), [System.Drawing.Imaging.ImageFormat]::Bmp)
+            } finally {
+              $graphics.Dispose(); $bitmap.Dispose()
+            }
+          }
+
+          New-GhosiumBitmap -Path 'installer/assets/header.bmp' -Width 150 -Height 57 -Compact $true -IconPath $ico
+          New-GhosiumBitmap -Path 'installer/assets/welcome.bmp' -Width 164 -Height 314 -Compact $false -IconPath $ico
+
+          foreach ($path in @('extension/icons/16.png','extension/icons/32.png','extension/icons/48.png','extension/icons/128.png','installer/assets/header.bmp','installer/assets/welcome.bmp')) {
+            if (!(Test-Path $path -PathType Leaf) -or (Get-Item $path).Length -le 100) {
+              throw "Generated Ghosium asset is invalid: $path"
+            }
+          }
+
+      - name: Commit generated assets
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add extension/icons installer/assets
+          if (git diff --cached --quiet) {
+            Write-Host 'Ghosium assets already match.'
+            exit 0
+          }
+          git commit -m 'assets: add Ghosium extension and Setup artwork'
+          git push origin HEAD:ghosium/release/0.1.9
