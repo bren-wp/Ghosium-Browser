@@ -1,0 +1,56 @@
+name: Ghosium 0.1.4 Release Request
+
+on:
+  push:
+    branches:
+      - main
+      - ghosium/0.1.1-public-branding
+    paths:
+      - '.release/ghosium-v0.1.4.request'
+
+permissions:
+  actions: write
+  contents: read
+
+concurrency:
+  group: ghosium-0.1.4-release-request-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  dispatch-full-source:
+    name: Dispatch controlled full-source Windows build
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Validate immutable release request
+        shell: bash
+        run: |
+          set -euo pipefail
+          marker='.release/ghosium-v0.1.4.request'
+          test -f "$marker"
+          test "$(tr -d '\r\n ' < VERSION)" = '0.1.4'
+          test "$(tr -d '\r\n ' < "$marker")" = 'ghosium-v0.1.4'
+
+          case "$GITHUB_REF" in
+            refs/heads/main|refs/heads/ghosium/0.1.1-public-branding) ;;
+            *)
+              echo "Refusing Ghosium 0.1.4 release request from unexpected ref: $GITHUB_REF" >&2
+              exit 1
+              ;;
+          esac
+
+      - name: Dispatch existing guarded production workflow
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh api \
+            --method POST \
+            -H 'Accept: application/vnd.github+json' \
+            -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "/repos/${GITHUB_REPOSITORY}/actions/workflows/full-source-windows-build.yml/dispatches" \
+            -f ref="${GITHUB_REF_NAME}"
+
+          echo "Dispatched Ghosium 0.1.4 full-source workflow for ${GITHUB_REF_NAME}."
