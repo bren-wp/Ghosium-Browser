@@ -11,9 +11,14 @@ permissions:
   actions: write
   contents: read
 
+# Candidate requests intentionally share the full-source candidate concurrency
+# group. A newer request on the same release branch cancels an obsolete candidate
+# before dispatching the exact current branch head. Production main never runs
+# through this dispatcher and keeps the full-source workflow's fail-closed
+# cancel-in-progress:false behavior.
 concurrency:
-  group: ghosium-release-request-${{ github.ref }}
-  cancel-in-progress: false
+  group: ghosium-full-source-windows-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   dispatch-full-source:
@@ -96,5 +101,6 @@ jobs:
         shell: bash
         run: |
           echo 'Candidate dispatch is intentionally limited to ghosium/release/<VERSION>.'
+          echo 'A newer candidate request cancels obsolete full-source work for the same release branch.'
           echo 'Merging the release marker into main does not auto-dispatch production.'
           echo 'Production main must be dispatched only after candidate evidence is successful and the exact candidate tree is the intended main release tree.'
