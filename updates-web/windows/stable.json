@@ -4,7 +4,7 @@
   "platform": "windows",
   "channel": "stable",
   "enabled": false,
-  "version": "0.1.5",
+  "version": "0.1.6",
   "url": "https://updates.ghosium.com/windows/Ghosium-Browser-Setup.exe",
   "sha256": "",
   "size": 0,

@@ -1,6 +1,6 @@
 # Ghosium Browser
 
-**Ghosium Browser by Brendigo** is a Windows x64 browser developed as a full-source Ghosium product. The current development version is **0.1.5**.
+**Ghosium Browser by Brendigo** is a Windows x64 browser developed as a full-source Ghosium product. The current development version is **0.1.6**.
 
 ## Product contract
 
@@ -9,7 +9,7 @@ Ghosium-controlled product surfaces use Ghosium/Brendigo identity:
 - product: **Ghosium Browser**
 - publisher: **Brendigo**
 - home: `https://ghosium.com/`
-- search: `https://search.ghosium.com/`
+- default search: **Google Search** (external service)
 - store: `https://store.ghosium.com/`
 - updates: `https://updates.ghosium.com/`
 - support: `https://ghosium.com/support`
@@ -85,19 +85,13 @@ Ghosium-Browser-Setup.exe
 
 The production update path validates the Ghosium update manifest, newer version, exact byte size, SHA-256, Authenticode publisher and signed Ghosium/Brendigo PE metadata before executing the same Setup package in update mode. The checked-in update manifest is disabled until it describes a real signed package.
 
-## Ghosium Search
+## Search
 
-The first-party endpoint is:
+Ghosium Browser uses **Google Search** as its default web search service. New Tab queries are submitted directly to `https://www.google.com/search`; Ghosium does not proxy them and does not operate a first-party search endpoint.
 
-```text
-https://search.ghosium.com/?q={searchTerms}
-```
+The browser retains Chromium's reviewed Google fallback instead of injecting a Ghosium-specific provider. Explicit user search-engine choices, enterprise policy and extension overrides retain their native precedence.
 
-The 0.1.3 public Search interface was rebuilt from the ground up to match Ghosium Browser's dark surface and mint/teal/cyan visual language. The home page presents one focused search box and does not expose index/provider implementation details or developer-oriented operator examples.
-
-`search-web/` uses reusable server-rendered PHP UI components and modern responsive CSS. It has **no JavaScript runtime bundle or client-framework hydration layer** in the search request path. Advanced query parsing remains available in the backend/API without cluttering the public interface.
-
-See `search-web/README.md` for deployment and engine details.
+The retired first-party search extension and server application are not part of the current product architecture.
 
 ## Ghosium Store
 
@@ -181,10 +175,8 @@ Internal build intermediates are evidence only; the end-user Windows product is 
 .github/workflows/      CI, source-build, update, release and regression contracts
 engine/                 Ghosium product metadata, localization, branding and build configuration
 extension/              Ghosium Privacy and New Tab component
-search-provider/        Ghosium Search browser integration
 installer/              canonical same-Setup Windows installer/update/uninstall definition
 scripts/                source transformation, verification, packaging and benchmark tooling
-search-web/             shared-hosting Ghosium Search
 updates-web/            fail-closed Ghosium update endpoint
 store-web/              shared-hosting Ghosium Store
 docs/                   architecture, security, release, performance and build documentation

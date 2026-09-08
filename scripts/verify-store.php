@@ -30,18 +30,12 @@ try {
 }
 
 $privacyManifest = json_decode((string)file_get_contents($repoRoot . '/extension/manifest.json'), true, 32, JSON_THROW_ON_ERROR);
-$searchManifest = json_decode((string)file_get_contents($repoRoot . '/search-provider/manifest.json'), true, 32, JSON_THROW_ON_ERROR);
-
 $privacy = store_find_extension($catalog, 'ghosium-privacy');
-$search = store_find_extension($catalog, 'ghosium-search');
-if ($privacy === null || $search === null) {
-    fail_store_audit('Built-in Ghosium Store catalog entries are missing.');
+if ($privacy === null) {
+    fail_store_audit('Built-in Ghosium Privacy Store catalog entry is missing.');
 }
 
-foreach ([
-    [$privacy, $privacyManifest, 'Ghosium Privacy'],
-    [$search, $searchManifest, 'Ghosium Search'],
-] as [$entry, $manifest, $label]) {
+foreach ([[$privacy, $privacyManifest, 'Ghosium Privacy']] as [$entry, $manifest, $label]) {
     if (($entry['status'] ?? null) !== 'built_in' || ($entry['distribution']['type'] ?? null) !== 'bundled') {
         fail_store_audit($label . ' must remain a bundled built-in component.');
     }
@@ -154,4 +148,4 @@ if ($trustedKeys['keys'] === []) {
     fwrite(STDOUT, "No production third-party signing keys are published yet; downloadable third-party packages therefore remain fail-closed.\n");
 }
 
-fwrite(STDOUT, "Ghosium Store schema, bundled manifests, SHA-256 and Ed25519 trust verification: OK\n");
+fwrite(STDOUT, "Ghosium Store schema, bundled manifest, SHA-256 and Ed25519 trust verification: OK\n");

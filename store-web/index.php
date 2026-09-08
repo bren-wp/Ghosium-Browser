@@ -38,7 +38,6 @@ header("Content-Security-Policy: default-src 'self'; img-src 'self'; style-src '
   <header class="topbar">
     <a class="brand" href="https://ghosium.com/" aria-label="Ghosium home">Ghosium <strong>Store</strong></a>
     <nav aria-label="Ghosium">
-      <a href="https://search.ghosium.com/">Search</a>
       <a href="https://ghosium.com/support">Support</a>
       <a href="https://ghosium.com/security">Security</a>
     </nav>

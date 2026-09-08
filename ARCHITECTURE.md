@@ -2,7 +2,7 @@
 
 ## Scope
 
-Ghosium Browser 0.1.2 is designed as a direct source-built Windows x64 browser product. The production architecture no longer uses a separate wrapper launcher or a second Portable packaging path.
+Ghosium Browser 0.1.6 is designed as a direct source-built Windows x64 browser product. The production architecture no longer uses a separate wrapper launcher or a second Portable packaging path.
 
 ## Runtime and distribution
 
@@ -65,16 +65,17 @@ Normal sign-in to websites remains ordinary web functionality and is not disable
 
 ## Languages
 
-Ghosium defines one product locale list in `engine/branding/product.json`. Version 0.1.2 supports 38 locales. English (`en-US`) is the primary/default locale and Croatian (`hr`) is required.
+Ghosium defines one product locale list in `engine/branding/product.json`. Version 0.1.6 supports 38 locales. English (`en-US`) is the primary/default locale and Croatian (`hr`) is required.
 
 Interactive Setup presents the same locale set. A fresh installation initializes the browser's native application locale from the Setup selection. Existing browser locale preferences are not overwritten by maintenance updates or reinstalls.
 
-## Search, Store and update services
+## Search and first-party web services
 
-The independently deployable shared-hosting services live in separate repository folders:
+Ghosium does not operate or bundle a first-party web search service. The browser default and New Tab search use Google Search as an external service and submit queries directly to Google.
+
+The independently deployable Ghosium-controlled shared-hosting services are limited to:
 
 ```text
-search-web/      search.ghosium.com
 store-web/       store.ghosium.com
 updates-web/     updates.ghosium.com
 ```
@@ -100,7 +101,7 @@ A failed check stops the update before execution.
 
 Performance work uses native source/build mechanisms rather than security-reducing command-line shortcuts.
 
-For 0.1.2:
+For 0.1.6:
 
 - native Memory Saver defaults to enabled unless the user explicitly chose another state;
 - native medium aggressiveness and tab-freezing semantics are preserved;

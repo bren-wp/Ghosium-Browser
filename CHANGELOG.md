@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.1.6 — Google Search default and Search stack removal
+
+### Search simplification
+- Switched the browser and New Tab default web search experience to Google Search.
+- Removed the bundled Ghosium Search provider extension and the complete first-party search web service.
+- Removed Search-only deployment documentation and CI that no longer represent the product architecture.
+- Preserved Chromium's reviewed Google fallback instead of maintaining a custom default-search source patch, reducing source delta and maintenance risk.
+- Preserved explicit user search-engine choices, enterprise policy and extension override precedence.
+
+### Code quality and privacy
+- Removed stale Search metadata from product URL allowlists and the built-in Store catalog.
+- Kept Ghosium Privacy declarative tracker protection independent from search-provider removal.
+- Updated public-surface CI so `www.google.com` is allowed only for the intentional New Tab search action while Ghosium-controlled product links remain restricted to approved first-party hosts.
+- Advanced the browser, bundled Ghosium Privacy component and fail-closed update baseline to 0.1.6; the stable updater remains disabled until a real signed production package exists.
+
 ## 0.1.5 — release orchestration and candidate safety
 
 ### Release orchestration
