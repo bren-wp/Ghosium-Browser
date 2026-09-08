@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Ghosium Privacy",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Ghosium new tab and declarative privacy protection.",
   "permissions": [
     "declarativeNetRequest"
