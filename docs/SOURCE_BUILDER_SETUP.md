@@ -209,7 +209,7 @@ Performance work is benchmark-driven. Do not introduce renderer caps, `--no-sand
 
 ### 3. Technical source installer verification
 
-The source-built `mini_installer.exe` is exercised only as a technical build-system/install verification input. Its evidence is:
+The source-built `mini_installer.exe` is exercised only as a technical build-system/install verification input. This source-built installer verification is retained solely to prove the technical install path and is never the public Ghosium package. Its evidence is:
 
 ```text
 GHOSIUM-UPSTREAM-MINI-INSTALLER-SMOKE.json
