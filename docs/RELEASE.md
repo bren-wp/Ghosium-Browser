@@ -2,7 +2,7 @@
 
 ## Current product version
 
-The active development version is `0.1.4`.
+The active development version is `0.1.5`.
 
 Version policy:
 
@@ -19,25 +19,46 @@ ghosium-v0.1.1
 ghosium-v0.1.2
 ghosium-v0.1.3
 ghosium-v0.1.4
+ghosium-v0.1.5
 ghosium-v0.2.0
 ```
 
 Historical releases remain untouched.
 
-## 0.1.4 release scope
+## 0.1.5 release scope
 
-The 0.1.4 line carries forward the 0.1.3 Search/performance/release hardening and additionally:
+The 0.1.5 line carries forward the 0.1.4 native-host, Search, localization, performance and release hardening. Its bounded release-engineering change fixes candidate/production ordering:
 
-- makes `ghost://profiles/` the canonical native host for the existing profile-picker WebUI controller;
-- makes `ghost://passwords/` the canonical native host for the existing password-manager WebUI controller;
-- removes the former `browser_about_handler.cc` profile/password redirect aliases;
-- strengthens the fork verifier so native controller/host registration is required and restoration of redirect aliases is rejected;
-- expands revision-pinned source anchors to the actual 2026 profile/password controller registrations, Search fallback implementation and Windows install/executable build graph;
-- requires exactly 38 product locales across product configuration and source audits;
-- keeps the source-built benchmark evidence and signing gates unchanged and fail-closed;
-- synchronizes the disabled update baseline at 0.1.4 without inventing package hash/size evidence.
+- release candidates use the exact branch `ghosium/release/0.1.5`;
+- the active request marker is exactly `.release/ghosium-v0.1.5.request`;
+- the request marker is version-bound to `VERSION` and exactly one active Ghosium request marker is allowed;
+- candidate dispatch refuses an already-published immutable release;
+- candidate dispatch runs only on `ghosium/release/<VERSION>`;
+- merging a candidate marker into `main` does not automatically dispatch production;
+- production remains a separate explicit gate after successful candidate source-build evidence and confirmation that the exact candidate tree is the intended `main` release tree;
+- the checked-in update baseline is synchronized to 0.1.5 but stays fail-closed with `enabled:false`, empty SHA-256 and zero size until a real signed package exists.
 
-These changes are not a production-binary or numerical performance claim until the controlled full-source compile and benchmark succeed for the exact candidate commit.
+The product behavior inherited from 0.1.4 includes canonical native `ghost://profiles/` and `ghost://passwords/` hosts, 38 product locales, Ghosium Search, native Memory Saver defaults, source-built benchmark evidence and production signing gates.
+
+These changes are not a production-binary or numerical performance claim until the controlled full-source candidate and production workflows succeed for the exact release tree.
+
+## Candidate before production
+
+A release candidate must be validated before production publication.
+
+Candidate sequence:
+
+1. create/update `ghosium/release/<VERSION>` from the intended release base;
+2. synchronize `VERSION`, bundled component versions, Store metadata and disabled update baseline;
+3. keep exactly one `.release/ghosium-v<VERSION>.request` marker;
+4. run hosted CI contracts on the candidate PR;
+5. dispatch and complete the controlled full-source Windows candidate build on the exact candidate branch;
+6. inspect source-build, runtime, installer and performance evidence;
+7. only after candidate success, merge the exact reviewed candidate tree to `main`;
+8. explicitly dispatch the production `main` workflow;
+9. require production signing, canonical Setup verification, update-manifest generation and immutable release publication.
+
+A candidate marker merged into `main` is inert by design. It must not independently trigger a production build.
 
 ## Release gate
 
@@ -191,7 +212,7 @@ Never overwrite an existing Ghosium release or repoint its tag. If `ghosium-v0.x
 
 ## Required CI contracts
 
-Before publication, applicable hosted CI must be green, including:
+Before candidate merge and publication, applicable hosted CI must be green, including:
 
 - Version and Release Contract;
 - Brand Surface Contract;
@@ -223,4 +244,4 @@ Required third-party attribution remains a legal requirement and must stay isola
 
 ## Release decision
 
-Do not merge or publish 0.1.4 merely because hosted source contracts are green. The production decision requires the controlled Windows full-source compile, source-built performance evidence and runtime/installer/signing evidence for the exact production commit.
+Do not merge or publish 0.1.5 merely because hosted source contracts are green. Merge requires successful controlled Windows full-source candidate evidence for the exact candidate tree. Publication additionally requires the production `main` source compile, source-built performance evidence, runtime/installer evidence, valid signing and immutable release publication for the exact production commit.

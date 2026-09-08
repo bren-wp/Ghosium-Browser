@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.1.5 — release orchestration and candidate safety
+
+### Release orchestration
+- Replaced the fixed 0.1.4 release dispatcher with a version-bound candidate workflow.
+- Candidate requests run only from `ghosium/release/<VERSION>` and must match `VERSION`.
+- Exactly one `.release/ghosium-v<version>.request` marker may be active for a candidate.
+- Candidate dispatch refuses an already-published immutable release tag.
+- Merging a candidate marker into `main` no longer automatically dispatches production; production remains a separate explicit gate after successful candidate evidence.
+
+### Version and update safety
+- Advanced `VERSION`, Ghosium Privacy, Ghosium Search, built-in Store metadata and the disabled Windows stable update baseline to `0.1.5`.
+- Retired the stale 0.1.4 request marker and created the version-bound `ghosium-v0.1.5` request.
+- Kept checked-in Windows stable update metadata fail-closed (`enabled:false`) with empty SHA-256 and zero size until the exact signed production Setup exists.
+
+### Product baseline
+- Carries forward the 0.1.4 native `ghost://profiles/` and `ghost://passwords/` controller routing, 38-locale contract, Search hardening, native performance defaults, source-built benchmark evidence, canonical same-Setup maintenance and production signing requirements.
+- Hosted CI and release metadata remain preparation only. Ghosium 0.1.5 must not be described as source-built, signed, update-ready or released until the controlled Windows full-source candidate and production gates complete successfully.
+
 ## 0.1.4 — native internal hosts and source-contract hardening
 
 ### Native Ghosium WebUI
