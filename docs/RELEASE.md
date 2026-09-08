@@ -2,14 +2,14 @@
 
 ## Current product version
 
-The active development version is `0.1.2`.
+The active development version is `0.1.3`.
 
 Version policy:
 
 - `0.x.0` — meaningful product/security/performance milestone;
-- `0.x.y` — smaller production correction.
+- `0.x.y` — production correction or bounded product improvement.
 
-Every production PR must advance `VERSION`. The bundled Ghosium Privacy manifest, Ghosium Search manifest and built-in Store catalog versions must match it exactly.
+Every production PR must advance `VERSION`. Ghosium Privacy, Ghosium Search, built-in Store metadata and the disabled Windows update baseline must remain synchronized.
 
 New releases use the immutable namespace:
 
@@ -17,27 +17,27 @@ New releases use the immutable namespace:
 ghosium-v0.1.0
 ghosium-v0.1.1
 ghosium-v0.1.2
+ghosium-v0.1.3
 ghosium-v0.2.0
 ```
 
-Historical release tags are left untouched.
+Historical releases remain untouched.
 
-## 0.1.2 release scope
+## 0.1.3 release scope
 
-The 0.1.2 line includes:
+The 0.1.3 line includes:
 
-- 38 supported product/Setup locales;
-- English (`en-US`) as primary/default language;
-- Croatian (`hr`) as required/selectable language;
-- removal of the retired wrapper-launcher and legacy Portable packaging path;
-- direct source-built Ghosium Windows executable identity;
-- native Memory Saver enabled by default for profiles without an explicit choice;
-- legacy background-app keep-alive disabled on Windows;
-- canonical Setup shutdown logic that prefers normal browser close before forced fallback;
-- synchronized disabled update baseline for 0.1.2;
-- stricter source-anchor, localization and performance-default contracts.
+- the 38-locale browser/Setup contract from 0.1.2;
+- the browser-aligned Ghosium Search redesign;
+- a server-rendered Search UI with no JavaScript runtime bundle;
+- public removal of developer/index implementation details while retaining advanced backend/API query capabilities;
+- source-built performance evidence as a mandatory release gate;
+- benchmark schema v2 with cold/warm startup, 1/5/10 tabs, idle CPU/I/O, best-effort GPU process memory and TCP/UDP endpoint snapshots;
+- the persistent builder workspace renamed to `C:\src\ghosium-engine`;
+- interactive Windows desktop guidance for first-usable-window measurement;
+- synchronized fail-closed update baseline at 0.1.3.
 
-These source changes are not a performance or production-binary claim until the controlled full-source compile succeeds.
+These changes are not a production-binary or numerical performance claim until the controlled full-source compile and benchmark succeed for the exact candidate commit.
 
 ## Release gate
 
@@ -45,7 +45,7 @@ A production release may be published only from the exact commit that successful
 
 Required gate:
 
-1. version/component synchronization;
+1. version/component/update-baseline synchronization;
 2. proprietary Ghosium license validation and required third-party legal payload;
 3. builder/toolchain preflight;
 4. exact source revision and transformation-anchor verification;
@@ -59,15 +59,16 @@ Required gate:
 12. full browser compile;
 13. compiled-output verification;
 14. sandbox-preserving runtime smoke;
-15. internal technical installer verification;
-16. verified source-runtime extraction/staging;
-17. canonical `Ghosium-Browser-Setup.exe` build;
-18. production Authenticode signing on `main`;
-19. install → runtime → update → runtime → uninstall round trip;
-20. profile/language preservation and cleanup verification;
-21. exact update-manifest generation;
-22. provenance and SHA-256 evidence;
-23. immutable release publication.
+15. source-built performance measurement and `GHOSIUM-PERFORMANCE.json` validation;
+16. internal technical installer verification;
+17. verified source-runtime extraction/staging;
+18. canonical `Ghosium-Browser-Setup.exe` build;
+19. production Authenticode signing on `main`;
+20. install → runtime → update → runtime → uninstall round trip;
+21. profile/language preservation and cleanup verification;
+22. exact update-manifest generation;
+23. provenance and SHA-256 evidence;
+24. immutable release publication.
 
 A source audit, patch-only result, historical package, technical archive or installer definition does not satisfy this gate.
 
@@ -79,18 +80,19 @@ The stable end-user Windows artifact is:
 Ghosium-Browser-Setup.exe
 ```
 
-The release process may retain diagnostic/provenance evidence in GitHub Actions, including the technical source-runtime archive and JSON reports, but those are not advertised as alternative end-user browser packages.
+The workflow may retain technical source-runtime archives and JSON evidence for diagnosis/provenance, but they are not alternative end-user browser packages.
 
-The retired legacy Portable package is not part of the 0.1.2 release architecture. It must not return unless a new Portable design is built from the same verified source output and receives equivalent runtime, profile-isolation and cleanup verification.
+The retired legacy Portable package is not part of the active release architecture. It must not return unless a future Portable design is generated from the same verified source output and receives equivalent runtime, profile-isolation, update and cleanup verification.
 
 ## Release evidence
 
-The controlled workflow produces or retains:
+A successful production candidate produces or retains:
 
 ```text
 Ghosium-Browser-Setup.exe
 GHOSIUM-BUILDER-READY.json
 GHOSIUM-SOURCE-BUILD.json
+GHOSIUM-PERFORMANCE.json
 GHOSIUM-UPSTREAM-MINI-INSTALLER-SMOKE.json
 GHOSIUM-SOURCE-STAGE.json
 GHOSIUM-PUBLIC-SETUP.json
@@ -102,30 +104,41 @@ THIRD_PARTY_NOTICES.md
 SHA256SUMS.txt
 ```
 
-The raw source-runtime archive can remain a workflow artifact for provenance/debugging but is not the stable public browser package.
+The raw source-runtime archive can remain a workflow artifact but is not the stable public package.
 
 ## Locale gate
 
-The release must expose the same 38-locale set in browser and Setup.
-
-Required language invariants:
+Browser and interactive Setup must expose the same 38-locale product set.
 
 ```text
 primary/default: en-US
 required: hr
 ```
 
-A fresh installation may initialize the browser language from Setup. Update/reinstall must not overwrite a language already selected by the user in Ghosium Settings.
+Fresh installation can initialize the browser language from Setup. Update/reinstall must not overwrite an existing language selected by the user.
 
 ## Performance gate
 
-0.1.2 changes native resource defaults but does not claim an improvement until the compiled source-built binary is benchmarked.
+Every source-built candidate must run `scripts/benchmark-ghosium-windows.ps1` against the newly compiled `Ghosium-Browser.exe` using `-ProfileMode UserDataDir` and retain `GHOSIUM-PERFORMANCE.json`.
 
-For any startup/RAM/CPU/shutdown claim, retain comparable evidence from `scripts/benchmark-ghosium-windows.ps1`.
+Required measured scenarios include:
+
+- cold startup to first usable browser window;
+- warm startup to first usable browser window;
+- 1-tab, 5-tab and 10-tab process/memory samples;
+- short idle CPU/I/O activity;
+- a 60-second one-tab idle activity interval;
+- best-effort per-process Windows GPU memory;
+- best-effort Ghosium-owned TCP/UDP endpoint activity.
+
+Unsupported GPU counters must be marked unavailable instead of reported as zero. TCP/UDP endpoint counts are not byte-level network telemetry.
+
+The controlled builder used for the first-usable-window benchmark must have an interactive Windows desktop session. Do not weaken browser or Windows security to work around a non-interactive runner.
 
 Performance changes must not weaken:
 
 - sandboxing;
+- GPU sandboxing;
 - site/process isolation;
 - TLS/certificate validation;
 - extension trust;
@@ -133,45 +146,43 @@ Performance changes must not weaken:
 
 Renderer-process limits are not accepted as a synthetic RAM optimization.
 
+## Search gate
+
+The Ghosium Search production UI is deployed from `search-web/` and must remain:
+
+- visually aligned with Ghosium Browser;
+- responsive on desktop and mobile;
+- server-rendered with reusable components;
+- free of a public JavaScript runtime bundle;
+- free of inline JavaScript and inline CSS;
+- free of public developer/index-provider implementation details;
+- independent of Node/npm/Composer at request time.
+
+Advanced parser behavior such as `site:` and explicit `!bang` handling remains tested through the backend/API contract without being required on the public home page.
+
 ## Update and uninstall gate
 
-The canonical Setup is the only public maintenance package. It supports:
-
-```text
-normal install
-/S /UPDATE
-/S /UNINSTALL
-```
+The canonical Setup is the only public maintenance package and supports normal install, `/S /UPDATE` and `/S /UNINSTALL`.
 
 Update validation requires an exact trusted Setup URL, size, SHA-256, Authenticode status, expected publisher relationship and signed Ghosium/Brendigo product metadata.
 
 Before replacing/removing installed program files, Setup requests normal termination of the `Ghosium-Browser.exe` process tree. Forced termination is a bounded fallback.
 
-The normal user profile remains outside the program directory and must survive update and ordinary uninstall.
-
-No standalone updater or uninstaller executable may be introduced.
+The normal user profile remains outside the program directory and must survive update and ordinary uninstall. No standalone updater or uninstaller executable may be introduced.
 
 ## Update manifest
 
-The repository baseline:
+`updates-web/windows/stable.json` is a fail-closed repository baseline. Its version stays synchronized with `VERSION`, but `enabled` remains false and SHA-256/size remain empty/zero until generated from a real verified signed package.
 
-```text
-updates-web/windows/stable.json
-```
-
-must remain disabled/fail-closed. Its version must stay synchronized with `VERSION`, but it must have no production package hash or size until generated from a verified release artifact.
-
-On production `main`, `scripts/generate-update-manifest.ps1 -RequireAuthenticode` generates the enabled update evidence from the exact signed Setup package.
+On production `main`, `scripts/generate-update-manifest.ps1 -RequireAuthenticode` generates release evidence from the exact signed Setup package.
 
 ## Immutability
 
-Never overwrite an existing Ghosium release or repoint its tag.
-
-If `ghosium-v0.x.y` already exists, the release must fail. A correction requires a new version.
+Never overwrite an existing Ghosium release or repoint its tag. If `ghosium-v0.x.y` already exists, publication fails and a correction requires a new version.
 
 ## Required CI contracts
 
-Before publication, applicable CI must be green, including:
+Before publication, applicable hosted CI must be green, including:
 
 - Version and Release Contract;
 - Brand Surface Contract;
@@ -187,7 +198,7 @@ Before publication, applicable CI must be green, including:
 - Search Shared Hosting Contract;
 - Store Trust Audit.
 
-Tests must not be weakened to make a release green. Fix the implementation or update a stale assertion only when the pinned source/API contract genuinely changed and the replacement assertion is at least as strict.
+Tests must not be weakened to make a release green. Fix implementation defects or update a stale assertion only when the pinned source/API genuinely changed and the replacement assertion remains at least as strict.
 
 ## Signing
 
@@ -199,8 +210,8 @@ Signing keys, PFX files and passwords must never be committed.
 
 `GHOSIUM-LICENSE.txt` contains the Brendigo proprietary product license. `THIRD_PARTY_NOTICES.md` and applicable bundled license files preserve mandatory third-party rights and notices.
 
-Required third-party attribution is a legal requirement and must remain isolated from Ghosium product branding rather than removed or represented as Brendigo ownership.
+Required third-party attribution remains a legal requirement and must stay isolated from Ghosium product branding rather than removed or represented as Brendigo ownership.
 
 ## Release decision
 
-Do not merge/publish 0.1.2 merely because hosted source contracts are green. The production decision requires the controlled Windows full-source compile and runtime/installer evidence for the exact production commit.
+Do not merge or publish 0.1.3 merely because hosted source contracts are green. The production decision requires the controlled Windows full-source compile, source-built performance evidence and runtime/installer/signing evidence for the exact production commit.
