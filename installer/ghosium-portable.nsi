@@ -63,11 +63,12 @@ Function .onInit
   IfFileExists "$PortableRuntime\LICENSE" 0 portable_runtime_error
   IfFileExists "$PortableRuntime\THIRD_PARTY_NOTICES.md" 0 portable_runtime_error
 
-  ; Portable mode is deliberately registry-free. The profile switch is fixed by
-  ; the package build, and the user-data path is always adjacent to this EXE.
+  ; Portable mode is deliberately registry-free. Caller arguments are forwarded,
+  ; but the fixed profile switch is intentionally appended last so a duplicate
+  ; caller-provided --user-data-dir cannot escape the adjacent Portable profile.
   ; No default-browser registration, shortcuts, updater or uninstall entries are
   ; created by this package.
-  ExecWait '"$PortableRuntime\${PRODUCT_EXE}" "${GHOSIUM_PORTABLE_PROFILE_SWITCH}=$PortableProfile" --no-first-run --no-default-browser-check $PortableArgs' $0
+  ExecWait '"$PortableRuntime\${PRODUCT_EXE}" --no-first-run --no-default-browser-check $PortableArgs "${GHOSIUM_PORTABLE_PROFILE_SWITCH}=$PortableProfile"' $0
   SetErrorLevel $0
   Quit
 
