@@ -179,6 +179,23 @@ cleanup_launch_failed:
   DetailPrint "Unable to launch the Ghosium setup cleanup process."
 FunctionEnd
 
+Function StopGhosiumBrowser
+  ; Ask the Ghosium process tree to terminate without /F first. This gives the
+  ; browser a normal local shutdown path and avoids an unconditional hard kill
+  ; during update/uninstall. The forceful command remains a bounded fallback.
+  DetailPrint "Closing Ghosium Browser..."
+  nsExec::ExecToStack '"$SYSDIR\taskkill.exe" /IM "Ghosium-Browser.exe" /T'
+  Pop $R8
+  Pop $R9
+  StrCmp $R8 "0" ghosium_close_wait
+
+  DetailPrint "Normal Ghosium Browser close did not complete; using maintenance fallback."
+  nsExec::ExecToLog '"$SYSDIR\taskkill.exe" /IM "Ghosium-Browser.exe" /T /F'
+
+ghosium_close_wait:
+  Sleep 1200
+FunctionEnd
+
 Function ValidateUpdateTarget
   ReadRegStr $R2 HKCU "${UNINSTALL_KEY}" "InstallLocation"
   StrCmp $R2 "" update_target_missing
@@ -288,9 +305,7 @@ remove_now:
   ; Give the installed Setup process time to exit after it launched this same
   ; Setup from the temp directory, avoiding a locked-image cleanup race.
   Sleep 1200
-
-  nsExec::ExecToLog '"$SYSDIR\taskkill.exe" /IM "Ghosium-Browser.exe" /T /F'
-  nsExec::ExecToLog '"$SYSDIR\taskkill.exe" /IM "Ghosium-Engine.exe" /T /F'
+  Call StopGhosiumBrowser
 
   Delete "$DESKTOP\Ghosium Browser.lnk"
   RMDir /r "$SMPROGRAMS\Ghosium Browser"
@@ -379,12 +394,9 @@ Section "Ghosium Browser" SecMain
   StrCmp $GhosiumUpdateMode "1" prepare_update install_payload
 prepare_update:
   DetailPrint "Preparing Ghosium Browser ${GHOSIUM_VERSION} update..."
-  ; The browser and engine must release executable/DLL handles before the same
-  ; Setup package replaces the installed program files. User profile data lives
-  ; outside $INSTDIR and is never deleted by an update.
-  nsExec::ExecToLog '"$SYSDIR\taskkill.exe" /IM "Ghosium-Browser.exe" /T /F'
-  nsExec::ExecToLog '"$SYSDIR\taskkill.exe" /IM "Ghosium-Engine.exe" /T /F'
-  Sleep 800
+  ; Release the Ghosium process tree before replacing installed program files.
+  ; User profile data lives outside $INSTDIR and is never deleted by an update.
+  Call StopGhosiumBrowser
 
 install_payload:
   SetOutPath "$INSTDIR"
