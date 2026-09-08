@@ -95,7 +95,7 @@ Replace-RequiredLiteral `
 Replace-RequiredLiteral `
   -Path $webUiConstants `
   -OldValue 'inline constexpr char kChromeUIProfilePickerUrl[] = "chrome://profile-picker/";' `
-  -NewValue 'inline constexpr char kChromeUIProfilePickerUrl[] = "chrome://profiles/";'
+  -NewValue 'inline constexpr char kChromeUIProfilePickerUrl[] = "ghost://profiles/";'
 Replace-RequiredLiteral `
   -Path $passwordManagerConstants `
   -OldValue 'inline constexpr char kChromeUIPasswordManagerHost[] = "password-manager";' `
@@ -137,12 +137,12 @@ foreach ($root in $runtimeRoots) {
     }
 
     $updated = $text
-    $updated = $updated.Replace('chrome://profile-picker/', 'chrome://profiles/')
-    $updated = $updated.Replace('chrome://profile-picker?', 'chrome://profiles?')
-    $updated = $updated.Replace('chrome://profile-picker"', 'chrome://profiles"')
-    $updated = $updated.Replace('chrome://password-manager/', 'chrome://passwords/')
-    $updated = $updated.Replace('chrome://password-manager?', 'chrome://passwords?')
-    $updated = $updated.Replace('chrome://password-manager"', 'chrome://passwords"')
+    $updated = $updated.Replace('chrome://profile-picker/', 'ghost://profiles/')
+    $updated = $updated.Replace('chrome://profile-picker?', 'ghost://profiles?')
+    $updated = $updated.Replace('chrome://profile-picker"', 'ghost://profiles"')
+    $updated = $updated.Replace('chrome://password-manager/', 'ghost://passwords/')
+    $updated = $updated.Replace('chrome://password-manager?', 'ghost://passwords?')
+    $updated = $updated.Replace('chrome://password-manager"', 'ghost://passwords"')
     $updated = $updated.Replace('chrome-untrusted://', 'ghost-untrusted://')
     $updated = $updated.Replace('chrome://', 'ghost://')
 
