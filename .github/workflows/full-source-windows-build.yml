@@ -244,24 +244,16 @@ jobs:
             SourceRoot = $src
             OutDir = 'out/Ghosium'
             ArtifactsDir = (Join-Path $PWD 'artifacts/full-source')
-            StageDir = (Join-Path $env:RUNNER_TEMP 'ghosium-source-stage')
-            Version = $env:GHOSIUM_VERSION
+            StageDir = (Join-Path $env:RUNNER_TEMP 'ghosium-canonical-source-stage')
+            ReportPath = (Join-Path $PWD 'artifacts/full-source/GHOSIUM-PUBLIC-SETUP.json')
           }
           if ($env:GITHUB_REF -eq 'refs/heads/main') {
-            $params.RequireSignature = $true
-          } else {
-            $params.AllowUnsigned = $true
-          }
-          if (![string]::IsNullOrWhiteSpace($env:GHOSIUM_SIGN_CERT_THUMBPRINT)) {
-            $params.CertificateThumbprint = $env:GHOSIUM_SIGN_CERT_THUMBPRINT
-          }
-          if (![string]::IsNullOrWhiteSpace($env:GHOSIUM_TIMESTAMP_URL)) {
-            $params.TimestampUrl = $env:GHOSIUM_TIMESTAMP_URL
+            $params.RequireSigning = $true
           }
           ./scripts/build-source-release-installer.ps1 @params
 
-          $miniInstaller = Join-Path $src 'out/Ghosium/mini_installer.exe'
           $publicSetup = Join-Path $PWD 'artifacts/full-source/Ghosium-Browser-Setup.exe'
+          $miniInstaller = Join-Path $src 'out/Ghosium/mini_installer.exe'
           if (!(Test-Path $publicSetup -PathType Leaf)) {
             throw 'Canonical public Ghosium Setup was not produced.'
           }
