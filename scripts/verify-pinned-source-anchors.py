@@ -149,10 +149,12 @@ FILE_ANCHORS: dict[str, tuple[str, ...]] = {
         'FILE_PATH_LITERAL("chrome_proxy.exe")',
     ),
     "chrome/browser/ui/webui/version/version_ui.cc": (
-        "version_info::GetVersionNumber()",
+        '#include "chrome/common/url_constants.h"',
+        "html_source->AddString(version_ui::kVersion,",
+        "version_info::GetVersionNumber());",
+        "base::UTF8ToUTF16(version_info::GetVersionNumber()),",
         "version_info::GetOSType()",
         "version_info::GetLastChange()",
-        "version_info::GetVersionStringWithModifier(",
     ),
     "chrome/browser/ui/webui/side_panel/customize_chrome/customize_chrome_page_handler.cc": (
         "CustomizeChromePageHandler",
