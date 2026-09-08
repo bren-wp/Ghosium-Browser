@@ -26,24 +26,60 @@ jobs:
           persist-credentials: false
           fetch-depth: 1
 
-      - name: Download immutable historical baseline release
+      - name: Verify immutable historical Windows build artifact
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           $ErrorActionPreference = 'Stop'
-          New-Item -ItemType Directory -Force -Path baseline, artifacts | Out-Null
-          gh release download v0.8.0 `
-            --repo $env:GITHUB_REPOSITORY `
-            --pattern 'Ghosium-Browser-Setup.exe' `
-            --dir baseline
-          if ($LASTEXITCODE -ne 0 -or !(Test-Path 'baseline/Ghosium-Browser-Setup.exe' -PathType Leaf)) {
-            throw 'Unable to download the historical v0.8.0 baseline Setup artifact.'
+          $artifactId = 10001906995
+          $workflowRunId = 34075200979
+          $expectedArtifactName = 'Ghosium-Browser-Windows-x64'
+          $expectedArtifactDigest = 'sha256:5210f478454717728fac93c5f2fa176beffefc13a151f74be74c7c7800972c71'
+
+          $metadataJson = gh api "/repos/$env:GITHUB_REPOSITORY/actions/artifacts/$artifactId"
+          if ($LASTEXITCODE -ne 0) {
+            throw 'Unable to read historical Windows build artifact metadata.'
           }
+          $artifact = $metadataJson | ConvertFrom-Json
+          if ([bool]$artifact.expired) {
+            throw 'Historical Windows build artifact has expired; refusing to substitute an unverified baseline binary.'
+          }
+          if ([string]$artifact.name -ne $expectedArtifactName) {
+            throw "Historical artifact name mismatch: $($artifact.name)"
+          }
+          if ([int64]$artifact.workflow_run.id -ne $workflowRunId) {
+            throw "Historical artifact workflow-run mismatch: $($artifact.workflow_run.id)"
+          }
+          if ([string]$artifact.digest -ne $expectedArtifactDigest) {
+            throw "Historical artifact digest mismatch: $($artifact.digest)"
+          }
+          Write-Host "Verified retained historical artifact $artifactId from run $workflowRunId."
+
+      - name: Download immutable historical Windows build artifact
+        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
+        with:
+          artifact-ids: '10001906995'
+          path: baseline-package
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: '34075200979'
+
+      - name: Resolve and verify historical baseline Setup
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          New-Item -ItemType Directory -Force -Path baseline, artifacts | Out-Null
+          $matches = @(Get-ChildItem 'baseline-package' -Recurse -File -Filter 'Ghosium-Browser-Setup.exe')
+          if ($matches.Count -ne 1) {
+            throw "Expected exactly one historical Ghosium-Browser-Setup.exe; found $($matches.Count)."
+          }
+          Copy-Item $matches[0].FullName 'baseline/Ghosium-Browser-Setup.exe' -Force
           $hash = (Get-FileHash 'baseline/Ghosium-Browser-Setup.exe' -Algorithm SHA256).Hash.ToLowerInvariant()
           if ($hash -ne '45815ec06c1e63954a29793cac756d6f91af44edaff569159c23fb9f1b8e6e50') {
             throw "Historical baseline Setup hash mismatch: $hash"
           }
+          Write-Host "Verified historical baseline Setup SHA-256: $hash"
 
       - name: Install historical baseline
         shell: pwsh
