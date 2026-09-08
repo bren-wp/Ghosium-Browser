@@ -16,7 +16,6 @@ $legalChromiumIds = @(
   '7681937895330411637'
 )
 $settingsPeopleTranslationId = '3721119614952978349'
-$chromiumWord = [regex]::new('\bChromium\b')
 $chromiumProductStem = [regex]::new('\bChromium(?=\p{Ll}|\b)')
 $chromeProductStem = [regex]::new('\bChrome(?=\p{Ll}|\b)')
 
@@ -90,8 +89,13 @@ function Replace-ProductBrandingInBody {
   $updated = $updated.Replace('Google Chrome', 'Ghosium Browser')
 
   if ($PreserveChromiumProject -and $legalChromiumIds -contains $TranslationId) {
+    # Legal translations often inflect the upstream project name (for example
+    # Estonian "Chromiumi"). Replace only the first product-reference stem and
+    # leave the later project attribution untouched. This preserves localized
+    # grammar and mandatory third-party attribution while making Ghosium the
+    # product being described.
     if (!$updated.Contains('Ghosium Browser')) {
-      $updated = $chromiumWord.Replace($updated, 'Ghosium Browser', 1)
+      $updated = $chromiumProductStem.Replace($updated, 'Ghosium Browser', 1)
     }
   } else {
     $updated = $chromiumProductStem.Replace($updated, 'Ghosium Browser')
