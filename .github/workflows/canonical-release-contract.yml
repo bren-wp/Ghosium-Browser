@@ -15,7 +15,6 @@ on:
   push:
     branches:
       - main
-      - ghosium/0.1.1-public-branding
     paths:
       - 'installer/**'
       - 'scripts/assemble-source-release-stage.ps1'
