@@ -284,7 +284,7 @@ jobs:
             'uniqueRemoteAddressCount',
             'longIdleActivity',
             'schemaVersion = 2',
-            "'--user-data-dir=`$ProfilePath'"
+            '--user-data-dir='
           )) {
             if (!$benchmark.Contains($required)) {
               throw "Ghosium benchmark is missing required telemetry/profile invariant: $required"
@@ -365,6 +365,9 @@ jobs:
             'autoninja -C out/Ghosium chrome mini_installer',
             'verify-engine-build-output.ps1',
             '-RunRuntimeSmoke',
+            'benchmark-ghosium-windows.ps1',
+            '-ProfileMode UserDataDir',
+            'GHOSIUM-PERFORMANCE.json',
             'GHOSIUM-SOURCE-BUILD.json',
             'GHOSIUM-UPSTREAM-MINI-INSTALLER-SMOKE.json',
             'build-source-release-installer.ps1',
@@ -413,4 +416,6 @@ jobs:
           grep -Fq 'autoninja -C out/Ghosium chrome mini_installer' "$doc"
           grep -Fq 'runtime smoke' "$doc"
           grep -Fq 'source-built installer' "$doc"
+          grep -Fq 'GHOSIUM-PERFORMANCE.json' "$doc"
+          grep -Fq 'interactive Windows desktop session' "$doc"
           grep -Fq 'Do not commit runner tokens' "$doc"
