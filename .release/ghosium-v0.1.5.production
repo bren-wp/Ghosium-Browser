@@ -1,0 +1,5 @@
+version=0.1.5
+candidate_commit=9e771a9880ef424e4de7efa068801684c784b64d
+candidate_tree=21a57ad1cd964c4247cabfcd93bf9313f7380ec4
+merged_main_commit=e8c5335891a49cac9838f7751fe5697772dfa578
+intent=production-full-source-windows-x64
