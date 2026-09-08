@@ -63,6 +63,11 @@ jobs:
               r'support\.google|chrome\.google|google\.com/chrome',
               re.I,
           )
+          # WebExtension JavaScript necessarily uses the standardized `chrome.*`
+          # compatibility namespace. Permit only the exact APIs currently required
+          # by the checked-in Ghosium component; every other `chrome` occurrence,
+          # product name or internal URL remains a hard failure.
+          allowed_webextension_api = re.compile(r'\bchrome\.(?:storage|runtime|tabs)\b')
           failures = []
 
           explicit_non_product = set()
@@ -82,7 +87,10 @@ jobs:
                       continue
                   text = path.read_text(encoding='utf-8', errors='replace')
                   for number, line in enumerate(text.splitlines(), 1):
-                      if legacy.search(line):
+                      surface_line = line
+                      if path.suffix.lower() in {'.js', '.ts'}:
+                          surface_line = allowed_webextension_api.sub('webextension-api', surface_line)
+                      if legacy.search(surface_line):
                           failures.append(f'{path}:{number}: {line.strip()}')
 
           readme = Path('README.md').read_text(encoding='utf-8')
