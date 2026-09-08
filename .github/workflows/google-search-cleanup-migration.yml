@@ -8,75 +8,144 @@ on:
       - '.github/workflows/google-search-cleanup-migration.yml'
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  migrate:
+  prepare:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 10
     steps:
       - name: Checkout cleanup branch
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
+          persist-credentials: false
           fetch-depth: 1
 
-      - name: Apply migration
-        shell: bash
+      - name: Prepare workflow updates
+        shell: python
         run: |
-          set -euo pipefail
-          python3 scripts/migrate-google-search-cleanup.py
-          python3 scripts/migrate-google-search-cleanup-pass2.py
-          python3 scripts/migrate-google-search-cleanup-pass3.py
+          from pathlib import Path
 
-      - name: Validate cleanup quality
-        shell: bash
-        run: |
-          set -euo pipefail
-          python3 -m json.tool engine/branding/product.json >/dev/null
-          python3 -m json.tool extension/manifest.json >/dev/null
-          python3 -m json.tool store-web/storage/data/extensions.json >/dev/null
-          python3 -m json.tool updates-web/windows/stable.json >/dev/null
-          php -l scripts/verify-store.php
-          php -l store-web/index.php
+          def read(path):
+              return Path(path).read_text(encoding='utf-8')
 
-          pwsh -NoLogo -NoProfile -Command '
-            $ErrorActionPreference = "Stop"
-            foreach ($path in @(
-              "scripts/rewrite-engine-default-search.ps1",
-              "scripts/apply-engine-branding.ps1",
-              "scripts/verify-engine-fork.ps1"
-            )) {
-              $tokens = $null
-              $errors = $null
-              [void][System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path $path), [ref]$tokens, [ref]$errors)
-              if ($errors.Count -gt 0) { throw "PowerShell parser errors found in $path" }
-            }
-          '
+          def write(path, text):
+              Path(path).write_text(text, encoding='utf-8', newline='\n')
 
-          test ! -e search-provider
-          test ! -e search-web
-          grep -Fq 'action="https://www.google.com/search"' extension/newtab.html
-          grep -Fq 'Google Search' extension/newtab.html
-          grep -Fq 'google.id,' scripts/rewrite-engine-default-search.ps1
-          grep -Fq '/*use_first_as_fallback=*/true' scripts/rewrite-engine-default-search.ps1
-          git diff --check
+          brand_path = Path('.github/workflows/brand-surface-contract.yml')
+          brand = read(brand_path)
+          brand = brand.replace("      - 'search-provider/**'\n", '')
+          brand = brand.replace("      - 'search-web/**'\n", '')
+          brand = brand.replace("              Path('search-provider'),\n", '')
+          brand = brand.replace("              Path('search-web'),\n", '')
+          brand = brand.replace("          explicit_non_product = {Path('search-web/RESEARCH.md')}\n", "          explicit_non_product = set()\n")
+          step_start = brand.find('      - name: Verify Ghosium product destinations\n')
+          step_end = brand.find('      - name: Verify Ghost route contract is documented\n', step_start)
+          if step_start < 0 or step_end < 0:
+              raise SystemExit('brand-surface-contract.yml markers not found')
+          replacement = r'''      - name: Verify first-party destinations and Google Search boundary
+                shell: python
+                run: |
+                  from pathlib import Path
+                  import re
 
-      - name: Commit product cleanup
-        shell: bash
-        run: |
-          set -euo pipefail
-          git checkout HEAD -- .github/workflows
-          find scripts -type d -name '__pycache__' -prune -exec rm -rf {} +
-          git config user.name 'Brendigo'
-          git config user.email 'info@brendigo.com'
-          git add -A
-          if git diff --cached --name-only | grep -q '^\.github/workflows/'; then
-            echo 'Unexpected workflow changes in product commit.' >&2
+                  ghosium_files = (
+                      Path('store-web/index.php'),
+                      Path('updates-web/index.php'),
+                  )
+                  allowed_ghosium_hosts = {
+                      'ghosium.com',
+                      'store.ghosium.com',
+                      'updates.ghosium.com',
+                  }
+                  url_re = re.compile(r'https://([a-z0-9.-]+)(?:/[^\s"\'<>)]*)?', re.I)
+
+                  for path in ghosium_files:
+                      text = path.read_text(encoding='utf-8')
+                      for host in url_re.findall(text):
+                          if host.lower() not in allowed_ghosium_hosts:
+                              raise SystemExit(f'Non-Ghosium product URL in {path}: https://{host}')
+
+                  newtab = Path('extension/newtab.html').read_text(encoding='utf-8')
+                  if 'action="https://www.google.com/search"' not in newtab:
+                      raise SystemExit('New Tab must submit search queries directly to Google Search.')
+                  if 'name="q"' not in newtab:
+                      raise SystemExit('New Tab Google Search form must submit the q parameter.')
+                  for forbidden in ('search.ghosium.com', 'Ghosium Search', 'Search with Ghosium'):
+                      if forbidden in newtab:
+                          raise SystemExit(f'Retired first-party Search surface remains in New Tab: {forbidden}')
+
+                  newtab_hosts = {host.lower() for host in url_re.findall(newtab)}
+                  allowed_newtab_hosts = allowed_ghosium_hosts | {'www.google.com'}
+                  unexpected = sorted(newtab_hosts - allowed_newtab_hosts)
+                  if unexpected:
+                      raise SystemExit('Unexpected New Tab external destination(s): ' + ', '.join(unexpected))
+
+                  print('Ghosium destinations + explicit Google Search boundary: OK')
+
+          '''.replace('                ', '      ', 1)
+          write(brand_path, brand[:step_start] + replacement + brand[step_end:])
+
+          engine_path = Path('.github/workflows/engine-source-audit.yml')
+          engine = read(engine_path)
+          old = "          grep -F 'Ghosium Search' \"$src/components/search_engines/template_url_prepopulate_data.cc\"\n"
+          new = """          grep -F 'google.id,' "$src/components/search_engines/template_url_prepopulate_data.cc"
+          grep -F '/*use_first_as_fallback=*/true' "$src/components/search_engines/template_url_prepopulate_data.cc"
+          if grep -Fq 'Ghosium Search' "$src/components/search_engines/template_url_prepopulate_data.cc" || \\
+             grep -Fq 'search.ghosium.com' "$src/components/search_engines/template_url_prepopulate_data.cc"; then
+            echo 'Retired Ghosium Search source integration returned.' >&2
             exit 1
           fi
-          if git diff --cached --name-only | grep -E '(^|/)__pycache__/|\.pyc$'; then
-            echo 'Generated Python bytecode found in product commit.' >&2
-            exit 1
-          fi
-          git commit -m 'search: use Google and remove first-party Search stack'
-          git push origin HEAD:${GITHUB_REF_NAME}
+"""
+          if old not in engine:
+              raise SystemExit('engine-source-audit.yml Search assertion not found')
+          write(engine_path, engine.replace(old, new, 1))
+
+          full_path = Path('.github/workflows/full-source-windows-build.yml')
+          full = read(full_path)
+          marker = "              Path('search-provider/manifest.json'),\n"
+          if marker not in full:
+              raise SystemExit('full-source-windows-build.yml Search manifest marker not found')
+          write(full_path, full.replace(marker, '', 1))
+
+          store_path = Path('.github/workflows/store-trust-audit.yml')
+          store = read(store_path)
+          if "search-provider/manifest.json" not in store:
+              raise SystemExit('store-trust-audit.yml Search trigger not found')
+          store = store.replace("      - 'search-provider/manifest.json'\n", '')
+          store = store.replace(
+              "          curl --fail --silent --show-error 'http://127.0.0.1:8100/api/update.php?id=ghosium-search&version=0.7.0' | grep -Fq '\"updateAvailable\":false'\n",
+              "          curl --fail --silent --show-error 'http://127.0.0.1:8100/api/update.php?id=ghosium-privacy&version=0.1.6' | grep -Fq '\"updateAvailable\":false'\n",
+          )
+          write(store_path, store)
+
+          version_path = Path('.github/workflows/version-contract.yml')
+          version = read(version_path)
+          marker = "          for path in (Path('extension/manifest.json'), Path('search-provider/manifest.json')):\n"
+          if marker not in version:
+              raise SystemExit('version-contract.yml Search manifest marker not found')
+          write(version_path, version.replace(marker, "          for path in (Path('extension/manifest.json'),):\n", 1))
+
+      - name: Validate prepared workflows
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -Fq 'www.google.com' .github/workflows/brand-surface-contract.yml
+          grep -Fq 'google.id,' .github/workflows/engine-source-audit.yml
+          ! grep -Fq "Path('search-provider/manifest.json')" .github/workflows/full-source-windows-build.yml
+          ! grep -Fq 'search-provider/manifest.json' .github/workflows/store-trust-audit.yml
+          ! grep -Fq "Path('search-provider/manifest.json')" .github/workflows/version-contract.yml
+          git diff --check -- .github/workflows
+
+      - name: Upload prepared workflow files
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: google-search-cleanup-workflows
+          path: |
+            .github/workflows/brand-surface-contract.yml
+            .github/workflows/engine-source-audit.yml
+            .github/workflows/full-source-windows-build.yml
+            .github/workflows/store-trust-audit.yml
+            .github/workflows/version-contract.yml
+          if-no-files-found: error
+          retention-days: 1
