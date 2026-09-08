@@ -28,6 +28,7 @@ jobs:
         env:
           EVENT_NAME: ${{ github.event_name }}
           BASE_REF: ${{ github.base_ref }}
+          HEAD_REF: ${{ github.head_ref }}
         run: |
           import json
           import os
@@ -56,25 +57,47 @@ jobs:
 
           if os.environ.get('EVENT_NAME') == 'pull_request':
               base_ref = os.environ.get('BASE_REF') or 'main'
+              head_ref = os.environ.get('HEAD_REF') or ''
               base_version = subprocess.check_output(
                   ['git', 'show', f'origin/{base_ref}:VERSION'],
                   text=True,
               ).strip()
 
               if version == base_version:
-                  raise SystemExit(
-                      'Every merged production change requires a new Ghosium VERSION; '
-                      f'PR still uses base version {version}.'
+                  marker = Path(f'.release/ghosium-v{version}.request')
+                  changed = [
+                      line.strip()
+                      for line in subprocess.check_output(
+                          ['git', 'diff', '--name-only', f'origin/{base_ref}...HEAD'],
+                          text=True,
+                      ).splitlines()
+                      if line.strip()
+                  ]
+                  marker_only = (
+                      head_ref == f'ghosium/release/{version}'
+                      and changed == [marker.as_posix()]
+                      and marker.is_file()
+                      and marker.read_text(encoding='utf-8').strip() == f'ghosium-v{version}'
                   )
-
-              migration_reset = base_version == '0.8.0' and version == '0.1.0'
-              if not migration_reset:
-                  current = tuple(map(int, version.split('.')))
-                  previous = tuple(map(int, base_version.split('.')))
-                  if current <= previous:
+                  if not marker_only:
                       raise SystemExit(
-                          f'Ghosium VERSION must advance from {base_version}; got {version}.'
+                          'Every merged production change requires a new Ghosium VERSION; '
+                          f'PR still uses base version {version}. The only exception is an exact '
+                          'release-marker-only PR from ghosium/release/<VERSION>.'
                       )
+                  print(
+                      f'Ghosium release-marker-only PR accepted at existing version {version}; '
+                      'candidate evidence is enforced by the release marker promotion contract.'
+                  )
+              else:
+                  migration_reset = base_version == '0.8.0' and version == '0.1.0'
+                  if not migration_reset:
+                      current = tuple(map(int, version.split('.')))
+                      previous = tuple(map(int, base_version.split('.')))
+                      if current <= previous:
+                          raise SystemExit(
+                              f'Ghosium VERSION must advance from {base_version}; got {version}.'
+                          )
 
           print(f'Ghosium product version contract OK: {version}')
 
@@ -147,6 +170,7 @@ jobs:
               raise SystemExit('Legacy snapshot-based stable release workflow must not return.')
 
           release_workflow = workflows / 'full-source-windows-build.yml'
+          promotion_workflow = workflows / 'release-marker-promotion-contract.yml'
           text = release_workflow.read_text(encoding='utf-8')
 
           for value in (
@@ -187,6 +211,21 @@ jobs:
           for value in required:
               if value not in text:
                   raise SystemExit(f'Full-source canonical release invariant missing: {value}')
+
+          if not promotion_workflow.is_file():
+              raise SystemExit('Release marker promotion contract workflow is missing.')
+          promotion = promotion_workflow.read_text(encoding='utf-8')
+          for value in (
+              'actions: read',
+              'release-marker-only',
+              'full-source-windows-build.yml',
+              'Ghosium-Browser-Setup.exe',
+              'GHOSIUM-PERFORMANCE.json',
+              'SHA256SUMS.txt',
+              'sha256sum -c SHA256SUMS.txt',
+          ):
+              if value not in promotion:
+                  raise SystemExit(f'Release marker promotion invariant missing: {value}')
 
           forbidden_public_setup = "Copy-Item (Join-Path $out 'mini_installer.exe') 'artifacts/full-source/Ghosium-Browser-Setup.exe'"
           if forbidden_public_setup in text:

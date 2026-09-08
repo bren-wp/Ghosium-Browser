@@ -1,0 +1,279 @@
+name: Ghosium Release Marker Promotion Contract
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - '.release/*.request'
+      - '.github/workflows/release-marker-promotion-contract.yml'
+      - '.github/workflows/version-contract.yml'
+      - '.github/workflows/full-source-windows-build.yml'
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  release-marker-promotion:
+    name: Verify release-marker-only promotion and candidate evidence
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Classify release marker promotion scope
+        id: scope
+        shell: bash
+        env:
+          BASE_REF: ${{ github.base_ref }}
+          HEAD_REF: ${{ github.head_ref }}
+        run: |
+          set -euo pipefail
+
+          mapfile -t changed < <(git diff --name-only "origin/${BASE_REF}...HEAD" | sed '/^$/d')
+          markers=()
+          for path in "${changed[@]}"; do
+            if [[ "$path" == .release/*.request ]]; then
+              markers+=("$path")
+            fi
+          done
+
+          if (( ${#markers[@]} == 0 )); then
+            echo 'mode=self-test' >> "$GITHUB_OUTPUT"
+            echo 'No release marker changed; running workflow self-test only.'
+            exit 0
+          fi
+
+          if (( ${#markers[@]} != 1 || ${#changed[@]} != 1 )); then
+            echo 'A release marker promotion PR must change exactly one release marker and no other files.' >&2
+            printf 'changed: %s\n' "${changed[@]}" >&2
+            exit 1
+          fi
+
+          version="$(tr -d '\r\n ' < VERSION)"
+          if [[ ! "$version" =~ ^0\.[1-9][0-9]*\.[0-9]+$ ]]; then
+            echo "Invalid Ghosium VERSION: $version" >&2
+            exit 1
+          fi
+
+          tag="ghosium-v${version}"
+          expected_marker=".release/${tag}.request"
+          expected_head="ghosium/release/${version}"
+
+          if [[ "${markers[0]}" != "$expected_marker" ]]; then
+            echo "Release marker ${markers[0]} does not match VERSION $version." >&2
+            exit 1
+          fi
+          if [[ "$HEAD_REF" != "$expected_head" ]]; then
+            echo "Release marker promotion must come from $expected_head; got $HEAD_REF." >&2
+            exit 1
+          fi
+          if [[ "$(tr -d '\r\n ' < "$expected_marker")" != "$tag" ]]; then
+            echo "Release marker content does not match $tag." >&2
+            exit 1
+          fi
+
+          echo 'mode=marker' >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "marker=$expected_marker" >> "$GITHUB_OUTPUT"
+          echo "Validated release-marker-only PR shape for $tag."
+
+      - name: Self-test release promotion invariants
+        shell: python
+        run: |
+          from pathlib import Path
+
+          promotion = Path('.github/workflows/release-marker-promotion-contract.yml').read_text(encoding='utf-8')
+          version_contract = Path('.github/workflows/version-contract.yml').read_text(encoding='utf-8')
+          full_source = Path('.github/workflows/full-source-windows-build.yml').read_text(encoding='utf-8')
+
+          required_promotion = (
+              'actions: read',
+              'release-marker-only',
+              'github.event.pull_request.head.sha',
+              'full-source-windows-build.yml',
+              'workflow_dispatch',
+              'Ghosium-Browser-Setup.exe',
+              'GHOSIUM-SOURCE-BUILD.json',
+              'GHOSIUM-PERFORMANCE.json',
+              'GHOSIUM-PUBLIC-SETUP.json',
+              'GHOSIUM-CANONICAL-SETUP-SMOKE.json',
+              'SHA256SUMS.txt',
+              'sha256sum -c SHA256SUMS.txt',
+              'publicSetupIsChromiumMiniInstallerRename',
+              'sameSetupExecutable',
+          )
+          for value in required_promotion:
+              if value not in promotion:
+                  raise SystemExit(f'Release promotion workflow invariant missing: {value}')
+
+          required_version_contract = (
+              'HEAD_REF:',
+              'github.head_ref',
+              "head_ref == f'ghosium/release/{version}'",
+              "changed == [marker.as_posix()]",
+              'candidate evidence is enforced by the release marker promotion contract',
+          )
+          for value in required_version_contract:
+              if value not in version_contract:
+                  raise SystemExit(f'Version contract release-marker invariant missing: {value}')
+
+          if "if: github.ref == 'refs/heads/main'" not in full_source:
+              raise SystemExit('Production publication must remain restricted to main.')
+          if '$params.RequireSigning = $true' not in full_source:
+              raise SystemExit('Production signing requirement was weakened or removed.')
+
+          print('Release marker promotion workflow self-test: OK')
+
+      - name: Require successful exact candidate full-source run
+        if: steps.scope.outputs.mode == 'marker'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CANDIDATE_SHA: ${{ github.event.pull_request.head.sha }}
+          HEAD_REF: ${{ github.head_ref }}
+          GHOSIUM_VERSION: ${{ steps.scope.outputs.version }}
+          GHOSIUM_TAG: ${{ steps.scope.outputs.tag }}
+        run: |
+          set -euo pipefail
+
+          if gh release view "$GHOSIUM_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Immutable release $GHOSIUM_TAG already exists; refusing marker promotion." >&2
+            exit 1
+          fi
+
+          runs_json="$(gh api --method GET \
+            "/repos/${GITHUB_REPOSITORY}/actions/workflows/full-source-windows-build.yml/runs" \
+            -f branch="$HEAD_REF" \
+            -f event='workflow_dispatch' \
+            -f per_page='100')"
+
+          run_id="$(jq -r --arg sha "$CANDIDATE_SHA" '
+            [.workflow_runs[]
+              | select(.head_sha == $sha)
+              | select(.event == "workflow_dispatch")
+              | select(.status == "completed")
+              | select(.conclusion == "success")]
+            | sort_by(.created_at)
+            | last
+            | .id // empty
+          ' <<< "$runs_json")"
+
+          if [[ -z "$run_id" ]]; then
+            echo "No completed/success full-source candidate run exists for exact head $CANDIDATE_SHA." >&2
+            exit 1
+          fi
+
+          artifact_name="ghosium-full-source-windows-x64-${GHOSIUM_VERSION}"
+          artifacts_json="$(gh api --method GET \
+            "/repos/${GITHUB_REPOSITORY}/actions/runs/${run_id}/artifacts" \
+            -f per_page='100')"
+          artifact_id="$(jq -r --arg name "$artifact_name" '
+            [.artifacts[]
+              | select(.name == $name)
+              | select(.expired == false)]
+            | sort_by(.created_at)
+            | last
+            | .id // empty
+          ' <<< "$artifacts_json")"
+
+          if [[ -z "$artifact_id" ]]; then
+            echo "Verified candidate artifact $artifact_name is missing or expired for run $run_id." >&2
+            exit 1
+          fi
+
+          echo "run_id=$run_id" >> "$GITHUB_ENV"
+          echo "artifact_id=$artifact_id" >> "$GITHUB_ENV"
+          echo "Verified exact candidate run: $run_id / artifact $artifact_id."
+
+      - name: Download and verify candidate evidence bundle
+        if: steps.scope.outputs.mode == 'marker'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GHOSIUM_VERSION: ${{ steps.scope.outputs.version }}
+        run: |
+          set -euo pipefail
+
+          zip_path="$RUNNER_TEMP/ghosium-candidate.zip"
+          evidence_dir="$RUNNER_TEMP/ghosium-candidate"
+          mkdir -p "$evidence_dir"
+
+          gh api \
+            -H 'Accept: application/vnd.github+json' \
+            "/repos/${GITHUB_REPOSITORY}/actions/artifacts/${artifact_id}/zip" \
+            > "$zip_path"
+          unzip -q "$zip_path" -d "$evidence_dir"
+
+          expected=(
+            Ghosium-Browser-Setup.exe
+            Ghosium-Browser-Source-Runtime.7z
+            GHOSIUM-SOURCE-BUILD.json
+            GHOSIUM-PERFORMANCE.json
+            GHOSIUM-BUILDER-READY.json
+            GHOSIUM-UPSTREAM-MINI-INSTALLER-SMOKE.json
+            GHOSIUM-SOURCE-STAGE.json
+            GHOSIUM-PUBLIC-SETUP.json
+            GHOSIUM-CANONICAL-SETUP-SMOKE.json
+            GHOSIUM-VERSION.txt
+            GHOSIUM-LICENSE.txt
+            THIRD_PARTY_NOTICES.md
+            SHA256SUMS.txt
+          )
+          for file in "${expected[@]}"; do
+            test -s "$evidence_dir/$file" || {
+              echo "Candidate evidence is missing or empty: $file" >&2
+              exit 1
+            }
+          done
+
+          test "$(tr -d '\r\n ' < "$evidence_dir/GHOSIUM-VERSION.txt")" = "$GHOSIUM_VERSION"
+
+          pushd "$evidence_dir" >/dev/null
+          sha256sum -c SHA256SUMS.txt
+          popd >/dev/null
+
+          EVIDENCE_DIR="$evidence_dir" GHOSIUM_VERSION="$GHOSIUM_VERSION" python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          root = Path(os.environ['EVIDENCE_DIR'])
+          version = os.environ['GHOSIUM_VERSION']
+
+          public = json.loads((root / 'GHOSIUM-PUBLIC-SETUP.json').read_text(encoding='utf-8-sig'))
+          if public.get('product') != 'Ghosium Browser':
+              raise SystemExit('Candidate Setup provenance has the wrong product identity.')
+          if public.get('productVersion') != version:
+              raise SystemExit('Candidate Setup provenance version does not match VERSION.')
+          if public.get('publicSetupIsChromiumMiniInstallerRename') is not False:
+              raise SystemExit('Candidate public Setup may not be a renamed upstream mini-installer.')
+          maintenance = public.get('maintenance') or {}
+          if maintenance.get('sameSetupExecutable') is not True:
+              raise SystemExit('Candidate must preserve the same-Setup maintenance contract.')
+
+          performance = json.loads((root / 'GHOSIUM-PERFORMANCE.json').read_text(encoding='utf-8-sig'))
+          if performance.get('schemaVersion') != 2:
+              raise SystemExit('Candidate performance evidence must use schemaVersion 2.')
+          if performance.get('profileMode') != 'UserDataDir':
+              raise SystemExit('Candidate performance evidence must use UserDataDir profile mode.')
+          if len(performance.get('tabs') or []) != 3:
+              raise SystemExit('Candidate performance evidence must include 1/5/10-tab scenarios.')
+
+          source = json.loads((root / 'GHOSIUM-SOURCE-BUILD.json').read_text(encoding='utf-8-sig'))
+          if source.get('product') not in (None, 'Ghosium Browser'):
+              raise SystemExit('Candidate source-build provenance has an unexpected product identity.')
+
+          smoke = json.loads((root / 'GHOSIUM-CANONICAL-SETUP-SMOKE.json').read_text(encoding='utf-8-sig'))
+          if not isinstance(smoke, dict) or not smoke:
+              raise SystemExit('Canonical Setup smoke evidence is empty or invalid JSON.')
+
+          print('Exact candidate evidence bundle: OK')
+          PY
