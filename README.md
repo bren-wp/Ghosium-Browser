@@ -1,6 +1,6 @@
 # Ghosium Browser
 
-**Ghosium Browser by Brendigo** is a Windows x64 browser developed as a full-source Ghosium product. The current development version is **0.1.3**.
+**Ghosium Browser by Brendigo** is a Windows x64 browser developed as a full-source Ghosium product. The current development version is **0.1.4**.
 
 ## Product contract
 
@@ -29,12 +29,13 @@ ghosium-v0.1.0
 ghosium-v0.1.1
 ghosium-v0.1.2
 ghosium-v0.1.3
+ghosium-v0.1.4
 ghosium-v0.2.0
 ```
 
 Existing releases are never overwritten. A production release is allowed only after the exact commit passes the controlled full-source Windows compile, runtime checks, measured performance evidence, canonical Setup round trip, signing requirements, provenance and SHA-256 manifest generation.
 
-A source transformation audit or hosted CI contract is not proof that a production binary exists. **0.1.3 must not be described as a released source-built binary until the controlled Windows compile succeeds for the exact production commit.**
+A source transformation audit or hosted CI contract is not proof that a production binary exists. **0.1.4 must not be described as a released source-built binary until the controlled Windows compile succeeds for the exact production commit.**
 
 ## Ghosium internal URLs
 
@@ -50,11 +51,13 @@ The Ghosium internal namespace is:
 - `ghost://passwords/`
 - restricted WebUI scheme: `ghost-untrusted://`
 
-Runtime support is considered verified only by the full-source compile and runtime tests. `ghost://profiles/` and `ghost://passwords/` currently use controlled routing into maintained profile/password implementations; they are not claimed as independently rewritten controllers until that work is compile/runtime proven.
+`ghost://profiles/` is the canonical Ghosium host for the native profile-picker WebUI controller. `ghost://passwords/` is the canonical Ghosium host for the native password-manager WebUI controller. They no longer depend on `browser_about_handler.cc` redirect aliases. Source verification requires the native controller registrations and rejects restoration of the old alias routing.
+
+Runtime support is considered production-verified only after the full-source compile and runtime tests succeed for the exact release candidate.
 
 ## Languages
 
-Ghosium 0.1.3 defines **38 supported product locales**. English (`en-US`) is the primary/default language and Croatian (`hr`) is required and selectable.
+Ghosium 0.1.4 defines **38 supported product locales**. English (`en-US`) is the primary/default language and Croatian (`hr`) is required and selectable.
 
 ```text
 en-US, hr, de, fr, es, it, pt-PT, pt-BR, nl, pl,
@@ -111,7 +114,7 @@ The production source-build path uses:
 - `DEPOT_TOOLS_REVISION` — exact build-tool revision;
 - `engine/build/windows-x64.args.gn` — reviewed Windows x64 build configuration;
 - `scripts/bootstrap-engine-source.ps1` — deterministic source checkout/reset;
-- `scripts/apply-engine-branding.ps1` — complete Ghosium source transformation;
+- `scripts/apply-engine-branding.ps1` — complete Ghosium source transformation, including product-version and native internal-host rewrites;
 - `scripts/configure-engine-build.ps1` — reviewed build configuration;
 - source/fork, executable, updater, locale and performance verifiers;
 - `scripts/verify-engine-build-output.ps1` — compiled output/runtime verification;
@@ -142,7 +145,7 @@ Current conservative source-level defaults use native engine mechanisms: Memory 
 
 No performance optimization may disable or weaken sandboxing, renderer/site isolation, certificate validation, extension verification or update verification. Renderer-process caps are not used as a RAM shortcut.
 
-Every source-built release candidate must produce `GHOSIUM-PERFORMANCE.json` from the newly compiled `Ghosium-Browser.exe`. No numerical 0.1.3 performance claim is valid until that evidence exists.
+Every source-built release candidate must produce `GHOSIUM-PERFORMANCE.json` from the newly compiled `Ghosium-Browser.exe`. No numerical 0.1.4 performance claim is valid until that evidence exists.
 
 ## Production signing
 
