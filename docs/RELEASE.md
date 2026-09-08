@@ -2,7 +2,7 @@
 
 ## Current product version
 
-The active development version is `0.1.6`.
+The active development version is `0.1.8`.
 
 Version policy:
 
@@ -21,25 +21,28 @@ ghosium-v0.1.3
 ghosium-v0.1.4
 ghosium-v0.1.5
 ghosium-v0.1.6
+ghosium-v0.1.7
+ghosium-v0.1.8
 ghosium-v0.2.0
 ```
 
 Historical releases remain untouched.
 
-## 0.1.6 release scope
+## 0.1.8 release scope
 
-The 0.1.6 line simplifies the search architecture and removes obsolete release orchestration state:
+The 0.1.8 line carries forward the Google Search simplification and adds repository/release hygiene enforcement:
 
-- Google Search is the default external web search service;
-- Chromium's reviewed Google fallback remains intact instead of being replaced by a Ghosium-specific engine entry;
-- the former first-party search provider extension, PHP search service, Search-only deployment docs and Search-only CI are removed;
-- New Tab submits search queries directly to `https://www.google.com/search` using the standard `q` parameter;
+- Google Search remains the default external web search service;
+- New Tab submits the standard `q` parameter directly to `https://www.google.com/search`;
+- no Ghosium-owned web search backend or bundled default-search provider is part of the product;
+- the pinned engine's reviewed Google fallback remains intact;
 - explicit user search-engine choices, enterprise policy and extension overrides retain native precedence;
-- Ghosium Privacy tracker/campaign-parameter rules remain independent of the search provider;
-- stale 0.1.5 candidate/production markers and the hard-coded 0.1.5 production dispatcher are removed;
-- the 0.1.6 checked-in update baseline remains fail-closed with `enabled:false`, empty SHA-256 and zero size until a real signed package exists.
+- the repository hygiene contract rejects restoration of `search-provider/`, `search-web/`, retired Search CI/migration paths and the legacy snapshot stable-release workflow;
+- same-version release-marker PRs are accepted only from the exact `ghosium/release/<VERSION>` branch and only when the marker is the sole changed file;
+- release-marker promotion requires a completed/success full-source candidate run for the exact PR head SHA and verifies the downloaded candidate evidence bundle;
+- the checked-in 0.1.8 update baseline remains fail-closed with `enabled:false`, empty SHA-256 and zero size until a real signed package exists.
 
-This scope is not a production-binary or performance claim. Canonical release status still requires the controlled full-source candidate/production compile, runtime, performance, installer, signing and provenance gates for the exact 0.1.6 release tree.
+This scope is not a production-binary or performance claim. Canonical release status still requires the controlled full-source candidate/production compile, runtime, performance, installer, signing and provenance gates for the exact release tree.
 
 ## Candidate before production
 
@@ -47,17 +50,20 @@ A release candidate must be validated before production publication.
 
 Candidate sequence:
 
-1. create/update `ghosium/release/<VERSION>` from the intended release base;
+1. create/update `ghosium/release/<VERSION>` from the exact intended release base;
 2. synchronize `VERSION`, bundled component versions, Store metadata and disabled update baseline;
 3. keep exactly one `.release/ghosium-v<VERSION>.request` marker;
-4. run hosted CI contracts on the candidate PR;
-5. dispatch and complete the controlled full-source Windows candidate build on the exact candidate branch;
-6. inspect source-build, runtime, installer and performance evidence;
-7. only after candidate success, merge the exact reviewed candidate tree to `main`;
-8. explicitly dispatch the production `main` workflow;
-9. require production signing, canonical Setup verification, update-manifest generation and immutable release publication.
+4. pushing that marker from the exact release branch dispatches the controlled full-source Windows candidate build;
+5. complete the candidate compile, runtime, installer and performance gates for the exact candidate SHA;
+6. open the release-marker-only PR to `main`;
+7. require Version/Release and Release Marker Promotion contracts to verify the exact branch, marker and successful candidate evidence bundle;
+8. merge only the exact reviewed candidate tree/marker state intended for production;
+9. explicitly dispatch the production `main` full-source workflow;
+10. require production signing, canonical Setup verification, update-manifest generation and immutable release publication.
 
-A candidate marker merged into `main` is inert by design. It must not independently trigger a production build.
+A candidate marker merged into `main` is inert by design. It must not independently dispatch production.
+
+If `main` changes after candidate evidence is produced, the candidate is stale unless exact source-tree equivalence is independently proven. Do not publish an older candidate merely because its hosted checks were green.
 
 ## Release gate
 
@@ -75,21 +81,22 @@ Required gate:
 8. canonical native `ghost://profiles/` and `ghost://passwords/` host verification;
 9. Windows executable identity verification;
 10. native updater verification;
-11. performance-default verification;
-12. deterministic Windows x64 configuration;
-13. full browser compile;
-14. compiled-output verification;
-15. sandbox-preserving runtime smoke;
-16. source-built performance measurement and `GHOSIUM-PERFORMANCE.json` validation;
-17. internal technical installer verification;
-18. verified source-runtime extraction/staging;
-19. canonical `Ghosium-Browser-Setup.exe` build;
-20. production Authenticode signing on `main`;
-21. install → runtime → update → runtime → uninstall round trip;
-22. profile/language preservation and cleanup verification;
-23. exact update-manifest generation;
-24. provenance and SHA-256 evidence;
-25. immutable release publication.
+11. Google Search/default-search contract verification;
+12. performance-default verification;
+13. deterministic Windows x64 configuration;
+14. full browser compile;
+15. compiled-output verification;
+16. sandbox-preserving runtime smoke;
+17. source-built performance measurement and `GHOSIUM-PERFORMANCE.json` validation;
+18. internal technical installer verification;
+19. verified source-runtime extraction/staging;
+20. canonical `Ghosium-Browser-Setup.exe` build;
+21. production Authenticode signing on `main`;
+22. install → runtime → update → runtime → uninstall round trip;
+23. profile/language preservation and cleanup verification;
+24. exact update-manifest generation;
+25. provenance and SHA-256 evidence;
+26. immutable release publication.
 
 A source audit, patch-only result, historical package, technical archive or installer definition does not satisfy this gate.
 
@@ -126,6 +133,8 @@ SHA256SUMS.txt
 ```
 
 The raw source-runtime archive can remain a workflow artifact but is not the stable public package.
+
+The Release Marker Promotion Contract must verify the candidate artifact for the exact marker PR head SHA before that marker can be promoted. This candidate proof does not replace the separately required signed production `main` build.
 
 ## Locale gate
 
@@ -179,12 +188,24 @@ Renderer-process limits are not accepted as a synthetic RAM optimization.
 
 Ghosium Browser does not publish or bundle a first-party web search service. The release candidate must preserve all of the following:
 
-- Chromium's reviewed Google fallback remains intact;
+- the pinned engine's reviewed Google fallback remains intact;
 - New Tab submits `q` directly to `https://www.google.com/search`;
 - no Ghosium-owned default-search provider is injected into engine source;
 - explicit user search-engine choices, enterprise policy and extension overrides retain native precedence;
 - no first-party Search server/deployment payload is packaged or published;
 - Google Search is described as an external service rather than a Ghosium privacy service.
+
+## Repository hygiene gate
+
+The repository hygiene workflow must remain green and fail closed if any of these return:
+
+- `search-provider/`;
+- `search-web/`;
+- retired Search-only CI/migration files;
+- legacy snapshot-based stable release workflow;
+- stale fixed-version candidate dispatch paths;
+- a checked-in stable update manifest that is enabled or contains a package hash/size before verified production generation;
+- loss of canonical source-build signing, main-only publication, provenance or SHA-256 invariants.
 
 ## Update and uninstall gate
 
@@ -211,6 +232,8 @@ Never overwrite an existing Ghosium release or repoint its tag. If `ghosium-v0.x
 Before candidate merge and publication, applicable hosted CI must be green, including:
 
 - Version and Release Contract;
+- Release Marker Promotion Contract for marker-only promotion PRs;
+- Repository Hygiene Contract;
 - Brand Surface Contract;
 - Public Surface Contract;
 - Locale Contract;
@@ -221,8 +244,9 @@ Before candidate merge and publication, applicable hosted CI must be green, incl
 - Windows Installer Contract;
 - Native Update Contract;
 - Canonical Release Contract;
-- Search Shared Hosting Contract;
 - Store Trust Audit.
+
+The retired Search Shared Hosting Contract is not part of the current product because the first-party Search service was removed.
 
 Tests must not be weakened to make a release green. Fix implementation defects or update a stale assertion only when the pinned source/API genuinely changed and the replacement assertion remains at least as strict.
 
@@ -240,4 +264,4 @@ Required third-party attribution remains a legal requirement and must stay isola
 
 ## Release decision
 
-Do not merge or publish 0.1.5 merely because hosted source contracts are green. Merge requires successful controlled Windows full-source candidate evidence for the exact candidate tree. Publication additionally requires the production `main` source compile, source-built performance evidence, runtime/installer evidence, valid signing and immutable release publication for the exact production commit.
+Do not merge or publish 0.1.8 merely because hosted source contracts are green. Marker promotion requires successful controlled Windows full-source candidate evidence for the exact candidate SHA. Publication additionally requires the production `main` source compile, source-built performance evidence, runtime/installer evidence, valid signing, exact update-manifest binding and immutable release publication for the exact production commit.

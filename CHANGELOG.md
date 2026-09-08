@@ -1,5 +1,34 @@
 # Changelog
 
+## 0.1.8 — repository hygiene and release-state consistency
+
+### Repository hygiene
+- Added a fail-closed Repository Hygiene Contract covering Google Search, retired Search paths, release orchestration and the checked-in Windows update baseline.
+- Locked New Tab to direct `https://www.google.com/search` submission and rejects restoration of `search-provider/`, `search-web/` or retired Search migration/CI files.
+- Rejects restoration of the legacy snapshot-based stable release workflow and stale fixed-version 0.1.4/0.1.5 release-dispatch references.
+- Requires the checked-in stable update baseline to remain disabled, version-synchronized, with an empty SHA-256 and zero package size until a verified production package exists.
+
+### Documentation and versioning
+- Advanced `VERSION`, Ghosium Privacy, built-in Store metadata and the fail-closed Windows update baseline to `0.1.8`.
+- Synchronized README, build instructions and production release procedure with the Google Search architecture and exact-SHA candidate promotion policy.
+- Removed stale active-release documentation that still referenced 0.1.5/0.1.6 or the retired Search Shared Hosting Contract.
+
+> `0.1.8` is not a source-built release until the controlled Windows candidate and production workflows compile, measure, runtime-test, sign and package the exact production commit.
+
+## 0.1.7 — release-marker promotion hardening
+
+### Candidate evidence
+- Added a Release Marker Promotion Contract for same-version release-marker-only PRs.
+- Same-version marker PRs are accepted only from the exact `ghosium/release/<VERSION>` branch and only when the matching `.release/ghosium-v<VERSION>.request` file is the sole change.
+- Marker promotion requires a completed/success full-source candidate run for the exact PR head SHA.
+- Candidate promotion downloads and validates the exact candidate evidence bundle, SHA-256 manifest, Setup provenance and performance evidence.
+
+### Release orchestration
+- Kept candidate dispatch separate from production `main` publication.
+- Preserved mandatory production Authenticode signing and exact update-manifest binding.
+- Removed the retired `ghosium/0.1.1-public-branding` trigger from the canonical release contract.
+- Kept the checked-in Windows update baseline fail-closed and synchronized to the development version.
+
 ## 0.1.6 — Google Search default and Search stack removal
 
 ### Search simplification
