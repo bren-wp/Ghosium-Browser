@@ -1,116 +1,99 @@
 # Changelog
 
+## 0.1.2 — localization, cleanup, performance and stability
+
+### Product identity
+- Tightened the Ghosium public/distributable brand contract so legacy upstream browser names cannot appear in Ghosium-owned UI, Setup, Search, Store, update web surfaces or public executable identity.
+- Required third-party attribution remains isolated to dedicated legal/license material and is not product branding.
+- Kept the `ghost://` / `ghost-untrusted://` internal product namespace contract.
+
+### Languages
+- Expanded the supported product locale contract from 30 to **38 languages**.
+- English (`en-US`) remains the primary/default locale.
+- Croatian (`hr`) remains required and is explicitly selectable in Windows Setup.
+- Added Serbian, Catalan, Estonian, Latvian, Lithuanian, Indonesian, Thai and Vietnamese.
+- Added localized Ghosium-owned Profile copy instead of forcing the English label into every translated resource bundle.
+- Windows Setup now mirrors the browser locale list and initializes the native browser locale on a fresh install without overwriting an existing language preference during reinstall/update.
+- Added a dedicated locale CI contract that fails if browser and Setup locale lists diverge.
+
+### Performance and shutdown
+- Enabled the engine's native Memory Saver state by default for profiles that have not explicitly selected another state.
+- Preserved native medium aggressiveness, tab-freezing behavior, existing discard threshold and explicit user preference precedence.
+- Disabled legacy background-app keep-alive in the Windows build configuration so closing the final browser window does not intentionally keep that mode resident.
+- Added a pinned-source performance-default contract that applies the transformation twice, independently verifies it and rejects renderer caps or security-reducing launch shortcuts.
+- Performance claims remain blocked until the actual 0.1.2 source-built binary is benchmarked against the retained historical methodology.
+
+### Repository cleanup
+- Removed the retired pre-source wrapper launcher and its resource/build script.
+- Removed the unsupported legacy Portable installer instead of maintaining a second packaging path without source-built parity.
+- Removed the obsolete Portable release-bundle Dockerfile and an internal chat-handoff document.
+- Canonical Windows distribution remains `Ghosium-Browser-Setup.exe`, which handles install, update and uninstall itself.
+
+### Build and release
+- Advanced `VERSION`, Ghosium Privacy, Ghosium Search and built-in Store metadata to `0.1.2`.
+- Kept the production full-source build, runtime verification, canonical Setup packaging, signing, update-manifest binding and immutable release evidence as mandatory release gates.
+
+> `0.1.2` is not considered a released source-built browser until the controlled full-source Windows workflow compiles, signs and runtime-tests the exact production commit.
+
 ## 0.1.1 — Ghosium-only public surfaces
 
 ### Branding and identity
-- Completed screenshot-facing Settings and About branding so the distributed browser identifies itself as Ghosium Browser by Brendigo instead of Chromium.
-- Replaced the public Chromium product logo with the canonical Ghosium SVG/PNG/ICO asset set and independently verifies deterministic binary logo outputs.
-- Replaced browser-owned help/product entry points with Ghosium-controlled Support and Store destinations while preserving required Chromium/open-source attribution in legal material.
-- Expanded public product-string branding through the generic Settings resource bundle and all 30 supported locales.
+- Completed screenshot-facing Settings/About branding and canonical Ghosium logo integration.
+- Replaced browser-owned help and Store entry points with Ghosium-controlled destinations.
+- Expanded branding through generic Settings resources and the original 30-locale product set.
 
-### Removed upstream product surfaces
-- Removed the public `You and Google` Settings navigation entry; the compatibility route remains internal under the neutral `Profile` title and Settings opens on Privacy & security instead.
-- Removed the Google/Gemini AI Settings navigation entry and hard-disabled its route, including dynamic Glic re-enablement.
-- Removed the Chromium New Tab customization button and its footer context-menu action instead of merely relabeling them.
-- Keeps compatibility-sensitive CustomizeChrome, GEIC, Glic/Gemini and AI-overlay browser actions registered internally but permanently invisible in the Ghosium action tree.
-- Hides the upstream Chromium Web Store component-app tile from New Tab/App Launcher; Ghosium Store remains the first-party extension-store destination.
-- Disables Chromium desktop-to-mobile acquisition, NTP mobile-app promotion, mobile-promo notification and related active-day tracking gates because Ghosium does not currently ship a Ghosium mobile browser.
+### Removed unowned product surfaces
+- Removed external browser-account navigation and kept only local Profile surfaces.
+- Removed unowned AI navigation and dynamic re-enable paths.
+- Removed upstream New Tab customization entry points and hid compatibility-sensitive external browser actions.
+- Removed the external Store tile from New Tab/App Launcher while retaining Ghosium Store.
+- Disabled mobile acquisition/promotional surfaces because Ghosium does not currently ship a mobile browser.
 
 ### Verification
-- Added a pinned-source `Ghosium Public Surface Contract` that applies the complete transform twice for idempotence against the exact Chromium revision in `ENGINE_SOURCE_REVISION`.
-- The contract independently verifies Settings/About identity, public logo hashes, 30-language branding, Web Store suppression, hidden Google-owned routes/actions, removed Customize entry points and disabled unowned mobile promos.
+- Added pinned-source public-surface transformation and independent verification.
 - Public-surface transformations remain forbidden from modifying `third_party` source.
-
-> `0.1.1` is not considered a released source-built browser until the controlled full-source Windows workflow compiles and runtime-tests the exact production commit and publishes the corresponding `ghosium-v0.1.1` release.
 
 ## 0.1.0 — new Ghosium product line
 
 ### Release architecture
-- Reset the Ghosium product version line to `0.1.0` while preserving historical `v0.x.y` tags and releases.
-- New releases use the independent `ghosium-v0.x.y` tag namespace.
-- Removed the snapshot-based stable release workflow that assembled a public browser from a precompiled upstream `chrome-win.zip` archive.
-- Made the pinned full-source Windows compile, runtime verification, source-built installer round trip, provenance and SHA-256 manifest the only production release path.
-- Existing release tags are treated as immutable; the workflow fails instead of replacing assets under an existing tag.
-- Every PR targeting `main` must advance the Ghosium product version and keep bundled component versions synchronized.
+- Reset the Ghosium product line to `0.1.0` while preserving historical release provenance.
+- Introduced the independent immutable `ghosium-v0.x.y` tag namespace.
+- Replaced the historical precompiled snapshot release path with a full-source Windows production gate.
+- Added build/runtime verification, provenance, SHA-256 manifests and immutable release checks.
 
 ### Performance baseline
-- Added a Windows benchmark harness for cold and warm startup, first usable window, RAM, process count, handles, CPU, disk transfer counters and active TCP connections.
+- Added a Windows benchmark harness for cold/warm startup, first usable window, RAM, processes, handles, CPU, disk transfer counters and active TCP connections.
 - Added one-, five- and ten-tab scenarios plus a one-minute idle memory sample.
-- Added a hosted Windows CI baseline against the historical `v0.8.0` Setup artifact with an exact SHA-256 check before execution.
-- Fixed benchmark profile isolation to use the launcher's validated `--ghosium-portable-profile` control instead of a blocked direct `--user-data-dir` override.
-- GPU-memory and per-process network-byte attribution remain explicitly unclaimed until reliable measurements are implemented.
+- Added a hosted immutable historical baseline artifact with exact SHA-256 verification.
 
 ### Product contract
-- `VERSION`, Ghosium Privacy, Ghosium Search and built-in Ghosium Store metadata now report `0.1.0`.
-- Added a separate Ghosium product-version source contract so public About/version surfaces report the Ghosium version rather than presenting the pinned browser-engine compatibility version as the product version.
-- Added a coordinated Windows source migration for the public primary executable `Ghosium-Browser.exe`, proxy helper `Ghosium-Proxy.exe`, installer/update filename constants and Windows VisualElements identity.
-- Full-source binary and installer verification now reject a release that still exposes public `chrome.exe` as the installed primary browser executable.
-- Release documentation now distinguishes source audit, source patching, full-source compile, runtime verification and release publication.
-- Technical upstream GN/Ninja targets and internal DLL/archive names remain implementation dependencies until a separate coordinated rename is proven by successful compile/runtime testing.
+- Added an independent Ghosium product-version contract for About/version surfaces.
+- Added coordinated Windows public executable, proxy, Setup, registry and shell identity migration.
+- Technical engine build identifiers remain implementation dependencies until a coordinated replacement is proven by successful compile/runtime testing; they are not accepted as public Ghosium branding.
 
 ### Licensing and attribution
-- Ghosium Browser's Brendigo-authored proprietary portions are governed by the Brendigo Proprietary Commercial Software License Agreement Version 1.0 in `LICENSE`.
-- Chromium and all other third-party/open-source components remain governed by their respective licenses; Ghosium's proprietary license does not remove or narrow rights granted by those licenses.
-- Production release payloads must include verified `GHOSIUM-LICENSE.txt` and `THIRD_PARTY_NOTICES.md` files, and both are covered by the release SHA-256 manifest.
-- Brand-surface CI treats required upstream names in the isolated legal-attribution section as legal notices rather than Ghosium product branding, while continuing to reject legacy branding in public product/UI surfaces.
-
-> `0.1.0` is not considered a released source-built browser until the full-source workflow completes successfully on the production commit and creates `ghosium-v0.1.0`.
+- Brendigo-authored proprietary portions are governed by the Brendigo Proprietary Commercial Software License Agreement.
+- All third-party/open-source components remain governed by their respective licenses.
+- Production payloads must carry verified Ghosium license and third-party notice files covered by release SHA-256 evidence.
 
 ## Historical development line
 
-The entries below belong to the earlier `v0.x.y` release namespace. They are retained for provenance and are not rewritten or deleted.
+The entries below describe the pre-0.1.x development line and are retained in neutral product terminology for provenance.
 
 ## 0.8.0
-
-### Windows release hardening
-- Hardened the NSIS bootstrap so release builds verify the exact installer toolchain instead of depending on a mutable package feed.
-- Kept real Windows install and same-Setup uninstall smoke testing as a mandatory release gate.
-- Added stronger verification around generated Setup and Portable executables and release artifact publication.
-
-### Full-source readiness
-- Added pinned Chromium source and Chromium-matched `depot_tools` provenance contracts.
-- Added fail-closed Windows x64 self-hosted builder readiness checks, persistent workspace validation and dependency reset hardening.
-- Added source branding, Windows identity, Ghosium Search, locale and product-link verification against the pinned Chromium source tree.
-- Added source-built runtime and installer round-trip verification tooling, SHA-256 provenance reports and post-merge engine audits on `main`.
-- The dedicated `Ghosium Full-Source Windows Build` remained a separate manual self-hosted gate; this historical release did not claim that the full source compile completed.
-
-### CI and supply chain
-- Security-sensitive actions used by the self-hosted full-source workflow were pinned to immutable commit SHAs.
-- Post-merge `main` changes affecting engine/source branding were re-audited on the exact production branch SHA.
-- Historical release/package publication was guarded against duplicate stable tags.
+- Hardened installer-tool bootstrap and release verification.
+- Added pinned source/build-tool provenance and self-hosted source-builder readiness checks.
+- Added source branding, Windows identity, Search, locale and product-link verification.
+- Added runtime and installer verification tooling and SHA-256 provenance reports.
 
 ## 0.7.0
-
-### Branding
-- Ghosium-only New Tab copy and navigation.
-- Ghosium-controlled product links point only to Ghosium-owned domains.
-- Engine entry executable was packaged as `Ghosium-Engine.exe`.
-- User-facing documentation used Ghosium terminology; legally required third-party attribution remained isolated in notices/license material.
-
-### Search and Store
-- Ghosium Search remained the default search endpoint.
-- Added complete `store-web/` shared-hosting source for `store.ghosium.com`.
-- Store uses PHP + JSON, no SQL database, no application JavaScript and no third-party assets.
-
-### Languages
-- Setup language chooser expanded to 30 languages.
-- English is the default/fallback; Croatian is included.
-- Selected installer locale controls browser launch language.
-- Portable mode stores its selected language beside the portable profile.
-
-### Privacy and security
-- Added background-networking suppression in the native launcher.
-- Preserved sandbox, certificate validation and core process isolation.
-- Added validated portable profile/language launcher controls.
-- Setup includes Brendigo publisher metadata and local license acceptance page.
-
-### Packaging
-- Historical GitHub Releases attached `Ghosium-Browser-Setup.exe` and `Ghosium-Browser-Portable.exe`.
-- Source code was delivered through GitHub's automatic source archives.
-- Search/Store deployable source remained in the release-tag source code instead of separate web ZIP assets.
+- Added Ghosium-only New Tab and product navigation.
+- Added shared-hosting Ghosium Store source.
+- Expanded Setup language chooser to 30 languages with English default and Croatian included.
+- Preserved sandbox, certificate validation and process isolation.
+- Historical packaging still included Setup and Portable artifacts.
 
 ## 0.6.0
-
-- Migrated the desktop distribution to a direct pinned upstream open-source browser engine with a small native C++ launcher.
-- Added Ghosium Search shared-hosting source, declarative privacy rules and automatic Low Memory mode.
-- Added stable Windows Setup/Portable build and release verification.
+- Introduced the early desktop distribution and native wrapper architecture.
+- Added Ghosium Search shared-hosting source, privacy rules and an early low-memory mode.
+- Added historical Setup/Portable build verification.
