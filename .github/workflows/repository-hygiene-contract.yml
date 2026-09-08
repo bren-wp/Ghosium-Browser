@@ -1,0 +1,166 @@
+name: Ghosium Repository Hygiene Contract
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  repository-hygiene:
+    name: Verify retired stack removal and fail-closed repository state
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Verify Google Search and retired Search removal
+        shell: python
+        run: |
+          from pathlib import Path
+
+          retired_paths = (
+              Path('search-provider'),
+              Path('search-web'),
+              Path('.github/workflows/search-web-contract.yml'),
+              Path('.github/workflows/windows-build.yml'),
+              Path('.github/workflows/google-search-cleanup-migration.yml'),
+              Path('.github/workflows/production-release-dispatch.yml'),
+              Path('scripts/prepare-google-search-ci.py'),
+          )
+          present = [str(path) for path in retired_paths if path.exists()]
+          if present:
+              raise SystemExit('Retired Search/release compatibility paths returned:\n' + '\n'.join(present))
+
+          newtab = Path('extension/newtab.html').read_text(encoding='utf-8')
+          required = (
+              'action="https://www.google.com/search"',
+              'name="q"',
+              'Google Search',
+          )
+          missing = [value for value in required if value not in newtab]
+          if missing:
+              raise SystemExit('Google Search New Tab contract is missing:\n' + '\n'.join(missing))
+
+          forbidden = (
+              'search.ghosium.com',
+              'Ghosium Search',
+              'search-provider',
+              'search-web',
+          )
+          offenders = [value for value in forbidden if value in newtab]
+          if offenders:
+              raise SystemExit('Retired first-party Search reference returned to New Tab:\n' + '\n'.join(offenders))
+
+          print('Google Search + retired Search stack hygiene: OK')
+
+      - name: Verify fail-closed checked-in update baseline
+        shell: python
+        run: |
+          import json
+          import re
+          from pathlib import Path
+
+          version = Path('VERSION').read_text(encoding='utf-8').strip()
+          if not re.fullmatch(r'0\.[1-9]\d*\.\d+', version):
+              raise SystemExit(f'Invalid Ghosium VERSION: {version!r}')
+
+          path = Path('updates-web/windows/stable.json')
+          manifest = json.loads(path.read_text(encoding='utf-8'))
+          expected = {
+              'schema': 1,
+              'product': 'Ghosium Browser',
+              'platform': 'windows',
+              'channel': 'stable',
+              'enabled': False,
+              'version': version,
+              'url': 'https://updates.ghosium.com/windows/Ghosium-Browser-Setup.exe',
+              'sha256': '',
+              'size': 0,
+              'release_notes': f'https://ghosium.com/release-notes/{version}',
+          }
+          if manifest != expected:
+              raise SystemExit(
+                  'Checked-in update baseline must remain exact, version-synchronized and fail-closed.\n'
+                  f'Expected: {expected}\nActual:   {manifest}'
+              )
+
+          print(f'Fail-closed update baseline: OK ({version})')
+
+      - name: Verify active release workflow hygiene
+        shell: python
+        run: |
+          from pathlib import Path
+
+          workflows = Path('.github/workflows')
+          canonical = (workflows / 'canonical-release-contract.yml').read_text(encoding='utf-8')
+          version_contract = (workflows / 'version-contract.yml').read_text(encoding='utf-8')
+          dispatcher = (workflows / 'release-request-dispatch.yml').read_text(encoding='utf-8')
+          full_source = (workflows / 'full-source-windows-build.yml').read_text(encoding='utf-8')
+
+          forbidden = {
+              'canonical-release-contract.yml': (
+                  'ghosium/0.1.1-public-branding',
+              ),
+              'version-contract.yml': (
+                  'search-provider/manifest.json',
+              ),
+              'release-request-dispatch.yml': (
+                  'ghosium/release/0.1.4',
+                  'ghosium/release/0.1.5',
+              ),
+              'full-source-windows-build.yml': (
+                  'storage.googleapis.com/chromium-browser-snapshots',
+                  'chrome-win.zip',
+              ),
+          }
+          texts = {
+              'canonical-release-contract.yml': canonical,
+              'version-contract.yml': version_contract,
+              'release-request-dispatch.yml': dispatcher,
+              'full-source-windows-build.yml': full_source,
+          }
+          for name, values in forbidden.items():
+              for value in values:
+                  if value in texts[name]:
+                      raise SystemExit(f'Stale or forbidden release reference in {name}: {value}')
+
+          required_dispatch = (
+              "'ghosium/release/**'",
+              "'.release/*.request'",
+              'expected_ref="refs/heads/ghosium/release/${version}"',
+              'Exactly one active Ghosium release request marker is required',
+          )
+          for value in required_dispatch:
+              if value not in dispatcher:
+                  raise SystemExit(f'Candidate dispatcher invariant missing: {value}')
+
+          required_full_source = (
+              'ghosium-source-builder',
+              '$params.RequireSigning = $true',
+              "if: github.ref == 'refs/heads/main'",
+              'GHOSIUM-PUBLIC-SETUP.json',
+              'GHOSIUM-UPDATE-MANIFEST.json',
+              'SHA256SUMS.txt',
+          )
+          for value in required_full_source:
+              if value not in full_source:
+                  raise SystemExit(f'Canonical full-source release invariant missing: {value}')
+
+          print('Active release workflow hygiene: OK')
+
+      - name: Verify repository formatting
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --check
