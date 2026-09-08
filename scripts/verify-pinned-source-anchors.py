@@ -36,9 +36,13 @@ FILE_ANCHORS: dict[str, tuple[str, ...]] = {
     ),
     "extensions/strings/extensions_chromium_strings.grdp": (),
     "chrome/common/url_constants.h": (
-        "kChromeUIScheme",
-        "kChromeUIUntrustedScheme",
-        "kChromeUINewTabURL",
+        '"https://support.google.com/chrome?p=help&ctx=keyboard"',
+        '"https://support.google.com/chrome?p=help&ctx=menu"',
+        '"https://support.google.com/chrome?p=help&ctx=settings"',
+    ),
+    "content/public/common/url_constants.h": (
+        'inline constexpr char kChromeUIScheme[] = "chrome";',
+        'inline constexpr char kChromeUIUntrustedScheme[] = "chrome-untrusted";',
     ),
     "chrome/app/theme/chromium/BRANDING": (
         "COMPANY_FULLNAME=The Chromium Authors",
