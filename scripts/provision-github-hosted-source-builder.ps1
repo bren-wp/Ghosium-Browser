@@ -129,12 +129,51 @@ if ($actualOrigin -notin @(
   throw "Unexpected depot_tools origin: $actualOrigin"
 }
 
-$env:PATH = "$depotToolsResolved;$env:PATH"
+# PowerShell prefers an application (.exe) over a batch wrapper with the same
+# command name even when the batch wrapper's directory appears earlier in PATH.
+# GitHub-hosted images add a toolcache python3.exe, while Chromium's pinned
+# depot_tools intentionally provides its own python3 wrapper. Remove only PATH
+# entries that expose a competing python3.exe so both PowerShell and native
+# Windows command resolution are bound to the pinned depot_tools checkout.
+$originalPathEntries = @($env:PATH -split ';' | Where-Object { ![string]::IsNullOrWhiteSpace($_) })
+$sanitizedPathEntries = New-Object System.Collections.Generic.List[string]
+foreach ($entry in $originalPathEntries) {
+  $trimmedEntry = $entry.Trim()
+  if ([string]::IsNullOrWhiteSpace($trimmedEntry)) {
+    continue
+  }
+  $entryFullPath = $null
+  try {
+    $entryFullPath = [IO.Path]::GetFullPath($trimmedEntry).TrimEnd('\')
+  } catch {
+    $sanitizedPathEntries.Add($trimmedEntry)
+    continue
+  }
+  if ([string]::Equals($entryFullPath, $depotToolsResolved.TrimEnd('\'), [StringComparison]::OrdinalIgnoreCase)) {
+    continue
+  }
+  $competingPython = Join-Path $entryFullPath 'python3.exe'
+  if (Test-Path $competingPython -PathType Leaf) {
+    Write-Host "Excluding competing python3.exe PATH entry from reproducible Chromium toolchain: $entryFullPath"
+    continue
+  }
+  $sanitizedPathEntries.Add($trimmedEntry)
+}
+$env:PATH = "$depotToolsResolved;$($sanitizedPathEntries -join ';')"
 $env:DEPOT_TOOLS_WIN_TOOLCHAIN = '0'
 $env:DEPOT_TOOLS_UPDATE = '0'
 $env:GIT_TERMINAL_PROMPT = '0'
 $env:GHOSIUM_SOURCE_WORK = $workRootResolved
 $env:vs2026_install = [string]$vsPath
+
+$python3Command = Get-Command python3 -ErrorAction SilentlyContinue | Select-Object -First 1
+if (!$python3Command -or [string]::IsNullOrWhiteSpace([string]$python3Command.Source)) {
+  throw 'Pinned depot_tools python3 wrapper is not resolvable after hosted PATH sanitization.'
+}
+$python3Path = [IO.Path]::GetFullPath([string]$python3Command.Source)
+if (!$python3Path.StartsWith($depotToolsResolved.TrimEnd('\') + '\', [StringComparison]::OrdinalIgnoreCase)) {
+  throw "python3 must resolve from pinned depot_tools after hosted provisioning. Found: $python3Path"
+}
 
 & git config --global core.autocrlf false
 & git config --global core.filemode false
@@ -158,6 +197,7 @@ if (![string]::IsNullOrWhiteSpace($env:GITHUB_PATH)) {
 }
 if (![string]::IsNullOrWhiteSpace($env:GITHUB_ENV)) {
   foreach ($entry in @(
+    "PATH=$($env:PATH)",
     "DEPOT_TOOLS_WIN_TOOLCHAIN=0",
     "DEPOT_TOOLS_UPDATE=0",
     "GIT_TERMINAL_PROMPT=0",
@@ -182,6 +222,7 @@ $report = [ordered]@{
   depotToolsOrigin = $actualOrigin
   depotToolsRevision = $actualDepotRevision
   depotToolsRoot = $depotToolsResolved
+  python3Path = $python3Path
   workRoot = $workRootResolved
   freeDiskGiBAfterProvisioning = [math]::Floor($drive.Free / 1GB)
 }
@@ -202,5 +243,6 @@ Write-Host 'GitHub-hosted Ghosium source-builder provisioning: OK'
 Write-Host "Visual Studio: $vsVersion"
 Write-Host "Windows SDK package/toolchain: $sdkPackageRevision / $sdkVersion"
 Write-Host "depot_tools: $actualDepotRevision"
+Write-Host "python3: $python3Path"
 Write-Host "Workspace: $workRootResolved"
 Write-Host "D: free after provisioning: $($report.freeDiskGiBAfterProvisioning) GiB"
