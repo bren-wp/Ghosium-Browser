@@ -34,6 +34,7 @@ jobs:
       GH_TOKEN: ${{ github.token }}
       RELEASE_TAG: ghosium-v0.0.1
       OLD_RELEASE_TAG: ghosium-v0.1.8-preview.1
+      RELEASE_BRANCH: ghosium/release/0.0.1
 
     steps:
       - name: Checkout current main
@@ -192,21 +193,33 @@ jobs:
               if '0.0.1' not in versions:
                   raise SystemExit(f'{path} lost the current 0.0.1 product version.')
 
-      - name: Remove one-time release workflows and commit final release state
+      - name: Remove one-time release state and commit final release repository
         shell: bash
         run: |
           set -euo pipefail
           git rm -f --ignore-unmatch \
+            .release/ghosium-v0.0.1.request \
             .github/workflows/ghosium-0.0.1-release-bridge.yml \
             .github/workflows/ghosium-0.0.1-post-release-cleanup.yml
 
           if git diff --quiet --cached && git diff --quiet -- README.md CHANGELOG.md docs/RELEASE.md BUILDING.md engine/README.md; then
             echo 'Final 0.0.1 repository state is already clean.'
-            exit 0
+          else
+            git config user.name 'github-actions[bot]'
+            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+            git add README.md CHANGELOG.md docs/RELEASE.md BUILDING.md engine/README.md
+            git commit -m "docs: finalize Ghosium 0.0.1 release"
+            git push origin HEAD:main
           fi
 
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add README.md CHANGELOG.md docs/RELEASE.md BUILDING.md engine/README.md
-          git commit -m "docs: finalize Ghosium 0.0.1 release"
-          git push origin HEAD:main
+      - name: Remove one-time release branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git ls-remote --exit-code --heads origin "refs/heads/${RELEASE_BRANCH}" >/dev/null 2>&1; then
+            git push origin --delete "$RELEASE_BRANCH"
+          fi
+          if git ls-remote --exit-code --heads origin "refs/heads/${RELEASE_BRANCH}" >/dev/null 2>&1; then
+            echo "One-time release branch ${RELEASE_BRANCH} still exists." >&2
+            exit 1
+          fi
