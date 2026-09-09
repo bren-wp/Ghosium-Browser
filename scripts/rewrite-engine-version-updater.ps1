@@ -15,7 +15,7 @@ $actualCommit = (& git -C $sourceRootResolved rev-parse HEAD).Trim()
 if ($LASTEXITCODE -ne 0 -or $actualCommit -ne $expectedCommit) {
   throw "Refusing to rewrite updater source in an unpinned checkout. Expected $expectedCommit; found $actualCommit"
 }
-if ($productVersion -notmatch '^0\.[1-9]\d*\.\d+$') {
+if ($productVersion -notmatch '^0\.\d+\.\d+$') {
   throw "Ghosium product VERSION must use the 0.x.y line; found '$productVersion'."
 }
 
@@ -401,10 +401,6 @@ class VersionUpdaterGhosiumWin : public VersionUpdater {
       return;
     }
 
-    // Force Authenticode validation because Ghosium is built from the
-    // unbranded Chromium configuration. The downloaded Setup must have a valid
-    // trusted signature and the same publisher subject as the signed running
-    // Ghosium Browser executable before it can be launched.
     if (!base::win::IsBinaryTrusted(setup_path_, true,
                                     true /* force_verify_in_dev_builds */)) {
       Fail(FAILED_DOWNLOAD,
@@ -416,7 +412,6 @@ class VersionUpdaterGhosiumWin : public VersionUpdater {
                   expected_size_, std::u16string());
 
     base::CommandLine setup_command(setup_path_);
-    // /S must precede custom NSIS switches so .onInit already sees silent mode.
     setup_command.AppendArgNative(L"/S");
     setup_command.AppendArgNative(L"/UPDATE");
     setup_command.AppendArgNative(L"/DELETESELF");
@@ -429,9 +424,6 @@ class VersionUpdaterGhosiumWin : public VersionUpdater {
       return;
     }
 
-    // The Setup process stops Ghosium, replaces the application payload,
-    // refreshes its installed maintenance copy, then removes the temporary
-    // browser-downloaded Setup through that same maintenance package.
     setup_path_.clear();
     update_dir_.clear();
     callback_.Run(NEARLY_UPDATED, 100, false, false, available_version_,
