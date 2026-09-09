@@ -13,6 +13,7 @@ on:
 
 permissions:
   contents: write
+  issues: write
 
 concurrency:
   group: ghosium-0.0.1-post-release-cleanup
@@ -20,7 +21,7 @@ concurrency:
 
 jobs:
   cleanup:
-    name: Verify 0.0.1 release clean legacy release and finalize docs
+    name: Verify 0.0.1 release clean legacy releases and finalize docs
     if: >-
       github.event_name == 'workflow_dispatch' ||
       (github.event_name == 'release' && github.event.release.tag_name == 'ghosium-v0.0.1') ||
@@ -33,9 +34,9 @@ jobs:
     env:
       GH_TOKEN: ${{ github.token }}
       RELEASE_TAG: ghosium-v0.0.1
-      OLD_RELEASE_TAG: ghosium-v0.1.8-preview.1
       RELEASE_BRANCH: ghosium/release/0.0.1
       FALLBACK_BRANCH: fix/0.0.1-bootstrap-resilience
+      PRODUCTION_RUNNER_ISSUE: '67'
 
     steps:
       - name: Checkout current main
@@ -71,21 +72,55 @@ jobs:
           [[ -n "$published_at" ]] || { echo '0.0.1 release has no publication timestamp.' >&2; exit 1; }
           echo "GHOSIUM_RELEASE_DATE=${published_at%%T*}" >> "$GITHUB_ENV"
 
-      - name: Remove superseded public Preview release and tag
+      - name: Remove every superseded GitHub release and Ghosium version tag
         shell: bash
         run: |
           set -euo pipefail
-          if gh release view "$OLD_RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            gh release delete "$OLD_RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --cleanup-tag --yes
-          fi
-          if gh release view "$OLD_RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            echo "Superseded release $OLD_RELEASE_TAG still exists." >&2
+
+          mapfile -t releases < <(
+            gh api --method GET --paginate "/repos/${GITHUB_REPOSITORY}/releases?per_page=100" --jq '.[].tag_name'
+          )
+          for tag in "${releases[@]}"; do
+            [[ -n "$tag" ]] || continue
+            if [[ "$tag" != "$RELEASE_TAG" ]]; then
+              echo "Removing superseded release: $tag"
+              gh release delete "$tag" --repo "$GITHUB_REPOSITORY" --cleanup-tag --yes
+            fi
+          done
+
+          mapfile -t version_tags < <(
+            gh api --method GET --paginate "/repos/${GITHUB_REPOSITORY}/git/matching-refs/tags/ghosium-v" --jq '.[].ref'
+          )
+          for ref in "${version_tags[@]}"; do
+            [[ -n "$ref" ]] || continue
+            tag="${ref#refs/tags/}"
+            if [[ "$tag" != "$RELEASE_TAG" ]]; then
+              echo "Removing superseded Ghosium version tag: $tag"
+              gh api --method DELETE "/repos/${GITHUB_REPOSITORY}/git/refs/tags/${tag}"
+            fi
+          done
+
+          release_tags="$(gh api --method GET --paginate "/repos/${GITHUB_REPOSITORY}/releases?per_page=100" --jq '.[].tag_name')"
+          [[ "$(printf '%s\n' "$release_tags" | sed '/^$/d' | wc -l | tr -d ' ')" == '1' ]] || {
+            echo 'Expected exactly one GitHub Release after cleanup.' >&2
+            printf '%s\n' "$release_tags" >&2
             exit 1
-          fi
-          if gh api --method GET "/repos/${GITHUB_REPOSITORY}/git/ref/tags/${OLD_RELEASE_TAG}" >/dev/null 2>&1; then
-            echo "Superseded tag $OLD_RELEASE_TAG still exists." >&2
+          }
+          [[ "$(printf '%s\n' "$release_tags" | sed '/^$/d')" == "$RELEASE_TAG" ]] || {
+            echo 'The remaining GitHub Release is not 0.0.1.' >&2
             exit 1
-          fi
+          }
+
+          remaining_version_tags="$(gh api --method GET --paginate "/repos/${GITHUB_REPOSITORY}/git/matching-refs/tags/ghosium-v" --jq '.[].ref' | sed 's#^refs/tags/##')"
+          [[ "$(printf '%s\n' "$remaining_version_tags" | sed '/^$/d' | wc -l | tr -d ' ')" == '1' ]] || {
+            echo 'Expected exactly one ghosium-v* version tag after cleanup.' >&2
+            printf '%s\n' "$remaining_version_tags" >&2
+            exit 1
+          }
+          [[ "$(printf '%s\n' "$remaining_version_tags" | sed '/^$/d')" == "$RELEASE_TAG" ]] || {
+            echo 'The remaining Ghosium version tag is not 0.0.1.' >&2
+            exit 1
+          }
 
       - name: Finalize active 0.0.1 documentation
         shell: python
@@ -227,3 +262,14 @@ jobs:
               exit 1
             fi
           done
+
+      - name: Close temporary production-runner blocker
+        shell: bash
+        run: |
+          set -euo pipefail
+          if gh issue view "$PRODUCTION_RUNNER_ISSUE" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            state="$(gh issue view "$PRODUCTION_RUNNER_ISSUE" --repo "$GITHUB_REPOSITORY" --json state --jq '.state')"
+            if [[ "$state" == 'OPEN' ]]; then
+              gh issue close "$PRODUCTION_RUNNER_ISSUE" --repo "$GITHUB_REPOSITORY" --comment "Canonical Ghosium Browser 0.0.1 has been published with verified production assets. Closing the one-time production runner blocker."
+            fi
+          fi
