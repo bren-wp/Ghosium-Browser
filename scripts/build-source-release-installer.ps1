@@ -27,7 +27,7 @@ if ([System.Environment]::OSVersion.Platform -ne [System.PlatformID]::Win32NT) {
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $version = (Get-Content (Join-Path $repoRoot 'VERSION') -Raw).Trim()
-if ($version -notmatch '^0\.[1-9]\d*\.\d+$') {
+if ($version -notmatch '^0\.\d+\.\d+$') {
   throw "Ghosium product VERSION is invalid: '$version'"
 }
 
