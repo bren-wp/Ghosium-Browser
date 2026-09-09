@@ -35,6 +35,7 @@ jobs:
       RELEASE_TAG: ghosium-v0.0.1
       OLD_RELEASE_TAG: ghosium-v0.1.8-preview.1
       RELEASE_BRANCH: ghosium/release/0.0.1
+      FALLBACK_BRANCH: fix/0.0.1-bootstrap-resilience
 
     steps:
       - name: Checkout current main
@@ -199,6 +200,7 @@ jobs:
           set -euo pipefail
           git rm -f --ignore-unmatch \
             .release/ghosium-v0.0.1.request \
+            .github/workflows/ghosium-0.0.1-candidate-retry-dispatch.yml \
             .github/workflows/ghosium-0.0.1-release-bridge.yml \
             .github/workflows/ghosium-0.0.1-post-release-cleanup.yml
 
@@ -212,14 +214,16 @@ jobs:
             git push origin HEAD:main
           fi
 
-      - name: Remove one-time release branch
+      - name: Remove one-time release and fallback branches
         shell: bash
         run: |
           set -euo pipefail
-          if git ls-remote --exit-code --heads origin "refs/heads/${RELEASE_BRANCH}" >/dev/null 2>&1; then
-            git push origin --delete "$RELEASE_BRANCH"
-          fi
-          if git ls-remote --exit-code --heads origin "refs/heads/${RELEASE_BRANCH}" >/dev/null 2>&1; then
-            echo "One-time release branch ${RELEASE_BRANCH} still exists." >&2
-            exit 1
-          fi
+          for branch in "$RELEASE_BRANCH" "$FALLBACK_BRANCH"; do
+            if git ls-remote --exit-code --heads origin "refs/heads/${branch}" >/dev/null 2>&1; then
+              git push origin --delete "$branch"
+            fi
+            if git ls-remote --exit-code --heads origin "refs/heads/${branch}" >/dev/null 2>&1; then
+              echo "One-time branch ${branch} still exists." >&2
+              exit 1
+            fi
+          done
