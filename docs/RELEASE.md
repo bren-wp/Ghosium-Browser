@@ -2,7 +2,7 @@
 
 ## Current product version
 
-The active development version is `0.1.9`.
+The active development version is `0.1.10`.
 
 Version policy:
 
@@ -24,31 +24,28 @@ ghosium-v0.1.6
 ghosium-v0.1.7
 ghosium-v0.1.8
 ghosium-v0.1.9
+ghosium-v0.1.10
 ghosium-v0.2.0
 ```
 
 Historical releases remain untouched.
 
-## 0.1.9 release scope
+## 0.1.10 release scope
 
-The 0.1.9 line carries forward the fail-closed Google Search/release contracts and adds Ghosium-owned UI, verified documentation imagery and a canonical Portable package:
+The 0.1.10 line carries forward the 0.1.9 Ghosium UI, canonical Setup/Portable packaging, fail-closed Google Search and release contracts while hardening GitHub-hosted source-builder parity and Windows toolchain verification:
 
-- Google Search remains the default external web search service;
-- New Tab submits the standard `q` parameter directly to `https://www.google.com/search`;
-- no Ghosium-owned web search backend or bundled default-search provider is part of the product;
-- the pinned engine's reviewed Google fallback remains intact;
-- explicit user search-engine choices, enterprise policy and extension overrides retain native precedence;
-- the repository hygiene contract rejects restoration of `search-provider/`, `search-web/`, retired Search CI/migration paths and the legacy snapshot stable-release workflow;
-- same-version release-marker PRs are accepted only from the exact `ghosium/release/<VERSION>` branch and only when the marker is the sole changed file;
-- release-marker promotion requires a completed/success full-source candidate run for the exact PR head SHA and verifies the downloaded candidate evidence bundle;
-- Ghosium New Tab, Customize/Options and Ghosium Privacy use checked-in branded UI surfaces with generated extension icons;
-- README interface images are actual pinned-Chromium renders of those checked-in surfaces, with provenance, and are not represented as full-source native browser-shell screenshots;
-- source branding now applies and verifies the native public-surface and performance-default transforms as part of the normal fork pipeline;
-- canonical source packaging produces both `Ghosium-Browser-Setup.exe` and registry-free `Ghosium-Browser-Portable.exe` from the same verified source stage;
-- production publication requires exact Portable SHA-256/size provenance and Valid Authenticode for both Setup and Portable;
-- the checked-in 0.1.9 update baseline remains fail-closed with `enabled:false`, empty SHA-256 and zero size until a real signed Setup exists.
+- Chromium helpers `fetch`, `gclient`, `gn` and `autoninja` must resolve from the exact pinned `depot_tools` checkout;
+- 64-bit Python 3 is verified independently because the pinned `depot_tools` revision does not provide its own `python3` wrapper;
+- Windows SDK, Visual Studio/ATL/MFC and Debugging Tools requirements are centralized in `engine/build/windows-toolchain.json` and validated semantically by CI;
+- GitHub-hosted source-builder parity remains fail-closed on the exact toolchain, pinned source/build-tool revisions, NTFS workspace and required free-space contract;
+- parity probes are serialized so stale hosted runs do not compete for Windows capacity or obscure the newest evidence;
+- no production workflow migration from the controlled source builder is permitted until hosted parity is fully green and the complete compile/runtime/performance/installer/signing/update/release contract can be preserved;
+- Google Search remains the default external web search service and no Ghosium-owned web search backend or bundled default-search provider is part of the product;
+- canonical source packaging continues to produce both `Ghosium-Browser-Setup.exe` and registry-free `Ghosium-Browser-Portable.exe` from the same verified source stage;
+- production publication continues to require exact SHA-256/size provenance and Valid Authenticode for public packages and required binaries;
+- the checked-in 0.1.10 update baseline remains fail-closed with `enabled:false`, empty SHA-256 and zero size until a real verified signed Setup exists.
 
-This scope is not a production-binary or performance claim. Canonical release status still requires the controlled full-source candidate/production compile, runtime, performance, installer, signing and provenance gates for the exact release tree.
+This scope is not a production-binary, signing or performance claim. Canonical release status still requires the controlled full-source candidate/production compile, runtime, performance, installer, signing and provenance gates for the exact release tree.
 
 ## Candidate before production
 
@@ -273,4 +270,4 @@ Required third-party attribution remains a legal requirement and must stay isola
 
 ## Release decision
 
-Do not merge or publish 0.1.9 merely because hosted source contracts are green. Marker promotion requires successful controlled Windows full-source candidate evidence for the exact candidate SHA. Publication additionally requires the production `main` source compile, source-built performance evidence, runtime/installer evidence, valid signing, exact update-manifest binding and immutable release publication for the exact production commit.
+Do not merge or publish 0.1.10 merely because hosted source contracts are green. Marker promotion requires successful controlled Windows full-source candidate evidence for the exact candidate SHA. Publication additionally requires the production `main` source compile, source-built performance evidence, runtime/installer evidence, valid signing, exact update-manifest binding and immutable release publication for the exact production commit.

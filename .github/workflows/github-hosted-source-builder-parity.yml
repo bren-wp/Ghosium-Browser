@@ -3,7 +3,8 @@ name: Ghosium GitHub-Hosted Source Builder Parity
 on:
   push:
     branches:
-      - ghosium/fix/windows-toolchain-contract-0.1.9
+      - 'ghosium/fix/github-hosted-*'
+      - 'ghosium/fix/windows-toolchain-contract-*'
     paths:
       - 'engine/build/windows-toolchain.json'
       - 'DEPOT_TOOLS_REVISION'
@@ -15,6 +16,10 @@ on:
 
 permissions:
   contents: read
+
+concurrency:
+  group: ghosium-hosted-source-builder-parity-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   hosted-builder-parity:
@@ -115,6 +120,19 @@ jobs:
               $builder.windowsSdkPackageRevision -ne $provisioning.windowsSdkPackageRevision) {
             throw 'Builder and provisioning evidence disagree on the Windows SDK contract.'
           }
+          if ([string]::IsNullOrWhiteSpace([string]$builder.python3Path) -or
+              [string]::IsNullOrWhiteSpace([string]$builder.python3Version) -or
+              $builder.python3Path -ne $provisioning.python3Path -or
+              $builder.python3Version -ne $provisioning.python3Version) {
+            throw 'Builder and provisioning evidence disagree on the verified 64-bit Python 3 host prerequisite.'
+          }
+          foreach ($property in @('fetchPath', 'gclientPath', 'gnPath', 'autoninjaPath')) {
+            $toolPath = [string]$builder.$property
+            if ([string]::IsNullOrWhiteSpace($toolPath) -or
+                !$toolPath.StartsWith(([string]$builder.depotToolsRoot).TrimEnd('\') + '\', [StringComparison]::OrdinalIgnoreCase)) {
+              throw "Builder evidence does not bind $property to pinned depot_tools."
+            }
+          }
           if (!$interactive.mainWindowHandleNonZero -or !$interactive.userInteractive) {
             throw 'Hosted interactive-window evidence is invalid.'
           }
@@ -122,7 +140,7 @@ jobs:
       - name: Upload hosted source-builder parity evidence
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: ghosium-github-hosted-source-builder-parity-0.1.9
+          name: ghosium-github-hosted-source-builder-parity-${{ github.run_id }}
           path: artifacts/hosted-parity/
           if-no-files-found: error
           retention-days: 30

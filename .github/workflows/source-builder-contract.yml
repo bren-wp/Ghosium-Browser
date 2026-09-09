@@ -7,6 +7,8 @@ on:
     paths:
       - 'ENGINE_SOURCE_REVISION'
       - 'DEPOT_TOOLS_REVISION'
+      - 'engine/build/windows-toolchain.json'
+      - 'scripts/provision-github-hosted-source-builder.ps1'
       - 'scripts/verify-source-builder-host.ps1'
       - 'scripts/bootstrap-engine-source.ps1'
       - 'scripts/verify-engine-build-output.ps1'
@@ -19,6 +21,7 @@ on:
       - 'scripts/generate-update-manifest.ps1'
       - 'docs/SOURCE_BUILDER_SETUP.md'
       - '.github/workflows/full-source-windows-build.yml'
+      - '.github/workflows/github-hosted-source-builder-parity.yml'
       - '.github/workflows/source-builder-contract.yml'
   push:
     branches:
@@ -26,6 +29,8 @@ on:
     paths:
       - 'ENGINE_SOURCE_REVISION'
       - 'DEPOT_TOOLS_REVISION'
+      - 'engine/build/windows-toolchain.json'
+      - 'scripts/provision-github-hosted-source-builder.ps1'
       - 'scripts/verify-source-builder-host.ps1'
       - 'scripts/bootstrap-engine-source.ps1'
       - 'scripts/verify-engine-build-output.ps1'
@@ -38,6 +43,7 @@ on:
       - 'scripts/generate-update-manifest.ps1'
       - 'docs/SOURCE_BUILDER_SETUP.md'
       - '.github/workflows/full-source-windows-build.yml'
+      - '.github/workflows/github-hosted-source-builder-parity.yml'
       - '.github/workflows/source-builder-contract.yml'
   workflow_dispatch:
 
@@ -111,6 +117,7 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           foreach ($path in @(
+            'scripts/provision-github-hosted-source-builder.ps1',
             'scripts/verify-source-builder-host.ps1',
             'scripts/bootstrap-engine-source.ps1',
             'scripts/verify-engine-build-output.ps1',
@@ -139,13 +146,43 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
+
+          $contract = Get-Content 'engine/build/windows-toolchain.json' -Raw | ConvertFrom-Json
+          if ([int]$contract.schemaVersion -ne 1) {
+            throw "Unsupported Windows toolchain contract schema: $($contract.schemaVersion)"
+          }
+          if ([int]$contract.visualStudioMajorMinimum -lt 18) {
+            throw 'Windows toolchain contract must require Visual Studio 2026 (18.x) or newer.'
+          }
+          if ([string]$contract.windowsSdkPackageRevision -notmatch '^10\.0\.\d+\.\d+$') {
+            throw "Windows SDK package revision is malformed: $($contract.windowsSdkPackageRevision)"
+          }
+          if ([string]$contract.windowsSdkVersion -notmatch '^10\.0\.\d+\.0$') {
+            throw "Windows SDK filesystem version is malformed: $($contract.windowsSdkVersion)"
+          }
+          if ([string]$contract.windowsSdkComponent -notmatch '^Microsoft\.VisualStudio\.Component\.Windows11SDK\.\d+$') {
+            throw "Windows SDK Visual Studio component is malformed: $($contract.windowsSdkComponent)"
+          }
+          try {
+            $debuggerMinimum = [version]([string]$contract.debuggingToolsMinimum)
+          } catch {
+            throw "Debugging Tools minimum version is malformed: $($contract.debuggingToolsMinimum)"
+          }
+          if ($debuggerMinimum.Major -lt 10) {
+            throw "Debugging Tools minimum is not a supported Windows SDK version: $debuggerMinimum"
+          }
+
           $script = Get-Content 'scripts/verify-source-builder-host.ps1' -Raw
           foreach ($required in @(
             "Join-Path `$repoRoot 'DEPOT_TOOLS_REVISION'",
+            "Join-Path `$repoRoot 'engine/build/windows-toolchain.json'",
+            'ConvertFrom-Json',
+            'visualStudioMajorMinimum',
+            'windowsSdkPackageRevision',
+            'windowsSdkVersion',
+            'windowsSdkComponent',
+            'debuggingToolsMinimum',
             'depot_tools revision mismatch',
-            "`$requiredVisualStudioMajor = 18",
-            "`$requiredWindowsSdk = '10.0.28000.2270'",
-            '10.0.26100.3323',
             "`$minimumRamGiB = 8",
             "`$recommendedRamGiB = 32",
             "`$minimumFreshFreeGiB = 120",
@@ -168,6 +205,9 @@ jobs:
             "Require-Command -Name 'gn'",
             "Require-Command -Name 'autoninja'",
             "Require-Command -Name 'python3'",
+            'foreach ($tool in @($fetch, $gclient, $gn, $autoninja))',
+            'sys.version_info.major == 3 and sys.maxsize > 2**32',
+            'python3Version',
             "`$WorkRoot = 'C:\src\ghosium-engine'",
             "Join-Path `$resolvedWorkRoot 'src\.git'",
             "Join-Path `$resolvedWorkRoot '.gclient'",

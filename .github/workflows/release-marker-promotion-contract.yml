@@ -44,6 +44,40 @@ jobs:
             fi
           done
 
+          version="$(tr -d '\r\n ' < VERSION)"
+          if [[ ! "$version" =~ ^0\.[1-9][0-9]*\.[0-9]+$ ]]; then
+            echo "Invalid Ghosium VERSION: $version" >&2
+            exit 1
+          fi
+          base_version="$(git show "origin/${BASE_REF}:VERSION" | tr -d '\r\n ')"
+          if [[ ! "$base_version" =~ ^0\.[1-9][0-9]*\.[0-9]+$ ]]; then
+            echo "Invalid base Ghosium VERSION: $base_version" >&2
+            exit 1
+          fi
+
+          # A normal version-advancing product PR is allowed to retire stale
+          # request markers from the previous line. It may never smuggle in a
+          # marker for the new version: candidate requests are created only
+          # after the version bump is merged, from ghosium/release/<VERSION>.
+          if [[ "$version" != "$base_version" ]]; then
+            for marker in "${markers[@]}"; do
+              status="$(git diff --name-status "origin/${BASE_REF}...HEAD" -- "$marker" | awk 'NR == 1 { print $1 }')"
+              if [[ "$status" != "D" ]]; then
+                echo 'Version-advancing PRs may only delete stale release markers; adding, modifying or renaming a request marker is forbidden.' >&2
+                echo "marker=$marker status=${status:-<none>}" >&2
+                exit 1
+              fi
+              if [[ "$marker" == ".release/ghosium-v${version}.request" ]]; then
+                echo "Version-advancing PR may not carry the current release marker: $marker" >&2
+                exit 1
+              fi
+            done
+
+            echo 'mode=self-test' >> "$GITHUB_OUTPUT"
+            echo "Version advances $base_version -> $version; stale-marker cleanup is release preparation, not marker promotion."
+            exit 0
+          fi
+
           if (( ${#markers[@]} == 0 )); then
             echo 'mode=self-test' >> "$GITHUB_OUTPUT"
             echo 'No release marker changed; running workflow self-test only.'
@@ -53,12 +87,6 @@ jobs:
           if (( ${#markers[@]} != 1 || ${#changed[@]} != 1 )); then
             echo 'A release marker promotion PR must change exactly one release marker and no other files.' >&2
             printf 'changed: %s\n' "${changed[@]}" >&2
-            exit 1
-          fi
-
-          version="$(tr -d '\r\n ' < VERSION)"
-          if [[ ! "$version" =~ ^0\.[1-9][0-9]*\.[0-9]+$ ]]; then
-            echo "Invalid Ghosium VERSION: $version" >&2
             exit 1
           fi
 
@@ -97,6 +125,7 @@ jobs:
           required_promotion = (
               'actions: read',
               'release-marker-only',
+              'Version-advancing PRs may only delete stale release markers',
               'github.event.pull_request.head.sha',
               'full-source-windows-build.yml',
               'workflow_dispatch',

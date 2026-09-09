@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.1.10 — GitHub-hosted source-builder parity hardening
+
+### Hosted builder and toolchain
+- Fixed GitHub-hosted Chromium helper resolution so `fetch`, `gclient`, `gn` and `autoninja` are required to come from the exact pinned `depot_tools` checkout.
+- Verified 64-bit Python 3 independently from `depot_tools`; the pinned tools revision does not provide its own `python3` wrapper.
+- Centralized the Windows Visual Studio/ATL/MFC, SDK and Debugging Tools requirements in `engine/build/windows-toolchain.json` and aligned Source Builder CI with that single semantic contract.
+- Kept hosted parity fail-closed on pinned source/build-tool revisions, NTFS workspace, free-space requirements and required Windows tooling.
+- Serialized hosted parity probes so stale runs do not compete for Windows capacity or obscure the newest evidence.
+
+### Release safety
+- Advanced `VERSION`, bundled Ghosium Privacy metadata, Store metadata and the disabled Windows update baseline to `0.1.10`.
+- Kept the checked-in updater fail-closed (`enabled:false`, empty SHA-256, zero package size) until a real verified signed Setup exists.
+- Production source-builder migration remains prohibited until GitHub-hosted parity is fully green and the existing compile, runtime, performance, installer, Authenticode, update, provenance and immutable-release gates can be preserved.
+
+> `0.1.10` is not a source-built production release until the controlled Windows candidate and production workflows compile, runtime-test, measure, sign and package the exact production commit.
+
 ## 0.1.9 — Ghosium UI, real README imagery and canonical Portable
 
 ### Product UI and branding
@@ -89,7 +105,7 @@
 
 ### Native Ghosium WebUI
 - Promoted `ghost://profiles/` from a redirect shim to the canonical host used by the existing native profile-picker WebUI controller.
-- Promoted `ghost://passwords/` from a redirect shim to the canonical host used by the existing native password-manager WebUI controller.
+- Promoted `ghost://passwords/` from a redirect shim to the canonical host used by the native password-manager WebUI controller.
 - Removed the former `browser_about_handler.cc` redirects to Settings/manageProfile and password-manager routes.
 - Kept the maintained profile/password controller implementations instead of duplicating security-sensitive logic in parallel Ghosium-only controllers.
 - Strengthened `verify-engine-fork.ps1` to require the native host/controller registrations and reject restoration of the old redirects.

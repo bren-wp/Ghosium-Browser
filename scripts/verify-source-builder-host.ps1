@@ -119,11 +119,28 @@ $autoninja = Require-Command -Name 'autoninja'
 $python3 = Require-Command -Name 'python3'
 
 $depotToolsRoot = [IO.Path]::GetFullPath((Split-Path -Parent $fetch.Source)).TrimEnd('\')
-foreach ($tool in @($gclient, $gn, $autoninja, $python3)) {
-  $toolPath = [IO.Path]::GetFullPath($tool.Source)
+foreach ($tool in @($fetch, $gclient, $gn, $autoninja)) {
+  if ([string]::IsNullOrWhiteSpace([string]$tool.Source)) {
+    throw "Chromium build tool '$($tool.Name)' does not expose a concrete PATH source."
+  }
+  $toolPath = [IO.Path]::GetFullPath([string]$tool.Source)
   if (!$toolPath.StartsWith($depotToolsRoot + '\', [StringComparison]::OrdinalIgnoreCase)) {
     throw "Chromium build tool '$($tool.Name)' must resolve from depot_tools before other toolchains. Found: $toolPath; depot_tools: $depotToolsRoot"
   }
+}
+
+if ([string]::IsNullOrWhiteSpace([string]$python3.Source)) {
+  throw 'Python 3 host prerequisite does not expose a concrete PATH source.'
+}
+$python3Path = [IO.Path]::GetFullPath([string]$python3.Source)
+& $python3Path -c "import sys; raise SystemExit(0 if sys.version_info.major == 3 and sys.maxsize > 2**32 else 1)"
+if ($LASTEXITCODE -ne 0) {
+  throw "Ghosium source builder requires 64-bit Python 3. Found: $python3Path"
+}
+$python3Version = [string](& $python3Path --version 2>&1 | Select-Object -First 1)
+$python3Version = $python3Version.Trim()
+if ($python3Version -notmatch '^Python 3\.\d+\.\d+') {
+  throw "Unable to verify Python 3 host prerequisite. Found: '$python3Version' at $python3Path"
 }
 
 if (!(Test-Path (Join-Path $depotToolsRoot '.git') -PathType Container)) {
@@ -282,6 +299,12 @@ $report = [ordered]@{
   depotToolsAutoUpdate = [string]$env:DEPOT_TOOLS_UPDATE
   depotToolsWinToolchain = [string]$env:DEPOT_TOOLS_WIN_TOOLCHAIN
   gitTerminalPrompt = [string]$env:GIT_TERMINAL_PROMPT
+  fetchPath = [IO.Path]::GetFullPath([string]$fetch.Source)
+  gclientPath = [IO.Path]::GetFullPath([string]$gclient.Source)
+  gnPath = [IO.Path]::GetFullPath([string]$gn.Source)
+  autoninjaPath = [IO.Path]::GetFullPath([string]$autoninja.Source)
+  python3Path = $python3Path
+  python3Version = $python3Version
   gitVersion = $gitVersion
   visualStudioVersion = [string]$vsVersion
   windowsSdkPackageRevision = $requiredWindowsSdkPackageRevision
@@ -313,3 +336,4 @@ Write-Host "RAM: ${ramGiB} GiB; logical processors: $logicalProcessors"
 Write-Host "Visual Studio: $vsVersion"
 Write-Host "Windows SDK package: $requiredWindowsSdkPackageRevision; toolchain folder: $requiredWindowsSdk; Debugging Tools: $debuggerVersion"
 Write-Host "depot_tools: $depotToolsRoot @ $depotToolsRevision"
+Write-Host "Python host prerequisite: $python3Version ($python3Path)"

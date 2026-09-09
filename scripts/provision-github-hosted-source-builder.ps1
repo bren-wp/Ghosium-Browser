@@ -129,12 +129,32 @@ if ($actualOrigin -notin @(
   throw "Unexpected depot_tools origin: $actualOrigin"
 }
 
-$env:PATH = "$depotToolsResolved;$env:PATH"
+# Chromium's build commands must resolve from this exact pinned checkout. Python
+# is a separate host prerequisite: current depot_tools does not publish a
+# python3 wrapper, so the GitHub-hosted x64 Python remains available and is
+# explicitly version/architecture-probed below rather than being disguised as a
+# depot_tools command.
+$env:PATH = "$depotToolsResolved;$($env:PATH)"
 $env:DEPOT_TOOLS_WIN_TOOLCHAIN = '0'
 $env:DEPOT_TOOLS_UPDATE = '0'
 $env:GIT_TERMINAL_PROMPT = '0'
 $env:GHOSIUM_SOURCE_WORK = $workRootResolved
 $env:vs2026_install = [string]$vsPath
+
+$python3Command = Get-Command python3 -ErrorAction SilentlyContinue | Select-Object -First 1
+if (!$python3Command -or [string]::IsNullOrWhiteSpace([string]$python3Command.Source)) {
+  throw 'GitHub-hosted Windows source builder requires a resolvable Python 3 executable.'
+}
+$python3Path = [IO.Path]::GetFullPath([string]$python3Command.Source)
+& $python3Path -c "import sys; raise SystemExit(0 if sys.version_info.major == 3 and sys.maxsize > 2**32 else 1)"
+if ($LASTEXITCODE -ne 0) {
+  throw "Hosted Python must be 64-bit Python 3. Found: $python3Path"
+}
+$python3Version = [string](& $python3Path --version 2>&1 | Select-Object -First 1)
+$python3Version = $python3Version.Trim()
+if ($python3Version -notmatch '^Python 3\.\d+\.\d+') {
+  throw "Unable to verify hosted Python 3 version. Found: '$python3Version' at $python3Path"
+}
 
 & git config --global core.autocrlf false
 & git config --global core.filemode false
@@ -142,6 +162,22 @@ $env:vs2026_install = [string]$vsPath
 & git config --global core.longpaths true
 if ($LASTEXITCODE -ne 0) {
   throw 'Unable to configure Git for the Chromium hosted builder.'
+}
+
+# The GitHub Windows image can begin with core.autocrlf enabled. depot_tools is
+# checked out before the Chromium Git policy above is installed, so materialize
+# the exact pinned tree once more under the final Git settings. This normalizes
+# line endings without permitting or hiding any tracked-file modification.
+& git -C $depotToolsResolved reset --hard $depotRevision
+if ($LASTEXITCODE -ne 0) {
+  throw 'Unable to normalize pinned depot_tools checkout under Chromium Git settings.'
+}
+$depotToolsChanges = @(& git -C $depotToolsResolved status --porcelain=v1 --untracked-files=no)
+if ($LASTEXITCODE -ne 0) {
+  throw 'Unable to verify normalized depot_tools checkout state.'
+}
+if ($depotToolsChanges.Count -gt 0) {
+  throw 'Pinned depot_tools checkout remains modified after Git normalization.'
 }
 
 if (Test-Path $workRootResolved) {
@@ -158,6 +194,7 @@ if (![string]::IsNullOrWhiteSpace($env:GITHUB_PATH)) {
 }
 if (![string]::IsNullOrWhiteSpace($env:GITHUB_ENV)) {
   foreach ($entry in @(
+    "PATH=$($env:PATH)",
     "DEPOT_TOOLS_WIN_TOOLCHAIN=0",
     "DEPOT_TOOLS_UPDATE=0",
     "GIT_TERMINAL_PROMPT=0",
@@ -182,6 +219,8 @@ $report = [ordered]@{
   depotToolsOrigin = $actualOrigin
   depotToolsRevision = $actualDepotRevision
   depotToolsRoot = $depotToolsResolved
+  python3Path = $python3Path
+  python3Version = $python3Version
   workRoot = $workRootResolved
   freeDiskGiBAfterProvisioning = [math]::Floor($drive.Free / 1GB)
 }
@@ -202,5 +241,6 @@ Write-Host 'GitHub-hosted Ghosium source-builder provisioning: OK'
 Write-Host "Visual Studio: $vsVersion"
 Write-Host "Windows SDK package/toolchain: $sdkPackageRevision / $sdkVersion"
 Write-Host "depot_tools: $actualDepotRevision"
+Write-Host "Python host prerequisite: $python3Version ($python3Path)"
 Write-Host "Workspace: $workRootResolved"
 Write-Host "D: free after provisioning: $($report.freeDiskGiBAfterProvisioning) GiB"
