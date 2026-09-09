@@ -39,11 +39,16 @@ function Replace-RequiredPattern {
   $text = [IO.File]::ReadAllText($Path)
   $regex = [regex]::new($Pattern, [Text.RegularExpressions.RegexOptions]::Singleline)
   $count = $regex.Matches($text).Count
-  if ($count -ne $ExpectedCount) {
-    throw "Pinned native New Tab anchor changed in $Path. Expected $ExpectedCount match(es), found ${count}: $Pattern"
+  if ($count -eq $ExpectedCount) {
+    $updated = $regex.Replace($text, $Replacement, $ExpectedCount)
+    [IO.File]::WriteAllText($Path, $updated, [Text.UTF8Encoding]::new($false))
+    return
   }
-  $updated = $regex.Replace($text, $Replacement, $ExpectedCount)
-  [IO.File]::WriteAllText($Path, $updated, [Text.UTF8Encoding]::new($false))
+  if ($count -eq 0 -and $text.Contains($Replacement)) {
+    Write-Host "Native New Tab anchor already hardened: $Path"
+    return
+  }
+  throw "Pinned native New Tab anchor changed in $Path. Expected $ExpectedCount upstream match(es) or the exact hardened replacement, found ${count}: $Pattern"
 }
 
 # Disable Chromium/Google-owned NTP network, AI, promo and cloud surfaces before
