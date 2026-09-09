@@ -1,0 +1,129 @@
+name: Ghosium GitHub-Hosted Source Builder Parity
+
+on:
+  push:
+    branches:
+      - ghosium/fix/windows-toolchain-contract-0.1.9
+    paths:
+      - 'engine/build/windows-toolchain.json'
+      - 'DEPOT_TOOLS_REVISION'
+      - 'scripts/provision-github-hosted-source-builder.ps1'
+      - 'scripts/verify-source-builder-host.ps1'
+      - 'scripts/verify-pinned-source-anchors.py'
+      - '.github/workflows/github-hosted-source-builder-parity.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  hosted-builder-parity:
+    name: Prove hosted Windows satisfies the production source-builder preflight
+    runs-on: windows-2025
+    timeout-minutes: 35
+    env:
+      DEPOT_TOOLS_WIN_TOOLCHAIN: '0'
+      DEPOT_TOOLS_UPDATE: '0'
+      GIT_TERMINAL_PROMPT: '0'
+      GHOSIUM_SOURCE_WORK: 'D:\src\ghosium-engine'
+
+    steps:
+      - name: Checkout Ghosium tooling
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Provision exact GitHub-hosted Windows source builder
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          New-Item -ItemType Directory -Force -Path 'artifacts/hosted-parity' | Out-Null
+          ./scripts/provision-github-hosted-source-builder.ps1 `
+            -DepotToolsRoot 'D:\src\depot_tools' `
+            -WorkRoot 'D:\src\ghosium-engine' `
+            -ReportPath 'artifacts/hosted-parity/GHOSIUM-GITHUB-HOSTED-PROVISIONING.json'
+
+      - name: Run the production source-builder preflight unchanged
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          ./scripts/verify-source-builder-host.ps1 `
+            -WorkRoot 'D:\src\ghosium-engine' `
+            -ReportPath 'artifacts/hosted-parity/GHOSIUM-BUILDER-READY.json'
+
+      - name: Verify pinned Chromium source and Windows toolchain contract
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          python3 ./scripts/verify-pinned-source-anchors.py
+          if ($LASTEXITCODE -ne 0) {
+            throw "Pinned Chromium/toolchain contract validation failed with exit code $LASTEXITCODE"
+          }
+
+      - name: Prove interactive first-window capability in the builder session
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $current = Get-Process -Id $PID
+          if ([int]$current.SessionId -eq 0 -or ![Environment]::UserInteractive) {
+            throw 'Hosted builder does not expose an interactive Windows session.'
+          }
+          $probe = Start-Process notepad.exe -PassThru
+          try {
+            $deadline = [DateTime]::UtcNow.AddSeconds(20)
+            $handle = [IntPtr]::Zero
+            while ([DateTime]::UtcNow -lt $deadline) {
+              Start-Sleep -Milliseconds 250
+              $probe.Refresh()
+              if ($probe.HasExited) { break }
+              $handle = $probe.MainWindowHandle
+              if ($handle -ne [IntPtr]::Zero) { break }
+            }
+            if ($probe.HasExited -or $handle -eq [IntPtr]::Zero) {
+              throw 'Hosted builder could not expose a real top-level GUI window.'
+            }
+            $report = [ordered]@{
+              schemaVersion = 1
+              sessionId = [int]$current.SessionId
+              userInteractive = [Environment]::UserInteractive
+              processSessionId = [int]$probe.SessionId
+              mainWindowHandleNonZero = $true
+              result = 'interactive-window-observed'
+            }
+            $report | ConvertTo-Json -Depth 4 | Set-Content 'artifacts/hosted-parity/GHOSIUM-HOSTED-INTERACTIVE.json' -Encoding utf8
+          } finally {
+            if (!$probe.HasExited) {
+              Stop-Process -Id $probe.Id -Force -ErrorAction SilentlyContinue
+            }
+          }
+
+      - name: Verify fail-closed evidence
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $builder = Get-Content 'artifacts/hosted-parity/GHOSIUM-BUILDER-READY.json' -Raw | ConvertFrom-Json
+          $provisioning = Get-Content 'artifacts/hosted-parity/GHOSIUM-GITHUB-HOSTED-PROVISIONING.json' -Raw | ConvertFrom-Json
+          $interactive = Get-Content 'artifacts/hosted-parity/GHOSIUM-HOSTED-INTERACTIVE.json' -Raw | ConvertFrom-Json
+          if ($builder.status -ne 'ready' -or $builder.architecture -ne 'windows-x64') {
+            throw 'Production source-builder preflight did not produce ready Windows x64 evidence.'
+          }
+          if ($builder.depotToolsRevision -ne (Get-Content DEPOT_TOOLS_REVISION -Raw).Trim()) {
+            throw 'Builder evidence does not bind to the pinned depot_tools revision.'
+          }
+          if ($builder.windowsSdkVersion -ne $provisioning.windowsSdkVersion -or
+              $builder.windowsSdkPackageRevision -ne $provisioning.windowsSdkPackageRevision) {
+            throw 'Builder and provisioning evidence disagree on the Windows SDK contract.'
+          }
+          if (!$interactive.mainWindowHandleNonZero -or !$interactive.userInteractive) {
+            throw 'Hosted interactive-window evidence is invalid.'
+          }
+
+      - name: Upload hosted source-builder parity evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: ghosium-github-hosted-source-builder-parity-0.1.9
+          path: artifacts/hosted-parity/
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 0
