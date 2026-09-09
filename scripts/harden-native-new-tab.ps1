@@ -40,7 +40,7 @@ function Replace-RequiredPattern {
   $regex = [regex]::new($Pattern, [Text.RegularExpressions.RegexOptions]::Singleline)
   $count = $regex.Matches($text).Count
   if ($count -ne $ExpectedCount) {
-    throw "Pinned native New Tab anchor changed in $Path. Expected $ExpectedCount match(es), found $count: $Pattern"
+    throw "Pinned native New Tab anchor changed in $Path. Expected $ExpectedCount match(es), found ${count}: $Pattern"
   }
   $updated = $regex.Replace($text, $Replacement, $ExpectedCount)
   [IO.File]::WriteAllText($Path, $updated, [Text.UTF8Encoding]::new($false))
