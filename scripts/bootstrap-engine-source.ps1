@@ -41,10 +41,13 @@ if ([System.Environment]::OSVersion.Platform -eq [System.PlatformID]::Win32NT) {
     $shimRoot = Join-Path $env:RUNNER_TEMP 'ghosium-git-shim'
     New-Item -ItemType Directory -Force -Path $shimRoot | Out-Null
     $shimPath = Join-Path $shimRoot 'git.bat'
-    $shimLine = "@`"$([IO.Path]::GetFullPath([string]$gitCommand.Source))`" %*"
+    $shimLines = @(
+      '@echo off'
+      "`"$([IO.Path]::GetFullPath([string]$gitCommand.Source))`" %*"
+    )
     [IO.File]::WriteAllText(
       $shimPath,
-      ($shimLine + "`r`n"),
+      (($shimLines -join "`r`n") + "`r`n"),
       [Text.Encoding]::ASCII
     )
     $env:PATH = "$shimRoot;$($env:PATH)"
