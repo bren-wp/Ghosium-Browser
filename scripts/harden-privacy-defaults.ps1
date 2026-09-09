@@ -24,11 +24,17 @@ function Replace-RequiredLiteral {
     throw "Required privacy-default source file is missing: $Path"
   }
   $text = [IO.File]::ReadAllText($Path)
-  $count = ([regex]::Matches($text, [regex]::Escape($OldValue))).Count
-  if ($count -ne 1) {
-    throw "Pinned privacy anchor changed in $Path. Expected exactly one match for: $OldValue; found $count"
+  $oldCount = ([regex]::Matches($text, [regex]::Escape($OldValue))).Count
+  $newCount = ([regex]::Matches($text, [regex]::Escape($NewValue))).Count
+  if ($oldCount -eq 1 -and $newCount -eq 0) {
+    [IO.File]::WriteAllText($Path, $text.Replace($OldValue, $NewValue), [Text.UTF8Encoding]::new($false))
+    return
   }
-  [IO.File]::WriteAllText($Path, $text.Replace($OldValue, $NewValue), [Text.UTF8Encoding]::new($false))
+  if ($oldCount -eq 0 -and $newCount -eq 1) {
+    Write-Host "Privacy anchor already hardened: $Path"
+    return
+  }
+  throw "Pinned privacy anchor changed in $Path. Expected exactly one upstream anchor or one exact hardened value; upstream=$oldCount hardened=$newCount"
 }
 
 $cookieSettings = Join-Path $sourceRootResolved 'components/content_settings/core/browser/cookie_settings.cc'
