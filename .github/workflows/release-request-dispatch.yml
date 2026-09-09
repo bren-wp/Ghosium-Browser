@@ -11,11 +11,6 @@ permissions:
   actions: write
   contents: read
 
-# Candidate requests intentionally share the full-source candidate concurrency
-# group. A newer request on the same release branch cancels an obsolete candidate
-# before dispatching the exact current branch head. Production main never runs
-# through this dispatcher and keeps the full-source workflow's fail-closed
-# cancel-in-progress:false behavior.
 concurrency:
   group: ghosium-full-source-windows-${{ github.ref }}
   cancel-in-progress: true
@@ -25,7 +20,6 @@ jobs:
     name: Dispatch controlled full-source Windows candidate build
     runs-on: ubuntu-latest
     timeout-minutes: 5
-
     steps:
       - name: Checkout release request
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
@@ -37,37 +31,30 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-
           version="$(tr -d '\r\n ' < VERSION)"
-          if [[ ! "$version" =~ ^0\.[1-9][0-9]*\.[0-9]+$ ]]; then
+          if [[ ! "$version" =~ ^0\.[0-9]+\.[0-9]+$ ]]; then
             echo "Invalid Ghosium VERSION: $version" >&2
             exit 1
           fi
-
           tag="ghosium-v${version}"
           marker=".release/${tag}.request"
           test -f "$marker"
           test "$(tr -d '\r\n ' < "$marker")" = "$tag"
-
           shopt -s nullglob
           markers=(.release/ghosium-v*.request)
           if (( ${#markers[@]} != 1 )); then
             echo "Exactly one active Ghosium release request marker is required; found ${#markers[@]}." >&2
-            printf 'marker: %s\n' "${markers[@]:-<none>}" >&2
             exit 1
           fi
           if [[ "${markers[0]}" != "$marker" ]]; then
             echo "Active release marker does not match VERSION $version: ${markers[0]}" >&2
             exit 1
           fi
-
           expected_ref="refs/heads/ghosium/release/${version}"
           if [[ "$GITHUB_REF" != "$expected_ref" ]]; then
             echo "Refusing release request from $GITHUB_REF; expected $expected_ref." >&2
             exit 1
           fi
-
-          echo "Validated Ghosium release candidate request: $tag on $GITHUB_REF_NAME"
 
       - name: Refuse an already published immutable release
         env:
@@ -78,7 +65,7 @@ jobs:
           version="$(tr -d '\r\n ' < VERSION)"
           tag="ghosium-v${version}"
           if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            echo "Release $tag already exists; immutable releases must never be rebuilt or overwritten." >&2
+            echo "Release $tag already exists; refusing to overwrite it." >&2
             exit 1
           fi
 
@@ -88,19 +75,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          gh api \
-            --method POST \
+          gh api --method POST \
             -H 'Accept: application/vnd.github+json' \
             -H 'X-GitHub-Api-Version: 2022-11-28' \
             "/repos/${GITHUB_REPOSITORY}/actions/workflows/full-source-windows-build.yml/dispatches" \
             -f ref="${GITHUB_REF_NAME}"
-
           echo "Dispatched controlled Ghosium full-source candidate workflow for ${GITHUB_REF_NAME}."
-
-      - name: Document production separation
-        shell: bash
-        run: |
-          echo 'Candidate dispatch is intentionally limited to ghosium/release/<VERSION>.'
-          echo 'A newer candidate request cancels obsolete full-source work for the same release branch.'
-          echo 'Merging the release marker into main does not auto-dispatch production.'
-          echo 'Production main must be dispatched only after candidate evidence is successful and the exact candidate tree is the intended main release tree.'
