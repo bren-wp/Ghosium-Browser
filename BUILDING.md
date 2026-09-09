@@ -2,7 +2,7 @@
 
 ## Current development line
 
-The active product version is `0.1.9`. Ghosium Browser is built as a full-source Windows x64 product. A source audit, patch-only result, historical precompiled package, renamed technical installer or wrapper executable is not a production Ghosium release.
+The active product version is `0.1.10`. Ghosium Browser is built as a full-source Windows x64 product. A source audit, patch-only result, historical precompiled package, renamed technical installer or wrapper executable is not a production Ghosium release.
 
 The canonical production workflow is:
 
@@ -90,7 +90,7 @@ This preserves the maintained profile/password implementations while making the 
 
 ## 38-language contract
 
-Ghosium 0.1.9 supports 38 locales. English (`en-US`) is the primary/default language and Croatian (`hr`) is mandatory.
+Ghosium 0.1.10 supports 38 locales. English (`en-US`) is the primary/default language and Croatian (`hr`) is mandatory.
 
 The browser and interactive Setup must expose the same locale set. CI verifies that contract and verifies the corresponding pinned source translation bundles before an expensive build.
 
@@ -108,7 +108,7 @@ The repository hygiene contract rejects restoration of `search-provider/`, `sear
 
 Performance work uses native engine mechanisms and must be benchmark-driven.
 
-The 0.1.9 Windows source configuration includes:
+The 0.1.10 Windows source configuration includes:
 
 ```text
 enable_background_mode = false
@@ -127,7 +127,7 @@ The following are forbidden performance shortcuts:
 - disabling extension or update trust verification;
 - applying a renderer-process cap solely to improve RAM numbers.
 
-Do not publish performance claims until the compiled source-built 0.1.9 binary is measured with the same benchmark methodology as the accepted baseline.
+Do not publish performance claims until the compiled source-built 0.1.10 binary is measured with the same benchmark methodology as the accepted baseline.
 
 The full-source workflow requires `GHOSIUM-PERFORMANCE.json` from the newly compiled runtime. Benchmark schema v2 records cold/warm first-usable-window startup, memory, process count, handles, CPU, process I/O, 1/5/10-tab scenarios, 60-second idle activity, best-effort per-process GPU memory and Ghosium-owned TCP/UDP endpoint activity. Unsupported GPU telemetry is reported as unavailable rather than as zero. Endpoint counts are not represented as byte-level network attribution.
 
