@@ -96,19 +96,57 @@ if ($reuseCheckout) {
   }
 } else {
   New-Item -ItemType Directory -Path $destinationPath -Force | Out-Null
-  Push-Location $destinationPath
-  try {
-    Write-Host "Fetching Chromium source for Ghosium into $destinationPath"
-    & $fetchCommand.Source --nohooks --no-history chromium
-    if ($LASTEXITCODE -ne 0) {
-      throw "Chromium fetch failed with exit code $LASTEXITCODE"
+
+  $bootstrapSucceeded = $false
+  $bootstrapAttempts = 3
+  for ($attempt = 1; $attempt -le $bootstrapAttempts; $attempt++) {
+    Push-Location $destinationPath
+    try {
+      Write-Host "Fetching Chromium source for Ghosium into $destinationPath (attempt $attempt/$bootstrapAttempts)"
+      & $fetchCommand.Source --nohooks --no-history chromium
+      $bootstrapExitCode = $LASTEXITCODE
+    } finally {
+      Pop-Location
     }
-  } finally {
-    Pop-Location
+
+    if ($bootstrapExitCode -eq 0) {
+      $bootstrapSucceeded = $true
+      break
+    }
+
+    # depot_tools fetch may return a transient network error after it has already
+    # created a structurally reusable src/.git + .gclient checkout. Preserve that
+    # downloaded state and continue with the exact pinned fetch/sync below instead
+    # of discarding gigabytes that gclient can safely resume.
+    $partialCheckoutIsReusable =
+      (Test-Path (Join-Path $src '.git')) -and
+      (Test-Path (Join-Path $destinationPath '.gclient') -PathType Leaf)
+    if ($partialCheckoutIsReusable) {
+      Write-Warning "Chromium fetch attempt $attempt exited with code $bootstrapExitCode after producing a reusable checkout; continuing with exact pinned fetch/sync."
+      $bootstrapSucceeded = $true
+      break
+    }
+
+    if ($attempt -lt $bootstrapAttempts) {
+      $retryDelaySeconds = 20 * $attempt
+      Write-Warning "Chromium bootstrap attempt $attempt/$bootstrapAttempts failed before producing a reusable checkout; retrying from a clean destination in $retryDelaySeconds seconds."
+      if (Test-Path $destinationPath) {
+        Remove-Item $destinationPath -Recurse -Force
+      }
+      New-Item -ItemType Directory -Path $destinationPath -Force | Out-Null
+      Start-Sleep -Seconds $retryDelaySeconds
+    }
+  }
+
+  if (!$bootstrapSucceeded) {
+    throw "Chromium bootstrap failed after $bootstrapAttempts attempts without producing a reusable checkout."
   }
 
   if (!(Test-Path (Join-Path $src '.git'))) {
     throw 'Chromium fetch did not produce the expected src Git checkout.'
+  }
+  if (!(Test-Path (Join-Path $destinationPath '.gclient') -PathType Leaf)) {
+    throw 'Chromium fetch did not produce the expected .gclient configuration.'
   }
 }
 
@@ -159,9 +197,24 @@ try {
   if ($SkipHooks) {
     $syncArguments += '--nohooks'
   }
-  & $gclientCommand.Source @syncArguments
-  if ($LASTEXITCODE -ne 0) {
-    throw "gclient sync failed with exit code $LASTEXITCODE"
+
+  $syncSucceeded = $false
+  $syncAttempts = 3
+  for ($attempt = 1; $attempt -le $syncAttempts; $attempt++) {
+    & $gclientCommand.Source @syncArguments
+    if ($LASTEXITCODE -eq 0) {
+      $syncSucceeded = $true
+      break
+    }
+
+    if ($attempt -lt $syncAttempts) {
+      $retryDelaySeconds = 20 * $attempt
+      Write-Warning "gclient sync attempt $attempt/$syncAttempts failed; retrying the same pinned DEPS state in $retryDelaySeconds seconds."
+      Start-Sleep -Seconds $retryDelaySeconds
+    }
+  }
+  if (!$syncSucceeded) {
+    throw "gclient sync failed after $syncAttempts attempts for pinned revision $sourceRevision"
   }
 
   if (!$SkipHooks) {
