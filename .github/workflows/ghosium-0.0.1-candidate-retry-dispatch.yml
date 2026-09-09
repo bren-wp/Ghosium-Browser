@@ -1,0 +1,92 @@
+name: Ghosium 0.0.1 Corrected Candidate Dispatch
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/ghosium-0.0.1-candidate-retry-dispatch.yml
+  workflow_dispatch:
+
+permissions:
+  actions: write
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: ghosium-0.0.1-corrected-candidate-dispatch
+  cancel-in-progress: false
+
+jobs:
+  dispatch-corrected-candidate:
+    name: Dispatch exact corrected 0.0.1 candidate
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      GH_TOKEN: ${{ github.token }}
+      VERSION: 0.0.1
+      CANDIDATE_BRANCH: ghosium/release/0.0.1
+      CANDIDATE_SHA: eab14a947d8b2e176e55e9f199e23a0e50a54563
+      RELEASE_PR: '66'
+
+    steps:
+      - name: Verify exact corrected marker-only request
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          branch_sha="$(gh api --method GET "/repos/${GITHUB_REPOSITORY}/git/ref/heads/${CANDIDATE_BRANCH}" --jq '.object.sha')"
+          [[ "$branch_sha" == "$CANDIDATE_SHA" ]] || {
+            echo "Corrected candidate branch drift: $branch_sha" >&2
+            exit 1
+          }
+
+          pr_json="$(gh api --method GET "/repos/${GITHUB_REPOSITORY}/pulls/${RELEASE_PR}")"
+          [[ "$(jq -r '.state' <<<"$pr_json")" == 'open' ]] || { echo 'Corrected release PR is not open.' >&2; exit 1; }
+          [[ "$(jq -r '.head.ref' <<<"$pr_json")" == "$CANDIDATE_BRANCH" ]] || { echo 'Corrected release PR branch mismatch.' >&2; exit 1; }
+          [[ "$(jq -r '.head.sha' <<<"$pr_json")" == "$CANDIDATE_SHA" ]] || { echo 'Corrected release PR SHA mismatch.' >&2; exit 1; }
+          [[ "$(jq -r '.base.ref' <<<"$pr_json")" == 'main' ]] || { echo 'Corrected release PR base mismatch.' >&2; exit 1; }
+          [[ "$(jq -r '.changed_files' <<<"$pr_json")" == '1' ]] || { echo 'Corrected release PR is not one-file marker-only.' >&2; exit 1; }
+
+          files_json="$(gh api --method GET "/repos/${GITHUB_REPOSITORY}/pulls/${RELEASE_PR}/files" -f per_page=100)"
+          [[ "$(jq -r 'length' <<<"$files_json")" == '1' ]] || { echo 'Corrected release PR file list is not singular.' >&2; exit 1; }
+          [[ "$(jq -r '.[0].filename' <<<"$files_json")" == '.release/ghosium-v0.0.1.request' ]] || { echo 'Corrected release PR changed an unexpected file.' >&2; exit 1; }
+          [[ "$(jq -r '.[0].status' <<<"$files_json")" == 'added' ]] || { echo 'Corrected release marker must be newly added.' >&2; exit 1; }
+
+          marker="$(gh api --method GET "/repos/${GITHUB_REPOSITORY}/contents/.release/ghosium-v0.0.1.request?ref=${CANDIDATE_SHA}" --jq '.content' | tr -d '\n' | base64 --decode | tr -d '\r\n ')"
+          [[ "$marker" == 'ghosium-v0.0.1' ]] || { echo 'Corrected release marker content mismatch.' >&2; exit 1; }
+
+          version="$(gh api --method GET "/repos/${GITHUB_REPOSITORY}/contents/VERSION?ref=${CANDIDATE_SHA}" --jq '.content' | tr -d '\n' | base64 --decode | tr -d '\r\n ')"
+          [[ "$version" == "$VERSION" ]] || { echo "Candidate VERSION is $version, expected $VERSION" >&2; exit 1; }
+
+          if gh release view "ghosium-v${VERSION}" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "ghosium-v${VERSION} already exists; refusing duplicate candidate dispatch." >&2
+            exit 1
+          fi
+
+      - name: Dispatch canonical full-source workflow once
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          runs="$(gh api --method GET "/repos/${GITHUB_REPOSITORY}/actions/workflows/full-source-windows-build.yml/runs" -f branch="$CANDIDATE_BRANCH" -f event=workflow_dispatch -f per_page=100)"
+          existing="$(jq -r --arg sha "$CANDIDATE_SHA" '[.workflow_runs[] | select(.head_sha == $sha and .event == "workflow_dispatch") | select(.status == "queued" or .status == "in_progress" or (.status == "completed" and .conclusion == "success"))] | sort_by(.created_at) | last | .id // empty' <<<"$runs")"
+          if [[ -n "$existing" ]]; then
+            echo "Exact corrected candidate already has canonical run $existing; no duplicate dispatch."
+            exit 0
+          fi
+
+          gh api --method POST "/repos/${GITHUB_REPOSITORY}/actions/workflows/full-source-windows-build.yml/dispatches" -f ref="$CANDIDATE_BRANCH" >/dev/null
+
+          for attempt in $(seq 1 30); do
+            sleep 5
+            runs="$(gh api --method GET "/repos/${GITHUB_REPOSITORY}/actions/workflows/full-source-windows-build.yml/runs" -f branch="$CANDIDATE_BRANCH" -f event=workflow_dispatch -f per_page=100)"
+            run_id="$(jq -r --arg sha "$CANDIDATE_SHA" '[.workflow_runs[] | select(.head_sha == $sha and .event == "workflow_dispatch")] | sort_by(.created_at) | last | .id // empty' <<<"$runs")"
+            if [[ -n "$run_id" ]]; then
+              echo "Canonical corrected 0.0.1 candidate run: $run_id / $CANDIDATE_SHA"
+              exit 0
+            fi
+          done
+
+          echo 'Corrected candidate dispatch did not produce an exact-head canonical run.' >&2
+          exit 1
