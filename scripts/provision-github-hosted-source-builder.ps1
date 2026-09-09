@@ -129,37 +129,12 @@ if ($actualOrigin -notin @(
   throw "Unexpected depot_tools origin: $actualOrigin"
 }
 
-# PowerShell prefers an application (.exe) over a batch wrapper with the same
-# command name even when the batch wrapper's directory appears earlier in PATH.
-# GitHub-hosted images add a toolcache python3.exe, while Chromium's pinned
-# depot_tools intentionally provides its own python3 wrapper. Remove only PATH
-# entries that expose a competing python3.exe so both PowerShell and native
-# Windows command resolution are bound to the pinned depot_tools checkout.
-$originalPathEntries = @($env:PATH -split ';' | Where-Object { ![string]::IsNullOrWhiteSpace($_) })
-$sanitizedPathEntries = New-Object System.Collections.Generic.List[string]
-foreach ($entry in $originalPathEntries) {
-  $trimmedEntry = $entry.Trim()
-  if ([string]::IsNullOrWhiteSpace($trimmedEntry)) {
-    continue
-  }
-  $entryFullPath = $null
-  try {
-    $entryFullPath = [IO.Path]::GetFullPath($trimmedEntry).TrimEnd('\')
-  } catch {
-    $sanitizedPathEntries.Add($trimmedEntry)
-    continue
-  }
-  if ([string]::Equals($entryFullPath, $depotToolsResolved.TrimEnd('\'), [StringComparison]::OrdinalIgnoreCase)) {
-    continue
-  }
-  $competingPython = Join-Path $entryFullPath 'python3.exe'
-  if (Test-Path $competingPython -PathType Leaf) {
-    Write-Host "Excluding competing python3.exe PATH entry from reproducible Chromium toolchain: $entryFullPath"
-    continue
-  }
-  $sanitizedPathEntries.Add($trimmedEntry)
-}
-$env:PATH = "$depotToolsResolved;$($sanitizedPathEntries -join ';')"
+# Chromium's build commands must resolve from this exact pinned checkout. Python
+# is a separate host prerequisite: current depot_tools does not publish a
+# python3 wrapper, so the GitHub-hosted x64 Python remains available and is
+# explicitly version/architecture-probed below rather than being disguised as a
+# depot_tools command.
+$env:PATH = "$depotToolsResolved;$($env:PATH)"
 $env:DEPOT_TOOLS_WIN_TOOLCHAIN = '0'
 $env:DEPOT_TOOLS_UPDATE = '0'
 $env:GIT_TERMINAL_PROMPT = '0'
@@ -168,11 +143,17 @@ $env:vs2026_install = [string]$vsPath
 
 $python3Command = Get-Command python3 -ErrorAction SilentlyContinue | Select-Object -First 1
 if (!$python3Command -or [string]::IsNullOrWhiteSpace([string]$python3Command.Source)) {
-  throw 'Pinned depot_tools python3 wrapper is not resolvable after hosted PATH sanitization.'
+  throw 'GitHub-hosted Windows source builder requires a resolvable Python 3 executable.'
 }
 $python3Path = [IO.Path]::GetFullPath([string]$python3Command.Source)
-if (!$python3Path.StartsWith($depotToolsResolved.TrimEnd('\') + '\', [StringComparison]::OrdinalIgnoreCase)) {
-  throw "python3 must resolve from pinned depot_tools after hosted provisioning. Found: $python3Path"
+& $python3Path -c "import sys; raise SystemExit(0 if sys.version_info.major == 3 and sys.maxsize > 2**32 else 1)"
+if ($LASTEXITCODE -ne 0) {
+  throw "Hosted Python must be 64-bit Python 3. Found: $python3Path"
+}
+$python3Version = [string](& $python3Path --version 2>&1 | Select-Object -First 1)
+$python3Version = $python3Version.Trim()
+if ($python3Version -notmatch '^Python 3\.\d+\.\d+') {
+  throw "Unable to verify hosted Python 3 version. Found: '$python3Version' at $python3Path"
 }
 
 & git config --global core.autocrlf false
@@ -223,6 +204,7 @@ $report = [ordered]@{
   depotToolsRevision = $actualDepotRevision
   depotToolsRoot = $depotToolsResolved
   python3Path = $python3Path
+  python3Version = $python3Version
   workRoot = $workRootResolved
   freeDiskGiBAfterProvisioning = [math]::Floor($drive.Free / 1GB)
 }
@@ -243,6 +225,6 @@ Write-Host 'GitHub-hosted Ghosium source-builder provisioning: OK'
 Write-Host "Visual Studio: $vsVersion"
 Write-Host "Windows SDK package/toolchain: $sdkPackageRevision / $sdkVersion"
 Write-Host "depot_tools: $actualDepotRevision"
-Write-Host "python3: $python3Path"
+Write-Host "Python host prerequisite: $python3Version ($python3Path)"
 Write-Host "Workspace: $workRootResolved"
 Write-Host "D: free after provisioning: $($report.freeDiskGiBAfterProvisioning) GiB"
