@@ -62,9 +62,24 @@ $sdkHeader = Join-Path $kitsRoot "Include\$sdkVersion\um\Windows.h"
 $sdkLibrary = Join-Path $kitsRoot "Lib\$sdkVersion\um\x64\Kernel32.Lib"
 if (!(Test-Path $sdkHeader -PathType Leaf) -or !(Test-Path $sdkLibrary -PathType Leaf)) {
   Write-Host "Provisioning Windows SDK package $sdkPackageRevision via $sdkComponent"
-  & $installer modify --installPath $vsPath --quiet --force --norestart --add $sdkComponent
-  if ($LASTEXITCODE -ne 0) {
-    throw "Visual Studio Installer failed to provision $sdkComponent with exit code $LASTEXITCODE"
+  $installerArguments = @(
+    'modify',
+    '--installPath', "`"$vsPath`"",
+    '--quiet',
+    '--force',
+    '--norestart',
+    '--add', $sdkComponent
+  )
+  $installerProcess = Start-Process `
+    -FilePath $installer `
+    -ArgumentList $installerArguments `
+    -Wait `
+    -PassThru
+  if ($installerProcess.ExitCode -notin @(0, 3010)) {
+    throw "Visual Studio Installer failed to provision $sdkComponent with exit code $($installerProcess.ExitCode)"
+  }
+  if ($installerProcess.ExitCode -eq 3010) {
+    Write-Warning 'Visual Studio Installer reported success with reboot required; continuing only because the exact SDK files are verified below.'
   }
 }
 if (!(Test-Path $sdkHeader -PathType Leaf) -or !(Test-Path $sdkLibrary -PathType Leaf)) {
