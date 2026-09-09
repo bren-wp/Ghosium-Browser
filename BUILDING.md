@@ -2,7 +2,7 @@
 
 ## Current development line
 
-The active product version is `0.1.10`. Ghosium Browser is built as a full-source Windows x64 product. A source audit, patch-only result, historical precompiled package, renamed technical installer or wrapper executable is not a production Ghosium release.
+The active product version is `0.1.11`. Ghosium Browser is built as a full-source Windows x64 product. A source audit, patch-only result, historical precompiled package, renamed technical installer or wrapper executable is not a production Ghosium release.
 
 The canonical production workflow is:
 
@@ -10,7 +10,7 @@ The canonical production workflow is:
 .github/workflows/full-source-windows-build.yml
 ```
 
-It is intentionally manual and runs on the controlled `ghosium-source-builder` Windows x64 runner.
+It is intentionally manual. Release-candidate dispatches may run on a freshly provisioned GitHub-hosted `windows-2025` runner only after that runner satisfies the same pinned production source-builder preflight. Production `main` remains on the controlled `ghosium-source-builder` Windows x64 runner so the existing Authenticode private-key boundary is preserved.
 
 ## Release-candidate ordering
 
@@ -26,7 +26,7 @@ The release path is fail-closed:
 
 1. validate `VERSION`, bundled component versions and Store metadata;
 2. validate Ghosium product licensing and required third-party legal payload;
-3. validate the controlled Windows builder and exact `DEPOT_TOOLS_REVISION`;
+3. provision a non-main hosted candidate builder when applicable, then validate the Windows builder and exact `DEPOT_TOOLS_REVISION` with the same production preflight;
 4. validate revision-pinned transformation anchors;
 5. bootstrap/reset the source workspace to `ENGINE_SOURCE_REVISION`;
 6. apply Ghosium identity, branding, public-surface removal, localization, product version, native `ghost://` routing, Google Search fallback preservation, Store/update destinations and Windows executable identity;
@@ -57,8 +57,10 @@ The deterministic source build is controlled by:
 
 - `ENGINE_SOURCE_REVISION` — exact browser-engine source commit;
 - `DEPOT_TOOLS_REVISION` — exact compatible build-tool commit;
+- `engine/build/windows-toolchain.json` — required Visual Studio, Windows SDK and Debugging Tools contract;
 - `engine/build/windows-x64.args.gn` — reviewed Windows x64 build arguments;
-- `scripts/verify-source-builder-host.ps1` — controlled-builder preflight;
+- `scripts/provision-github-hosted-source-builder.ps1` — deterministic non-main hosted candidate provisioning;
+- `scripts/verify-source-builder-host.ps1` — common controlled-builder preflight;
 - `scripts/verify-pinned-source-anchors.py` — revision compatibility audit.
 
 Production builds must not use floating branches, moving tags or unreviewed local source edits.
@@ -90,7 +92,7 @@ This preserves the maintained profile/password implementations while making the 
 
 ## 38-language contract
 
-Ghosium 0.1.10 supports 38 locales. English (`en-US`) is the primary/default language and Croatian (`hr`) is mandatory.
+Ghosium 0.1.11 supports 38 locales. English (`en-US`) is the primary/default language and Croatian (`hr`) is mandatory.
 
 The browser and interactive Setup must expose the same locale set. CI verifies that contract and verifies the corresponding pinned source translation bundles before an expensive build.
 
@@ -108,7 +110,7 @@ The repository hygiene contract rejects restoration of `search-provider/`, `sear
 
 Performance work uses native engine mechanisms and must be benchmark-driven.
 
-The 0.1.10 Windows source configuration includes:
+The 0.1.11 Windows source configuration includes:
 
 ```text
 enable_background_mode = false
@@ -127,7 +129,7 @@ The following are forbidden performance shortcuts:
 - disabling extension or update trust verification;
 - applying a renderer-process cap solely to improve RAM numbers.
 
-Do not publish performance claims until the compiled source-built 0.1.10 binary is measured with the same benchmark methodology as the accepted baseline.
+Do not publish performance claims until the compiled source-built 0.1.11 binary is measured with the same benchmark methodology as the accepted baseline.
 
 The full-source workflow requires `GHOSIUM-PERFORMANCE.json` from the newly compiled runtime. Benchmark schema v2 records cold/warm first-usable-window startup, memory, process count, handles, CPU, process I/O, 1/5/10-tab scenarios, 60-second idle activity, best-effort per-process GPU memory and Ghosium-owned TCP/UDP endpoint activity. Unsupported GPU telemetry is reported as unavailable rather than as zero. Endpoint counts are not represented as byte-level network attribution.
 
@@ -170,7 +172,15 @@ Never commit a PFX, private key, password or other signing secret.
 
 ## Windows builder
 
-The full-source workflow targets:
+Release-candidate `workflow_dispatch` runs on non-main refs may use:
+
+```text
+windows-2025
+```
+
+Before source bootstrap they must run `scripts/provision-github-hosted-source-builder.ps1` and then pass the unchanged `scripts/verify-source-builder-host.ps1` production preflight. This binds the candidate to the pinned Visual Studio/Windows SDK/depot_tools/Python/tooling contract, NTFS workspace and free-space requirements.
+
+Production `main` continues to target:
 
 ```text
 self-hosted
@@ -179,7 +189,7 @@ X64
 ghosium-source-builder
 ```
 
-The builder must pass `scripts/verify-source-builder-host.ps1`. It must use an interactive Windows desktop session for first-usable-window benchmark evidence. Detailed provisioning is maintained in `docs/SOURCE_BUILDER_SETUP.md`.
+The production builder must pass the same preflight and provides the controlled Authenticode private-key boundary. Both candidate and production paths require an interactive Windows desktop session for first-usable-window benchmark evidence. Detailed provisioning is maintained in `docs/SOURCE_BUILDER_SETUP.md`.
 
 A constrained or misconfigured host must fail preflight; do not weaken checks to make a machine appear build-ready.
 

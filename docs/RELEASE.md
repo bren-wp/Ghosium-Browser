@@ -2,7 +2,7 @@
 
 ## Current product version
 
-The active development version is `0.1.10`.
+The active development version is `0.1.11`.
 
 Version policy:
 
@@ -25,27 +25,28 @@ ghosium-v0.1.7
 ghosium-v0.1.8
 ghosium-v0.1.9
 ghosium-v0.1.10
+ghosium-v0.1.11
 ghosium-v0.2.0
 ```
 
 Historical releases remain untouched.
 
-## 0.1.10 release scope
+## 0.1.11 release scope
 
-The 0.1.10 line carries forward the 0.1.9 Ghosium UI, canonical Setup/Portable packaging, fail-closed Google Search and release contracts while hardening GitHub-hosted source-builder parity and Windows toolchain verification:
+The 0.1.11 line carries forward the 0.1.10 Ghosium UI, canonical Setup/Portable packaging, fail-closed Google Search and release contracts while enabling a verified GitHub-hosted release-candidate builder without moving the production signing boundary:
 
+- non-main release-candidate `workflow_dispatch` runs may use `windows-2025`, but only after deterministic provisioning and the unchanged source-builder preflight validate the exact Windows SDK, Visual Studio/ATL/MFC, pinned `depot_tools`, Python, NTFS workspace and free-space contract;
+- production `main` remains on the controlled `self-hosted / Windows / X64 / ghosium-source-builder` runner and therefore retains the existing Authenticode private-key boundary;
 - Chromium helpers `fetch`, `gclient`, `gn` and `autoninja` must resolve from the exact pinned `depot_tools` checkout;
+- the GitHub-hosted bootstrap may create an isolated `git.bat` compatibility shim only when the hosted image exposes `git.exe` without the wrapper expected by the pinned `depot_tools`; the shim forwards to the exact resolved Git executable, matches the pinned parser contract and never modifies the pinned `depot_tools` checkout;
 - 64-bit Python 3 is verified independently because the pinned `depot_tools` revision does not provide its own `python3` wrapper;
-- Windows SDK, Visual Studio/ATL/MFC and Debugging Tools requirements are centralized in `engine/build/windows-toolchain.json` and validated semantically by CI;
-- GitHub-hosted source-builder parity remains fail-closed on the exact toolchain, pinned source/build-tool revisions, NTFS workspace and required free-space contract;
-- parity probes are serialized so stale hosted runs do not compete for Windows capacity or obscure the newest evidence;
-- no production workflow migration from the controlled source builder is permitted until hosted parity is fully green and the complete compile/runtime/performance/installer/signing/update/release contract can be preserved;
+- Windows SDK, Visual Studio/ATL/MFC and Debugging Tools requirements remain centralized in `engine/build/windows-toolchain.json` and validated semantically by CI;
+- candidate verification remains fail-closed on pinned source/build-tool revisions, source anchors, complete compile/runtime/performance/installer/provenance gates and the same canonical Setup/Portable packaging contract;
 - Google Search remains the default external web search service and no Ghosium-owned web search backend or bundled default-search provider is part of the product;
-- canonical source packaging continues to produce both `Ghosium-Browser-Setup.exe` and registry-free `Ghosium-Browser-Portable.exe` from the same verified source stage;
 - production publication continues to require exact SHA-256/size provenance and Valid Authenticode for public packages and required binaries;
-- the checked-in 0.1.10 update baseline remains fail-closed with `enabled:false`, empty SHA-256 and zero size until a real verified signed Setup exists.
+- the checked-in 0.1.11 update baseline remains fail-closed with `enabled:false`, empty SHA-256 and zero size until a real verified signed Setup exists.
 
-This scope is not a production-binary, signing or performance claim. Canonical release status still requires the controlled full-source candidate/production compile, runtime, performance, installer, signing and provenance gates for the exact release tree.
+This scope is not a production-binary, signing or performance claim. Canonical release status still requires successful full-source candidate evidence and the separately required controlled production compile, runtime, performance, installer, signing and provenance gates for the exact production tree.
 
 ## Candidate before production
 
@@ -270,4 +271,4 @@ Required third-party attribution remains a legal requirement and must stay isola
 
 ## Release decision
 
-Do not merge or publish 0.1.10 merely because hosted source contracts are green. Marker promotion requires successful controlled Windows full-source candidate evidence for the exact candidate SHA. Publication additionally requires the production `main` source compile, source-built performance evidence, runtime/installer evidence, valid signing, exact update-manifest binding and immutable release publication for the exact production commit.
+Do not merge or publish 0.1.11 merely because hosted source contracts are green. Marker promotion requires successful controlled Windows full-source candidate evidence for the exact candidate SHA. Publication additionally requires the production `main` source compile, source-built performance evidence, runtime/installer evidence, valid signing, exact update-manifest binding and immutable release publication for the exact production commit.

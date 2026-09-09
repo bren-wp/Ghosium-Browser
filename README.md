@@ -4,7 +4,7 @@
 
 # Ghosium Browser
 
-**Ghosium Browser by Brendigo** is a Windows x64 browser developed as a full-source Ghosium product. The current development version is **0.1.10**.
+**Ghosium Browser by Brendigo** is a Windows x64 browser developed as a full-source Ghosium product. The current development version is **0.1.11**.
 
 ## Actual Ghosium interface
 
@@ -64,12 +64,13 @@ ghosium-v0.1.7
 ghosium-v0.1.8
 ghosium-v0.1.9
 ghosium-v0.1.10
+ghosium-v0.1.11
 ghosium-v0.2.0
 ```
 
 Existing releases are never overwritten. A production release is allowed only after the exact commit passes the controlled full-source Windows compile, runtime checks, measured performance evidence, canonical Setup round trip, signing requirements, provenance and SHA-256 manifest generation.
 
-A source transformation audit or hosted CI contract is not proof that a production binary exists. **0.1.10 must not be described as a released source-built binary until the controlled Windows compile succeeds for the exact production commit.**
+A source transformation audit or hosted CI contract is not proof that a production binary exists. **0.1.11 must not be described as a released source-built binary until the controlled Windows compile succeeds for the exact production commit.**
 
 Release-candidate dispatch is version-bound to branches named `ghosium/release/<VERSION>`. Candidate request markers are not allowed to auto-dispatch a production build when merged into `main`; production is a separate explicit gate after candidate evidence has passed.
 
@@ -97,7 +98,7 @@ Runtime support is considered production-verified only after the full-source com
 
 ## Languages
 
-Ghosium 0.1.10 defines **38 supported product locales**. English (`en-US`) is the primary/default language and Croatian (`hr`) is required and selectable.
+Ghosium 0.1.11 defines **38 supported product locales**. English (`en-US`) is the primary/default language and Croatian (`hr`) is required and selectable.
 
 ```text
 en-US, hr, de, fr, es, it, pt-PT, pt-BR, nl, pl,
@@ -180,7 +181,7 @@ Current conservative source-level defaults use native engine mechanisms: Memory 
 
 No performance optimization may disable or weaken sandboxing, renderer/site isolation, certificate validation, extension verification or update verification. Renderer-process caps are not used as a RAM shortcut.
 
-Every source-built release candidate must produce `GHOSIUM-PERFORMANCE.json` from the newly compiled `Ghosium-Browser.exe`. No numerical 0.1.10 performance claim is valid until that evidence exists.
+Every source-built release candidate must produce `GHOSIUM-PERFORMANCE.json` from the newly compiled `Ghosium-Browser.exe`. No numerical 0.1.11 performance claim is valid until that evidence exists.
 
 ## Production signing
 

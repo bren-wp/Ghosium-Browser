@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.1.11 — verified hosted release-candidate bootstrap
+
+### Hosted candidate builder
+- Allowed non-main full-source release-candidate dispatches to use a freshly provisioned GitHub-hosted `windows-2025` runner only after the unchanged source-builder preflight verifies the exact Windows SDK, Visual Studio/ATL/MFC, pinned `depot_tools`, Python, NTFS workspace and free-space contract.
+- Kept production `main` on the controlled `self-hosted / Windows / X64 / ghosium-source-builder` runner so the production Authenticode private-key boundary is unchanged.
+- Added a GitHub-hosted-only `git.bat` compatibility shim for the pinned `depot_tools` Windows Git path. The shim forwards to the exact resolved `git.exe`, matches the pinned `git_common.py` parser contract and leaves the pinned `depot_tools` checkout immutable.
+- Preserved all existing source-anchor, full compile, runtime, performance, canonical Setup/Portable, provenance, signing, update and immutable-release gates.
+
+### Version and release safety
+- Advanced `VERSION`, bundled Ghosium Privacy metadata, Store metadata and the disabled Windows update baseline to `0.1.11`.
+- Synchronized active README/build/release documentation with the 0.1.11 candidate-builder contract.
+- Kept the checked-in updater fail-closed (`enabled:false`, empty SHA-256, zero package size) until a real verified signed Setup exists.
+
+> `0.1.11` is not a source-built production release until the exact candidate and production workflows compile, runtime-test, measure, sign and package the production commit successfully.
+
 ## 0.1.10 — GitHub-hosted source-builder parity hardening
 
 ### Hosted builder and toolchain
@@ -45,7 +60,7 @@
 - Added a fail-closed Repository Hygiene Contract covering Google Search, retired Search paths, release orchestration and the checked-in Windows update baseline.
 - Locked New Tab to direct `https://www.google.com/search` submission and rejects restoration of `search-provider/`, `search-web/` or retired Search migration/CI files.
 - Rejects restoration of the legacy snapshot-based stable release workflow and stale fixed-version 0.1.4/0.1.5 release-dispatch references.
-- Requires the checked-in stable update baseline to remain disabled, version-synchronized, with an empty SHA-256 and zero package size until a verified production package exists.
+- Requires the checked-in stable update baseline to remain disabled, version-synchronized, with an empty SHA-256 and zero size until a verified production package exists.
 
 ### Documentation and versioning
 - Advanced `VERSION`, Ghosium Privacy, built-in Store metadata and the fail-closed Windows update baseline to `0.1.8`.

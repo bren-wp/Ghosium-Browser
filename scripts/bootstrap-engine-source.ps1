@@ -26,6 +26,38 @@ if (!$fetchCommand -or !$gclientCommand) {
 
 if ([System.Environment]::OSVersion.Platform -eq [System.PlatformID]::Win32NT) {
   $env:DEPOT_TOOLS_WIN_TOOLCHAIN = '0'
+
+  # depot_tools git_cache.py intentionally invokes git.bat on Windows. The
+  # GitHub-hosted Windows image exposes Git as git.exe but does not provide a
+  # compatible git.bat command. Keep the pinned depot_tools checkout immutable
+  # and provide an isolated hosted-only forwarding shim to the exact resolved
+  # Git executable instead of modifying Chromium tooling.
+  if ($env:GITHUB_ACTIONS -eq 'true' -and !(Get-Command git.bat -ErrorAction SilentlyContinue)) {
+    $gitCommand = Get-Command git.exe -ErrorAction SilentlyContinue | Select-Object -First 1
+    if (!$gitCommand -or [string]::IsNullOrWhiteSpace([string]$gitCommand.Source)) {
+      throw 'GitHub-hosted Chromium bootstrap requires a resolvable git.exe before creating the depot_tools git.bat compatibility shim.'
+    }
+
+    $shimRoot = Join-Path $env:RUNNER_TEMP 'ghosium-git-shim'
+    New-Item -ItemType Directory -Force -Path $shimRoot | Out-Null
+    $shimPath = Join-Path $shimRoot 'git.bat'
+    $shimLines = @(
+      '@echo off'
+      "`"$([IO.Path]::GetFullPath([string]$gitCommand.Source))`" %*"
+    )
+    [IO.File]::WriteAllText(
+      $shimPath,
+      (($shimLines -join "`r`n") + "`r`n"),
+      [Text.Encoding]::ASCII
+    )
+    $env:PATH = "$shimRoot;$($env:PATH)"
+
+    $resolvedShim = Get-Command git.bat -ErrorAction SilentlyContinue | Select-Object -First 1
+    if (!$resolvedShim -or [IO.Path]::GetFullPath([string]$resolvedShim.Source) -ne [IO.Path]::GetFullPath($shimPath)) {
+      throw 'Unable to expose the isolated hosted git.bat compatibility shim to depot_tools.'
+    }
+    Write-Host "GitHub-hosted depot_tools Git compatibility shim: $shimPath -> $($gitCommand.Source)"
+  }
 }
 
 # The full-source workflow intentionally supplies an absolute persistent Windows
