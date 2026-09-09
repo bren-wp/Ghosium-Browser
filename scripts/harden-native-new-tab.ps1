@@ -60,7 +60,7 @@ $booleanRewrites = @(
   @('source->AddBoolean\("logoEnabled",\s*base::FeatureList::IsEnabled\(ntp_features::kNtpLogo\)\);', 'source->AddBoolean("logoEnabled", true);'),
   @('source->AddBoolean\(\s*"animatedDoodlesEnabled",\s*base::FeatureList::IsEnabled\(ntp_features::kNtpAnimatedDoodles\)\);', 'source->AddBoolean("animatedDoodlesEnabled", false);'),
   @('source->AddBoolean\(\s*"doodleMuralsEnabled",\s*base::FeatureList::IsEnabled\(ntp_features::kNtpDoodleMurals\)\);', 'source->AddBoolean("doodleMuralsEnabled", false);'),
-  @('source->AddBoolean\(\s*"modulesLoadEnabled",\s*base::FeatureList::IsEnabled\(ntp_features::kNtpModulesLoad\)\);', 'source->AddBoolean("modulesLoadEnabled", false);'),
+  @('source->AddBoolean\("modulesLoadEnabled",\s*base::FeatureList::IsEnabled\(\s*ntp_features::kNtpModulesLoad\)\);', 'source->AddBoolean("modulesLoadEnabled", false);'),
   @('source->AddBoolean\(\s*"searchboxShowComposeEntrypoint",\s*\(aim_eligible \|\| ntp_composebox::IsNtpComposeboxEnabled\(profile\)\)\);', 'source->AddBoolean("searchboxShowComposeEntrypoint", false);'),
   @('source->AddBoolean\(\s*"ntpRealboxDynamicAiModeButton",\s*ntp_realbox::IsNtpRealboxNextEnabled\(profile\) &&\s*base::FeatureList::IsEnabled\(\s*ntp_realbox::kNtpRealboxDynamicAiModeButton\)\);', 'source->AddBoolean("ntpRealboxDynamicAiModeButton", false);'),
   @('source->AddBoolean\("searchboxShowComposebox",\s*ntp_composebox::IsNtpComposeboxEnabled\(profile\)\);', 'source->AddBoolean("searchboxShowComposebox", false);'),
