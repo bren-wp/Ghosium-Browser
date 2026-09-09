@@ -1,0 +1,112 @@
+name: Ghosium 0.0.1 Verified Release Bridge
+
+on:
+  workflow_run:
+    workflows:
+      - Ghosium Full-Source Windows Build
+    types:
+      - completed
+
+permissions:
+  actions: write
+  contents: read
+
+concurrency:
+  group: ghosium-0.0.1-verified-release-bridge
+  cancel-in-progress: false
+
+jobs:
+  promote-and-dispatch-production:
+    name: Promote exact 0.0.1 candidate and dispatch production
+    if: >-
+      github.event.workflow_run.id == 34397578624 &&
+      github.event.workflow_run.head_branch == 'ghosium/release/0.0.1' &&
+      github.event.workflow_run.head_sha == 'effbb2ee968597f5091a1cda2c0fd537e59fa93a'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      GH_TOKEN: ${{ github.token }}
+      CANDIDATE_SHA: effbb2ee968597f5091a1cda2c0fd537e59fa93a
+      CANDIDATE_RUN_ID: '34397578624'
+      PROMOTION_JOB_ID: '102621045924'
+      VERSION: 0.0.1
+      TAG: ghosium-v0.0.1
+
+    steps:
+      - name: Require successful exact full-source candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "${{ github.event.workflow_run.conclusion }}" == 'success' ]] || {
+            echo "Exact 0.0.1 candidate did not succeed; production dispatch is blocked." >&2
+            exit 1
+          }
+
+          run_json="$(gh api --method GET "/repos/${GITHUB_REPOSITORY}/actions/runs/${CANDIDATE_RUN_ID}")"
+          [[ "$(jq -r '.head_sha' <<<"$run_json")" == "$CANDIDATE_SHA" ]] || { echo 'Candidate SHA drift.' >&2; exit 1; }
+          [[ "$(jq -r '.head_branch' <<<"$run_json")" == 'ghosium/release/0.0.1' ]] || { echo 'Candidate branch drift.' >&2; exit 1; }
+          [[ "$(jq -r '.event' <<<"$run_json")" == 'workflow_dispatch' ]] || { echo 'Candidate event mismatch.' >&2; exit 1; }
+          [[ "$(jq -r '.status' <<<"$run_json")" == 'completed' && "$(jq -r '.conclusion' <<<"$run_json")" == 'success' ]] || {
+            echo 'Candidate is not completed/success.' >&2
+            exit 1
+          }
+
+          artifact_json="$(gh api --method GET "/repos/${GITHUB_REPOSITORY}/actions/runs/${CANDIDATE_RUN_ID}/artifacts" -f per_page=100)"
+          artifact_name="ghosium-full-source-windows-x64-${VERSION}"
+          count="$(jq --arg name "$artifact_name" '[.artifacts[] | select(.name == $name and .expired == false)] | length' <<<"$artifact_json")"
+          [[ "$count" == '1' ]] || { echo "Expected exactly one live candidate artifact $artifact_name; found $count." >&2; exit 1; }
+
+      - name: Refuse an already-published 0.0.1 release
+        shell: bash
+        run: |
+          set -euo pipefail
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Release $TAG already exists; refusing duplicate production dispatch." >&2
+            exit 1
+          fi
+
+      - name: Rerun preserved marker promotion evidence gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh api --method POST "/repos/${GITHUB_REPOSITORY}/actions/jobs/${PROMOTION_JOB_ID}/rerun" >/dev/null
+
+          for attempt in $(seq 1 90); do
+            checks="$(gh api --method GET "/repos/${GITHUB_REPOSITORY}/commits/${CANDIDATE_SHA}/check-runs" -f per_page=100)"
+            if jq -e '[.check_runs[] | select(.name == "Verify release-marker-only promotion and candidate evidence") | select(.status == "completed") | select(.conclusion == "success")] | length > 0' <<<"$checks" >/dev/null; then
+              echo 'Release marker promotion evidence: success'
+              exit 0
+            fi
+
+            if jq -e '[.check_runs[] | select(.name == "Verify release-marker-only promotion and candidate evidence") | select(.status == "completed") | select(.conclusion == "failure") | select(.started_at > "2026-09-09T20:30:00Z")] | length > 0' <<<"$checks" >/dev/null; then
+              echo 'Rerun release marker promotion evidence failed.' >&2
+              exit 1
+            fi
+            sleep 10
+          done
+
+          echo 'Timed out waiting for successful marker promotion evidence.' >&2
+          exit 1
+
+      - name: Dispatch exact current main to production full-source workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          main_sha="$(gh api --method GET "/repos/${GITHUB_REPOSITORY}/git/ref/heads/main" --jq '.object.sha')"
+          version="$(gh api --method GET "/repos/${GITHUB_REPOSITORY}/contents/VERSION?ref=${main_sha}" --jq -r '.content' | tr -d '\n' | base64 --decode | tr -d '\r\n ')"
+          [[ "$version" == "$VERSION" ]] || { echo "main VERSION is $version, expected $VERSION" >&2; exit 1; }
+
+          gh api --method POST "/repos/${GITHUB_REPOSITORY}/actions/workflows/full-source-windows-build.yml/dispatches" -f ref=main >/dev/null
+
+          for attempt in $(seq 1 30); do
+            runs="$(gh api --method GET "/repos/${GITHUB_REPOSITORY}/actions/workflows/full-source-windows-build.yml/runs" -f branch=main -f event=workflow_dispatch -f per_page=30)"
+            run_id="$(jq -r --arg sha "$main_sha" '[.workflow_runs[] | select(.head_sha == $sha and .event == "workflow_dispatch")] | sort_by(.created_at) | last | .id // empty' <<<"$runs")"
+            if [[ -n "$run_id" ]]; then
+              echo "Production full-source run dispatched for exact main $main_sha: $run_id"
+              exit 0
+            fi
+            sleep 5
+          done
+
+          echo "Production dispatch did not produce an exact-main workflow run for $main_sha." >&2
+          exit 1
