@@ -4,7 +4,7 @@
 
 # Ghosium Browser 0.0.1
 
-**Ghosium Browser by Brendigo** is a Windows x64 Chromium-engine browser. The current development version is **0.0.1**.
+**Ghosium Browser by Brendigo** is a Windows x64 browser. The current development version is **0.0.1**.
 
 This repository now uses **0.0.1 as the clean product baseline**. Older development version numbering is intentionally not part of the active documentation.
 
@@ -24,7 +24,7 @@ Ghosium-owned UI uses Ghosium branding. Third-party names are retained only wher
 
 ## Ghosium interface
 
-The native Chromium source transformation applies Ghosium product identity to browser-owned surfaces, including New Tab, About, Settings, profiles, password manager, application menu, Windows executable metadata, installer and internal WebUI routing.
+The native upstream engine source transformation applies Ghosium product identity to browser-owned surfaces, including New Tab, About, Settings, profiles, password manager, application menu, Windows executable metadata, installer and internal WebUI routing.
 
 The native New Tab uses the Ghosium product mark, neutral Ghosium-owned search copy and direct external search routing. Provider-owned Doodles, OneGoogleBar, cloud modules, AI/Composebox/Threads entry points, Lens/voice New Tab entry points, action chips and browser promotional surfaces are disabled by the Ghosium transform.
 
