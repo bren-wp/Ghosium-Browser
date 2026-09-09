@@ -4,7 +4,7 @@
 
 # Ghosium Browser
 
-**Ghosium Browser by Brendigo** is a Windows x64 browser developed as a full-source Ghosium product. The current development version is **0.1.11**.
+**Ghosium Browser by Brendigo** is a Windows x64 browser developed as a full-source Ghosium product. The current development version is **0.1.12**.
 
 ## Actual Ghosium interface
 
@@ -37,7 +37,7 @@ Ghosium-controlled product surfaces use Ghosium/Brendigo identity:
 - product: **Ghosium Browser**
 - publisher: **Brendigo**
 - home: `https://ghosium.com/`
-- default search: **Google Search** (external service)
+- default search provider: **Google Search** (external service, never relabeled as Ghosium)
 - store: `https://store.ghosium.com/`
 - updates: `https://updates.ghosium.com/`
 - support: `https://ghosium.com/support`
@@ -46,7 +46,32 @@ Ghosium-controlled product surfaces use Ghosium/Brendigo identity:
 - privacy: `https://ghosium.com/legal/privacy-policy`
 - licenses: `https://ghosium.com/legal/licenses`
 
-Third-party browser names are forbidden as Ghosium product branding on Ghosium-owned UI, Setup, web services, shortcuts, help surfaces and public distributable executable identity. Required third-party attribution is isolated to legal/license material.
+Third-party browser names are forbidden as Ghosium product branding on Ghosium-owned UI, Setup, web services, shortcuts, help surfaces and public distributable executable identity. Required third-party attribution is isolated to legal/license material. External service identity remains accurate where it is necessary to describe the service actually used.
+
+## Native Ghosium New Tab
+
+Ghosium 0.1.12 hardens the native pinned-Chromium New Tab instead of depending on an optional extension for product identity. The source transform:
+
+- renders the canonical local Ghosium mark on the native New Tab;
+- removes the stock Google logo from the rendered Ghosium-owned NTP surface;
+- prevents the native logo component from initializing the remote Doodle fetch path;
+- disables OneGoogleBar, animated Doodles/murals, provider cloud modules, Microsoft module, AI/Composebox/Threads entry points, Lens/voice entry points, action chips and browser promos;
+- disables NTP prefetch/prerender triggers that are not required for normal browsing;
+- keeps local shortcuts, local customization and the normal omnibox/search flow.
+
+The external default search provider is still represented truthfully. Ghosium does not proxy search queries and does not operate a fake first-party search service.
+
+## Privacy defaults
+
+Ghosium 0.1.12 uses Chromium's native preference machinery with stronger defaults for new/default profiles:
+
+- third-party cookies are blocked by default;
+- search suggestions are disabled by default;
+- speculative network prediction/preloading is disabled by default;
+- remote alternate-error-page service is disabled by default;
+- online spelling-service upload is required to remain disabled by default.
+
+These are preference defaults, not security bypasses. Safe Browsing, TLS and certificate validation, browser/renderer/GPU sandboxing, site/process isolation, extension trust and update hash/signature/publisher verification remain mandatory.
 
 ## Versioning and releases
 
@@ -65,18 +90,19 @@ ghosium-v0.1.8
 ghosium-v0.1.9
 ghosium-v0.1.10
 ghosium-v0.1.11
+ghosium-v0.1.12
 ghosium-v0.2.0
 ```
 
 Existing releases are never overwritten. A production release is allowed only after the exact commit passes the controlled full-source Windows compile, runtime checks, measured performance evidence, canonical Setup round trip, signing requirements, provenance and SHA-256 manifest generation.
 
-A source transformation audit or hosted CI contract is not proof that a production binary exists. **0.1.11 must not be described as a released source-built binary until the controlled Windows compile succeeds for the exact production commit.**
+A source transformation audit or hosted CI contract is not proof that a production binary exists. **0.1.12 must not be described as a released source-built binary until the controlled Windows compile succeeds for the exact production commit.**
 
 Release-candidate dispatch is version-bound to branches named `ghosium/release/<VERSION>`. Candidate request markers are not allowed to auto-dispatch a production build when merged into `main`; production is a separate explicit gate after candidate evidence has passed.
 
 A same-version release-marker PR is permitted only when it comes from the exact `ghosium/release/<VERSION>` branch and changes exactly one `.release/ghosium-v<VERSION>.request` file. The release marker promotion contract then requires a successful full-source candidate run for the exact PR head SHA and validates the candidate evidence bundle before that marker can be promoted.
 
-Repository hygiene CI separately prevents the retired first-party Search stack, legacy snapshot stable-release workflow and stale release dispatch paths from returning. It also requires the checked-in Windows update baseline to remain disabled, version-synchronized and empty of package hash/size until a verified production package exists.
+Repository hygiene CI prevents the retired first-party Search stack, legacy snapshot stable-release workflow and stale release dispatch paths from returning. It also requires the checked-in Windows update baseline to remain disabled, version-synchronized and empty of package hash/size until a verified production package exists.
 
 ## Ghosium internal URLs
 
@@ -98,7 +124,7 @@ Runtime support is considered production-verified only after the full-source com
 
 ## Languages
 
-Ghosium 0.1.11 defines **38 supported product locales**. English (`en-US`) is the primary/default language and Croatian (`hr`) is required and selectable.
+Ghosium 0.1.12 defines **38 supported product locales**. English (`en-US`) is the primary/default language and Croatian (`hr`) is required and selectable.
 
 ```text
 en-US, hr, de, fr, es, it, pt-PT, pt-BR, nl, pl,
@@ -126,9 +152,9 @@ The production update path validates the Ghosium update manifest, newer version,
 
 ## Search
 
-Ghosium Browser uses **Google Search** as its default web search service. New Tab queries are submitted directly to `https://www.google.com/search`; Ghosium does not proxy them and does not operate a first-party search endpoint.
+Ghosium Browser uses **Google Search** as its default external web search service. New Tab queries are submitted directly to `https://www.google.com/search`; Ghosium does not proxy them and does not operate a first-party search endpoint.
 
-The browser retains the pinned engine's reviewed Google Search fallback instead of injecting a Ghosium-specific provider. Explicit user search-engine choices, enterprise policy and extension overrides retain their native precedence.
+Ghosium-owned New Tab copy is product-neutral (`Search the web`) rather than Google-branded, while the underlying provider remains accurate and externally owned. The browser retains the pinned engine's reviewed Google Search fallback instead of injecting a Ghosium-specific provider. Explicit user search-engine choices, enterprise policy and extension overrides retain their native precedence.
 
 The retired first-party search extension and server application are not part of the current product architecture.
 
@@ -151,7 +177,9 @@ The production source-build path uses:
 - `engine/build/windows-x64.args.gn` — reviewed Windows x64 build configuration;
 - `scripts/bootstrap-engine-source.ps1` — deterministic source checkout/reset;
 - `scripts/apply-engine-branding.ps1` — complete Ghosium source transformation, including product-version and native internal-host rewrites;
-- `scripts/configure-engine-build.ps1` — reviewed build configuration;
+- `scripts/harden-native-new-tab.ps1` + `scripts/verify-native-new-tab.ps1` — revision-pinned native NTP branding/privacy contract;
+- `scripts/harden-privacy-defaults.ps1` + `scripts/verify-privacy-defaults.ps1` — revision-pinned native privacy defaults;
+- `scripts/configure-engine-build.ps1` — applies/verifies NTP/privacy/performance/legal transforms before GN generation;
 - source/fork, executable, updater, locale and performance verifiers;
 - `scripts/verify-engine-build-output.ps1` — compiled output/runtime verification;
 - `scripts/benchmark-ghosium-windows.ps1` — comparable Windows performance evidence;
@@ -177,11 +205,11 @@ Performance work is measurement-driven. The benchmark records:
 
 When Windows/driver GPU process counters are unavailable, the result explicitly records `available=false`; it does not fabricate a zero. TCP/UDP endpoint activity is not represented as byte-level network attribution.
 
-Current conservative source-level defaults use native engine mechanisms: Memory Saver is enabled by default for profiles without an explicit user selection, medium aggressiveness/tab freezing are preserved, and legacy background-app keep-alive is disabled on Windows.
+Current conservative source-level defaults use native engine mechanisms: Memory Saver is enabled by default for profiles without an explicit user selection, medium aggressiveness/tab freezing are preserved, and legacy background-app keep-alive is disabled on Windows. Ghosium 0.1.12 additionally removes NTP remote Doodle initialization and disables provider cloud modules plus NTP speculative prefetch/prerender triggers.
 
 No performance optimization may disable or weaken sandboxing, renderer/site isolation, certificate validation, extension verification or update verification. Renderer-process caps are not used as a RAM shortcut.
 
-Every source-built release candidate must produce `GHOSIUM-PERFORMANCE.json` from the newly compiled `Ghosium-Browser.exe`. No numerical 0.1.11 performance claim is valid until that evidence exists.
+Every source-built release candidate must produce `GHOSIUM-PERFORMANCE.json` from the newly compiled `Ghosium-Browser.exe`. No numerical 0.1.12 performance claim is valid until that evidence exists.
 
 ## Production signing
 
