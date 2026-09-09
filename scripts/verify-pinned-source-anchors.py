@@ -12,6 +12,7 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 GITILES_ROOT = "https://chromium.googlesource.com/chromium/src/+"
+TOOLCHAIN_CONTRACT_PATH = REPO_ROOT / "engine/build/windows-toolchain.json"
 
 # Revision-pinned source anchors used by Ghosium transforms. Technical upstream
 # symbol/path names are implementation API, not public product branding.
@@ -294,6 +295,83 @@ def verify_locale_layout(revision: str) -> None:
         print(f"OK locale layout: {directory} ({len(expected)} translated locale bundle(s))")
 
 
+def _load_windows_toolchain_contract() -> dict[str, object]:
+    if not TOOLCHAIN_CONTRACT_PATH.is_file():
+        raise RuntimeError("Pinned Windows toolchain contract is missing.")
+    contract = json.loads(TOOLCHAIN_CONTRACT_PATH.read_text(encoding="utf-8"))
+    if contract.get("schemaVersion") != 1:
+        raise RuntimeError("Unsupported Windows toolchain contract schema.")
+
+    required = {
+        "visualStudioMajorMinimum": int,
+        "windowsSdkPackageRevision": str,
+        "windowsSdkVersion": str,
+        "windowsSdkComponent": str,
+        "debuggingToolsMinimum": str,
+    }
+    for key, expected_type in required.items():
+        value = contract.get(key)
+        if not isinstance(value, expected_type):
+            raise RuntimeError(f"Windows toolchain contract field {key!r} has invalid type/value.")
+
+    package_revision = str(contract["windowsSdkPackageRevision"])
+    sdk_version = str(contract["windowsSdkVersion"])
+    component = str(contract["windowsSdkComponent"])
+    debugger = str(contract["debuggingToolsMinimum"])
+    if not re.fullmatch(r"10\.0\.\d+\.\d+", package_revision):
+        raise RuntimeError(f"Invalid Windows SDK package revision: {package_revision!r}")
+    if not re.fullmatch(r"10\.0\.\d+\.0", sdk_version):
+        raise RuntimeError(f"Invalid Windows SDK toolchain version: {sdk_version!r}")
+    if package_revision.rsplit(".", 1)[0] != sdk_version.rsplit(".", 1)[0]:
+        raise RuntimeError(
+            "Windows SDK package revision and filesystem version must describe the same SDK family."
+        )
+    if not re.fullmatch(r"Microsoft\.VisualStudio\.Component\.Windows11SDK\.\d+", component):
+        raise RuntimeError(f"Invalid Windows SDK Visual Studio component ID: {component!r}")
+    if not re.fullmatch(r"10\.0\.\d+\.\d+", debugger):
+        raise RuntimeError(f"Invalid Windows Debugging Tools minimum: {debugger!r}")
+    if int(contract["visualStudioMajorMinimum"]) < 18:
+        raise RuntimeError("Pinned Chromium requires Visual Studio 2026 (18.x) or newer.")
+    return contract
+
+
+def verify_windows_toolchain_contract(revision: str) -> None:
+    contract = _load_windows_toolchain_contract()
+    expected_sdk = str(contract["windowsSdkVersion"])
+    expected_package = str(contract["windowsSdkPackageRevision"])
+
+    for path in ("build/vs_toolchain.py", "build/toolchain/win/setup_toolchain.py"):
+        text = fetch_file(revision, path)
+        match = re.search(r"(?m)^SDK_VERSION\s*=\s*['\"]([^'\"]+)['\"]", text)
+        if not match:
+            raise RuntimeError(f"Pinned Chromium SDK_VERSION was not found in {path}.")
+        actual = match.group(1)
+        if actual != expected_sdk:
+            raise RuntimeError(
+                f"Windows SDK contract mismatch: {path} requires {actual}, Ghosium pins {expected_sdk}."
+            )
+        print(f"OK Windows SDK toolchain version: {path} -> {actual}")
+
+    instructions = fetch_file(revision, "docs/windows_build_instructions.md")
+    package_pattern = re.compile(
+        r"Windows 11 SDK.*?version\s+([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)",
+        re.IGNORECASE | re.DOTALL,
+    )
+    package_match = package_pattern.search(instructions)
+    if not package_match:
+        raise RuntimeError("Pinned Chromium Windows SDK package revision was not found in build instructions.")
+    actual_package = package_match.group(1)
+    if actual_package != expected_package:
+        raise RuntimeError(
+            "Windows SDK package contract mismatch: pinned Chromium documentation requires "
+            f"{actual_package}, Ghosium pins {expected_package}."
+        )
+    print(
+        "OK Windows SDK package/toolchain contract: "
+        f"package {expected_package}; filesystem/toolchain {expected_sdk}"
+    )
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--revision", help="Pinned engine Git commit. Defaults to ENGINE_SOURCE_REVISION.")
@@ -308,6 +386,7 @@ def main() -> int:
 
     verify_file_anchors(revision)
     verify_locale_layout(revision)
+    verify_windows_toolchain_contract(revision)
     print(f"Ghosium pinned engine source patch-anchor contract: OK ({revision})")
     return 0
 
