@@ -164,6 +164,22 @@ if ($LASTEXITCODE -ne 0) {
   throw 'Unable to configure Git for the Chromium hosted builder.'
 }
 
+# The GitHub Windows image can begin with core.autocrlf enabled. depot_tools is
+# checked out before the Chromium Git policy above is installed, so materialize
+# the exact pinned tree once more under the final Git settings. This normalizes
+# line endings without permitting or hiding any tracked-file modification.
+& git -C $depotToolsResolved reset --hard $depotRevision
+if ($LASTEXITCODE -ne 0) {
+  throw 'Unable to normalize pinned depot_tools checkout under Chromium Git settings.'
+}
+$depotToolsChanges = @(& git -C $depotToolsResolved status --porcelain=v1 --untracked-files=no)
+if ($LASTEXITCODE -ne 0) {
+  throw 'Unable to verify normalized depot_tools checkout state.'
+}
+if ($depotToolsChanges.Count -gt 0) {
+  throw 'Pinned depot_tools checkout remains modified after Git normalization.'
+}
+
 if (Test-Path $workRootResolved) {
   $items = @(Get-ChildItem $workRootResolved -Force -ErrorAction Stop)
   if ($items.Count -gt 0) {
