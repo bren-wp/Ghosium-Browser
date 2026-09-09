@@ -56,15 +56,15 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           New-Item -ItemType Directory -Force -Path 'launcher','compat-preview/vendor','downloads','staging/runtime','artifacts/preview' | Out-Null
+          Copy-Item 'compat-preview/launcher/main.cpp' 'launcher/main.cpp' -Force
+          Copy-Item 'compat-preview/launcher/ghosium.rc' 'launcher/ghosium.rc' -Force
           $raw = "https://raw.githubusercontent.com/$env:GITHUB_REPOSITORY/$env:LEGACY_BUILD_COMMIT"
           foreach ($entry in @(
-            @('compat-preview/launcher/main.cpp','launcher/main.cpp'),
-            @('compat-preview/launcher/ghosium.rc','launcher/ghosium.rc'),
             @('scripts/build-native-launcher.ps1','compat-preview/vendor/build-native-launcher.ps1'),
             @('scripts/resolve-nsis.ps1','compat-preview/vendor/resolve-nsis.ps1')
           )) {
             curl.exe --fail --silent --show-error --location --retry 5 --retry-all-errors "$raw/$($entry[0])" --output $entry[1]
-            if ($LASTEXITCODE -ne 0 -or !(Test-Path $entry[1] -PathType Leaf)) { throw "Missing pinned Preview support: $($entry[0])" }
+            if ($LASTEXITCODE -ne 0 -or !(Test-Path $entry[1] -PathType Leaf)) { throw "Missing pinned build support: $($entry[0])" }
           }
 
       - name: Download and verify pinned Chromium snapshot
