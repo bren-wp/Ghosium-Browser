@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Ghosium Privacy",
   "short_name": "Ghosium",
-  "version": "0.1.9",
+  "version": "0.1.10",
   "description": "Ghosium new tab, local customization and declarative privacy protection.",
   "permissions": [
     "declarativeNetRequest",
