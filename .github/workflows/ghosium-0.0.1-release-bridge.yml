@@ -9,7 +9,8 @@ on:
 
 permissions:
   actions: write
-  contents: read
+  contents: write
+  pull-requests: write
 
 concurrency:
   group: ghosium-0.0.1-verified-release-bridge
@@ -17,28 +18,29 @@ concurrency:
 
 jobs:
   promote-and-dispatch-production:
-    name: Verify exact 0.0.1 candidate and dispatch production
+    name: Verify exact corrected 0.0.1 candidate and dispatch production
     if: >-
-      github.event.workflow_run.id == 34397578624 &&
+      github.event.workflow_run.id == 34411339771 &&
       github.event.workflow_run.head_branch == 'ghosium/release/0.0.1' &&
-      github.event.workflow_run.head_sha == 'effbb2ee968597f5091a1cda2c0fd537e59fa93a'
+      github.event.workflow_run.head_sha == 'eab14a947d8b2e176e55e9f199e23a0e50a54563'
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 35
     env:
       GH_TOKEN: ${{ github.token }}
-      CANDIDATE_SHA: effbb2ee968597f5091a1cda2c0fd537e59fa93a
-      CANDIDATE_RUN_ID: '34397578624'
-      PROMOTION_JOB_ID: '102621045924'
+      CANDIDATE_SHA: eab14a947d8b2e176e55e9f199e23a0e50a54563
+      CANDIDATE_RUN_ID: '34411339771'
+      PROMOTION_JOB_ID: '102666241199'
+      RELEASE_PR: '66'
       VERSION: 0.0.1
       TAG: ghosium-v0.0.1
 
     steps:
-      - name: Require successful exact full-source candidate
+      - name: Require successful exact corrected full-source candidate
         shell: bash
         run: |
           set -euo pipefail
           [[ "${{ github.event.workflow_run.conclusion }}" == 'success' ]] || {
-            echo "Exact 0.0.1 candidate did not succeed; production dispatch is blocked." >&2
+            echo 'Exact corrected 0.0.1 candidate did not succeed; production dispatch is blocked.' >&2
             exit 1
           }
 
@@ -61,7 +63,7 @@ jobs:
           }
           echo "artifact_id=$artifact_id" >> "$GITHUB_ENV"
 
-      - name: Independently verify candidate evidence bundle
+      - name: Independently verify corrected candidate evidence bundle
         shell: bash
         run: |
           set -euo pipefail
@@ -111,10 +113,8 @@ jobs:
               raise SystemExit('Candidate public Setup may not be a renamed Chromium mini-installer.')
           if (public.get('maintenance') or {}).get('sameSetupExecutable') is not True:
               raise SystemExit('Candidate must preserve same-Setup maintenance.')
-          if public.get('portablePackage') != 'Ghosium-Browser-Portable.exe':
+          if public.get('portablePackage') != 'Ghosium-Browser-Portable.exe' or int(public.get('portableBytes') or 0) <= 0:
               raise SystemExit('Candidate Portable package provenance mismatch.')
-          if int(public.get('portableBytes') or 0) <= 0:
-              raise SystemExit('Candidate Portable package is empty.')
 
           performance = json.loads((root / 'GHOSIUM-PERFORMANCE.json').read_text(encoding='utf-8-sig'))
           if performance.get('schemaVersion') != 2 or performance.get('profileMode') != 'UserDataDir':
@@ -130,36 +130,57 @@ jobs:
           if not isinstance(smoke, dict) or not smoke:
               raise SystemExit('Canonical Setup smoke evidence is empty or invalid.')
 
-          print('Independent exact candidate evidence verification: OK')
+          print('Independent exact corrected candidate evidence verification: OK')
           PY
 
-      - name: Require current main to remain source-equivalent to exact candidate
+      - name: Require marker-only PR and source-equivalent current main
         shell: bash
         run: |
           set -euo pipefail
-          main_sha="$(gh api --method GET "/repos/${GITHUB_REPOSITORY}/git/ref/heads/main" --jq '.object.sha')"
-          compare_json="$(gh api --method GET "/repos/${GITHUB_REPOSITORY}/compare/${CANDIDATE_SHA}...${main_sha}")"
 
-          [[ "$(jq -r '.merge_base_commit.sha' <<<"$compare_json")" == "$CANDIDATE_SHA" ]] || {
-            echo "Current main is not a descendant of the exact candidate SHA." >&2
+          pr_json="$(gh api --method GET "/repos/${GITHUB_REPOSITORY}/pulls/${RELEASE_PR}")"
+          [[ "$(jq -r '.state' <<<"$pr_json")" == 'open' ]] || { echo 'Release PR is not open.' >&2; exit 1; }
+          [[ "$(jq -r '.head.ref' <<<"$pr_json")" == 'ghosium/release/0.0.1' ]] || { echo 'Release PR branch mismatch.' >&2; exit 1; }
+          [[ "$(jq -r '.head.sha' <<<"$pr_json")" == "$CANDIDATE_SHA" ]] || { echo 'Release PR head drift.' >&2; exit 1; }
+          [[ "$(jq -r '.base.ref' <<<"$pr_json")" == 'main' ]] || { echo 'Release PR base mismatch.' >&2; exit 1; }
+          [[ "$(jq -r '.changed_files' <<<"$pr_json")" == '1' ]] || { echo 'Release PR is not marker-only.' >&2; exit 1; }
+
+          files_json="$(gh api --method GET "/repos/${GITHUB_REPOSITORY}/pulls/${RELEASE_PR}/files" -f per_page=100)"
+          [[ "$(jq -r 'length' <<<"$files_json")" == '1' ]] || { echo 'Release PR file list is not singular.' >&2; exit 1; }
+          [[ "$(jq -r '.[0].filename' <<<"$files_json")" == '.release/ghosium-v0.0.1.request' ]] || { echo 'Release PR changed an unexpected file.' >&2; exit 1; }
+
+          candidate_json="$(gh api --method GET "/repos/${GITHUB_REPOSITORY}/commits/${CANDIDATE_SHA}")"
+          candidate_base="$(jq -r '.parents[0].sha' <<<"$candidate_json")"
+          [[ -n "$candidate_base" && "$candidate_base" != 'null' ]] || { echo 'Unable to resolve corrected candidate parent.' >&2; exit 1; }
+
+          candidate_diff="$(gh api --method GET "/repos/${GITHUB_REPOSITORY}/compare/${candidate_base}...${CANDIDATE_SHA}")"
+          [[ "$(jq -r '.files | length' <<<"$candidate_diff")" == '1' ]] || { echo 'Corrected candidate itself is not marker-only.' >&2; exit 1; }
+          [[ "$(jq -r '.files[0].filename' <<<"$candidate_diff")" == '.release/ghosium-v0.0.1.request' ]] || { echo 'Corrected candidate changed non-marker content.' >&2; exit 1; }
+
+          main_sha="$(gh api --method GET "/repos/${GITHUB_REPOSITORY}/git/ref/heads/main" --jq '.object.sha')"
+          compare_json="$(gh api --method GET "/repos/${GITHUB_REPOSITORY}/compare/${candidate_base}...${main_sha}")"
+          [[ "$(jq -r '.merge_base_commit.sha' <<<"$compare_json")" == "$candidate_base" ]] || {
+            echo 'Current main is not a descendant of the source baseline verified by the corrected candidate.' >&2
             exit 1
           }
 
           unexpected="$(jq -r '
             [.files[].filename
              | select(. != ".github/workflows/ghosium-0.0.1-release-bridge.yml")
-             | select(. != ".github/workflows/ghosium-0.0.1-post-release-cleanup.yml")]
+             | select(. != ".github/workflows/ghosium-0.0.1-post-release-cleanup.yml")
+             | select(. != ".github/workflows/ghosium-0.0.1-candidate-retry-dispatch.yml")]
             | unique | .[]?' <<<"$compare_json")"
           [[ -z "$unexpected" ]] || {
-            echo 'Current main contains changes beyond the approved release-control workflows:' >&2
+            echo 'Current main contains source/product changes beyond the corrected candidate baseline:' >&2
             printf '%s\n' "$unexpected" >&2
-            echo 'A fresh exact-SHA candidate is required before production.' >&2
+            echo 'A fresh candidate is required.' >&2
             exit 1
           }
 
           version="$(gh api --method GET "/repos/${GITHUB_REPOSITORY}/contents/VERSION?ref=${main_sha}" --jq '.content' | tr -d '\n' | base64 --decode | tr -d '\r\n ')"
           [[ "$version" == "$VERSION" ]] || { echo "main VERSION is $version, expected $VERSION" >&2; exit 1; }
-          echo "Current main remains source-equivalent to exact 0.0.1 candidate: $main_sha"
+          echo "main_sha_before_merge=$main_sha" >> "$GITHUB_ENV"
+          echo "Corrected candidate source baseline remains equivalent to current main: $candidate_base -> $main_sha"
 
       - name: Refuse an already-published 0.0.1 release
         shell: bash
@@ -170,48 +191,105 @@ jobs:
             exit 1
           fi
 
-      - name: Rerun preserved marker promotion workflow for audit
+      - name: Rerun corrected marker promotion workflow for audit
         shell: bash
         run: |
           set -euo pipefail
+          rerun_started="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
           gh api --method POST "/repos/${GITHUB_REPOSITORY}/actions/jobs/${PROMOTION_JOB_ID}/rerun" >/dev/null
 
-          for attempt in $(seq 1 90); do
+          for attempt in $(seq 1 120); do
+            sleep 5
             checks="$(gh api --method GET "/repos/${GITHUB_REPOSITORY}/commits/${CANDIDATE_SHA}/check-runs" -f per_page=100)"
-            if jq -e '[.check_runs[] | select(.name == "Verify release-marker-only promotion and candidate evidence") | select(.status == "completed") | select(.conclusion == "success")] | length > 0' <<<"$checks" >/dev/null; then
-              echo 'Preserved marker promotion workflow rerun: success'
+            if jq -e --arg started "$rerun_started" '[.check_runs[] | select(.name == "Verify release-marker-only promotion and candidate evidence") | select(.started_at >= $started) | select(.status == "completed") | select(.conclusion == "success")] | length > 0' <<<"$checks" >/dev/null; then
+              echo 'Corrected marker promotion workflow rerun: success'
               exit 0
             fi
-
-            if jq -e '[.check_runs[] | select(.name == "Verify release-marker-only promotion and candidate evidence") | select(.status == "completed") | select(.conclusion == "failure") | select(.started_at > "2026-09-09T20:30:00Z")] | length > 0' <<<"$checks" >/dev/null; then
-              echo 'Rerun release marker promotion workflow failed.' >&2
+            if jq -e --arg started "$rerun_started" '[.check_runs[] | select(.name == "Verify release-marker-only promotion and candidate evidence") | select(.started_at >= $started) | select(.status == "completed") | select(.conclusion == "failure")] | length > 0' <<<"$checks" >/dev/null; then
+              echo 'Corrected marker promotion workflow rerun failed.' >&2
               exit 1
             fi
-            sleep 10
           done
 
-          echo 'Timed out waiting for marker promotion workflow rerun.' >&2
+          echo 'Timed out waiting for corrected marker promotion workflow rerun.' >&2
           exit 1
 
-      - name: Dispatch exact current main to production full-source workflow
+      - name: Merge verified marker-only release PR
         shell: bash
         run: |
           set -euo pipefail
+          merge_json="$(gh api --method PUT "/repos/${GITHUB_REPOSITORY}/pulls/${RELEASE_PR}/merge" -f sha="$CANDIDATE_SHA" -f merge_method=merge)"
+          [[ "$(jq -r '.merged' <<<"$merge_json")" == 'true' ]] || {
+            echo 'Verified marker-only release PR did not merge.' >&2
+            jq . <<<"$merge_json" >&2
+            exit 1
+          }
+
           main_sha="$(gh api --method GET "/repos/${GITHUB_REPOSITORY}/git/ref/heads/main" --jq '.object.sha')"
-          version="$(gh api --method GET "/repos/${GITHUB_REPOSITORY}/contents/VERSION?ref=${main_sha}" --jq '.content' | tr -d '\n' | base64 --decode | tr -d '\r\n ')"
+          compare_json="$(gh api --method GET "/repos/${GITHUB_REPOSITORY}/compare/${CANDIDATE_SHA}...${main_sha}")"
+          [[ "$(jq -r '.merge_base_commit.sha' <<<"$compare_json")" == "$CANDIDATE_SHA" ]] || {
+            echo 'Merged main does not contain the exact corrected candidate head.' >&2
+            exit 1
+          }
+          echo "production_main_sha=$main_sha" >> "$GITHUB_ENV"
+          echo "Verified marker PR merged; production main is $main_sha"
+
+      - name: Require merged main contract checks
+        shell: bash
+        run: |
+          set -euo pipefail
+          required=(
+            'version-contract'
+            'Verify clean 0.0.1 baseline and fail-closed repository state'
+            'Verify canonical install update and uninstall architecture'
+          )
+
+          for attempt in $(seq 1 120); do
+            sleep 5
+            checks="$(gh api --method GET "/repos/${GITHUB_REPOSITORY}/commits/${production_main_sha}/check-runs" -f per_page=100)"
+            all_ok=true
+            for name in "${required[@]}"; do
+              if ! jq -e --arg name "$name" '[.check_runs[] | select(.name == $name) | select(.status == "completed") | select(.conclusion == "success")] | length > 0' <<<"$checks" >/dev/null; then
+                all_ok=false
+              fi
+              if jq -e --arg name "$name" '[.check_runs[] | select(.name == $name) | select(.status == "completed") | select(.conclusion == "failure" or .conclusion == "cancelled" or .conclusion == "timed_out")] | length > 0' <<<"$checks" >/dev/null; then
+                echo "Merged main required check failed: $name" >&2
+                exit 1
+              fi
+            done
+            if [[ "$all_ok" == true ]]; then
+              echo 'Merged main release contracts: success'
+              exit 0
+            fi
+          done
+
+          echo 'Timed out waiting for merged main release contract checks.' >&2
+          exit 1
+
+      - name: Dispatch exact merged main to production full-source workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          current_main="$(gh api --method GET "/repos/${GITHUB_REPOSITORY}/git/ref/heads/main" --jq '.object.sha')"
+          [[ "$current_main" == "$production_main_sha" ]] || {
+            echo "main moved after verified merge: $production_main_sha -> $current_main" >&2
+            exit 1
+          }
+
+          version="$(gh api --method GET "/repos/${GITHUB_REPOSITORY}/contents/VERSION?ref=${production_main_sha}" --jq '.content' | tr -d '\n' | base64 --decode | tr -d '\r\n ')"
           [[ "$version" == "$VERSION" ]] || { echo "main VERSION is $version, expected $VERSION" >&2; exit 1; }
 
           gh api --method POST "/repos/${GITHUB_REPOSITORY}/actions/workflows/full-source-windows-build.yml/dispatches" -f ref=main >/dev/null
 
           for attempt in $(seq 1 30); do
+            sleep 5
             runs="$(gh api --method GET "/repos/${GITHUB_REPOSITORY}/actions/workflows/full-source-windows-build.yml/runs" -f branch=main -f event=workflow_dispatch -f per_page=30)"
-            run_id="$(jq -r --arg sha "$main_sha" '[.workflow_runs[] | select(.head_sha == $sha and .event == "workflow_dispatch")] | sort_by(.created_at) | last | .id // empty' <<<"$runs")"
+            run_id="$(jq -r --arg sha "$production_main_sha" '[.workflow_runs[] | select(.head_sha == $sha and .event == "workflow_dispatch")] | sort_by(.created_at) | last | .id // empty' <<<"$runs")"
             if [[ -n "$run_id" ]]; then
-              echo "Production full-source run dispatched for exact main $main_sha: $run_id"
+              echo "Production full-source run dispatched for exact main $production_main_sha: $run_id"
               exit 0
             fi
-            sleep 5
           done
 
-          echo "Production dispatch did not produce an exact-main workflow run for $main_sha." >&2
+          echo "Production dispatch did not produce an exact-main workflow run for $production_main_sha." >&2
           exit 1
