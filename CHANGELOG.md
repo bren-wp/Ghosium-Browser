@@ -1,5 +1,35 @@
 # Changelog
 
+## 0.1.12 — native Ghosium branding, privacy and stability hardening
+
+### Native product branding
+- Moved the core New Tab identity into the pinned Chromium source path so Ghosium branding no longer depends on an optional extension override.
+- Replaced the rendered stock Google logo bytes with the canonical Ghosium mark while allowing upstream technical asset filenames to remain internal build API.
+- Disabled OneGoogleBar, remote Doodle initialization, animated Doodles/murals, provider/Microsoft modules, AI/Composebox/Threads entry points, Lens/voice entry points, action chips and browser promos on the Ghosium-owned New Tab.
+- Preserved local shortcuts, local customization and the normal omnibox/search path.
+- Kept Google Search as the truthful external default provider while changing Ghosium-owned New Tab copy to provider-neutral `Search the web` rather than Google product branding.
+
+### Privacy and low-overhead defaults
+- Blocked third-party cookies by default for new/default profiles through Chromium's native preference machinery.
+- Disabled search suggestions, speculative network prediction/preloading and remote alternate-error pages by default.
+- Added a fail-closed assertion that online spelling-service upload remains disabled by default.
+- Removed native New Tab remote Doodle fetch initialization and disabled NTP prefetch/prerender triggers and cloud modules to reduce unnecessary background network/JavaScript work.
+- Preserved native Memory Saver and the existing background-app shutdown behavior.
+- Explicitly preserved Safe Browsing, TLS/certificate validation, browser/renderer/GPU sandboxing, site/process isolation, extension trust and update verification.
+
+### Source, code and CI hardening
+- Added revision-pinned `harden-native-new-tab.ps1` / `verify-native-new-tab.ps1` and `harden-privacy-defaults.ps1` / `verify-privacy-defaults.ps1` pairs.
+- Added the `Ghosium Native UI and Privacy Contract` against the exact pinned Chromium revision and forbids `third_party` source changes.
+- Wired native NTP/privacy verification into `configure-engine-build.ps1` before GN generation so the actual Windows full-source binary must compile the reviewed hardened source.
+- Hardened extension New Tab/options local-storage, DOM lookup and error paths while synchronizing bundled component/Store/update metadata to 0.1.12.
+- Updated repository hygiene so it still requires direct `https://www.google.com/search` routing and rejects fake `Ghosium Search`, but no longer requires Google branding in Ghosium-owned UI text.
+
+### Release safety
+- The checked-in 0.1.12 update baseline remains disabled with empty SHA-256 and zero package size until a real verified signed Setup exists.
+- No numerical performance, signing or production-release claim is valid until exact-SHA full-source candidate and production evidence completes.
+
+> `0.1.12` is not a source-built production release until the controlled Windows candidate and production workflows compile, runtime-test, benchmark, sign and package the exact production commit successfully.
+
 ## 0.1.11 — verified hosted release-candidate bootstrap
 
 ### Hosted candidate builder
@@ -191,7 +221,7 @@
 - Added a dedicated locale CI contract that fails if browser and Setup locale lists diverge.
 
 ### Performance and shutdown
-- Enabled the engine's native Memory Saver state by default for profiles that have not explicitly selected another state.
+- Enabled the engine's native Memory Saver state by default for profiles that have not explicitly selected a state.
 - Preserved native medium aggressiveness, tab-freezing behavior, existing discard threshold and explicit user preference precedence.
 - Disabled legacy background-app keep-alive in the Windows build configuration so closing the final browser window does not intentionally keep that mode resident.
 - Added a pinned-source performance-default contract that applies the transformation twice, independently verifies it and rejects renderer caps or security-reducing launch shortcuts.
