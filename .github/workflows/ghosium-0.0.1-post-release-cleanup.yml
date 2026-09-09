@@ -93,63 +93,84 @@ jobs:
 
           release_date = os.environ['GHOSIUM_RELEASE_DATE']
 
+          def replace_or_verify(text: str, old: str, new: str, label: str) -> str:
+              if old in text:
+                  return text.replace(old, new)
+              if new in text:
+                  return text
+              raise SystemExit(f'{label} baseline changed unexpectedly.')
+
           readme = Path('README.md')
           text = readme.read_text(encoding='utf-8')
-          text = text.replace(
+          text = replace_or_verify(
+              text,
               '**Ghosium Browser by Brendigo** is a Windows x64 browser. The current development version is **0.0.1**.',
-              '**Ghosium Browser by Brendigo** is a Windows x64 browser. The current released version is **0.0.1**.'
+              '**Ghosium Browser by Brendigo** is a Windows x64 browser. The current released version is **0.0.1**.',
+              'README product status',
           )
-          text = text.replace(
+          text = replace_or_verify(
+              text,
               'No numerical 0.0.1 performance claim is valid until the compiled source-built 0.0.1 binary produces `GHOSIUM-PERFORMANCE.json` under the controlled benchmark workflow.',
-              'Performance claims for 0.0.1 must be sourced from the verified `GHOSIUM-PERFORMANCE.json` evidence attached to the canonical release.'
+              'Performance claims for 0.0.1 must be sourced from the verified `GHOSIUM-PERFORMANCE.json` evidence attached to the canonical release.',
+              'README performance status',
           )
           old_status = '''## Release status\n\n**0.0.1 must not be described as a released source-built binary until the exact 0.0.1 candidate and production workflows compile, runtime-test, benchmark, package and satisfy required production signing/provenance gates.**\n\nThe checked-in update manifest remains fail-closed (`enabled:false`, empty SHA-256, zero size) until generated from a real verified production package.'''
           new_status = f'''## Release status\n\n**0.0.1 is the current released Ghosium Browser version, published on {release_date}.** The canonical release contains verified Windows Setup and Portable packages plus source-build, runtime, performance, installer, update-manifest and SHA-256 provenance evidence.\n\nThe checked-in update baseline remains fail-closed; the production release carries the generated update-manifest evidence bound to the verified signed package.'''
-          if old_status not in text:
-              raise SystemExit('README release-status baseline changed unexpectedly.')
-          readme.write_text(text.replace(old_status, new_status), encoding='utf-8')
+          text = replace_or_verify(text, old_status, new_status, 'README release status')
+          readme.write_text(text, encoding='utf-8')
 
           changelog = Path('CHANGELOG.md')
           text = changelog.read_text(encoding='utf-8')
-          text = text.replace(
+          text = replace_or_verify(
+              text,
               '## 0.0.1 — clean Ghosium Browser baseline',
-              f'## 0.0.1 — released {release_date}'
+              f'## 0.0.1 — released {release_date}',
+              'CHANGELOG heading',
           )
-          text = text.replace(
+          text = replace_or_verify(
+              text,
               '> 0.0.1 is published only after the exact candidate and production release gates succeed. Static source checks alone are not release evidence.',
-              '> Released after the exact candidate and production full-source gates completed, with canonical Setup/Portable packages and attached verification evidence.'
+              '> Released after the exact candidate and production full-source gates completed, with canonical Setup/Portable packages and attached verification evidence.',
+              'CHANGELOG release evidence',
           )
           changelog.write_text(text, encoding='utf-8')
 
           release_doc = Path('docs/RELEASE.md')
           text = release_doc.read_text(encoding='utf-8')
-          text = text.replace(
+          text = replace_or_verify(
+              text,
               'The active development version is `0.0.1`.',
-              f'The current released version is `0.0.1` (published {release_date}).'
+              f'The current released version is `0.0.1` (published {release_date}).',
+              'Release document status',
           )
-          text = text.replace(
+          text = replace_or_verify(
+              text,
               'The checked-in update baseline remains disabled until a real verified production package exists.',
-              'The checked-in update baseline remains disabled by design; the released production package carries separately generated signed update-manifest evidence.'
+              'The checked-in update baseline remains disabled by design; the released production package carries separately generated signed update-manifest evidence.',
+              'Release document update status',
           )
           decision = '## Release decision\n\nDo not merge or publish 0.0.1 merely because hosted source contracts are green. A source audit, documentation cleanup or patch-only result is not a production browser release. Publication requires the exact 0.0.1 full-source candidate and production gates to succeed.'
           completed = f'## Release decision\n\n0.0.1 completed the canonical release path and was published on {release_date}. Future publication decisions must continue to require exact full-source candidate and production evidence; source audits, documentation-only changes and patch-only checks are not substitutes for production release evidence.'
-          if decision not in text:
-              raise SystemExit('Release decision baseline changed unexpectedly.')
-          release_doc.write_text(text.replace(decision, completed), encoding='utf-8')
+          text = replace_or_verify(text, decision, completed, 'Release decision')
+          release_doc.write_text(text, encoding='utf-8')
 
           building = Path('BUILDING.md')
           text = building.read_text(encoding='utf-8')
-          text = text.replace(
+          text = replace_or_verify(
+              text,
               'Do not publish performance claims until the compiled source-built 0.0.1 binary has produced verified `GHOSIUM-PERFORMANCE.json` evidence.',
-              'Performance claims for 0.0.1 must remain tied to the verified `GHOSIUM-PERFORMANCE.json` evidence from the canonical release build.'
+              'Performance claims for 0.0.1 must remain tied to the verified `GHOSIUM-PERFORMANCE.json` evidence from the canonical release build.',
+              'BUILDING performance status',
           )
           building.write_text(text, encoding='utf-8')
 
           engine = Path('engine/README.md')
           text = engine.read_text(encoding='utf-8')
-          text = text.replace(
+          text = replace_or_verify(
+              text,
               'The canonical build flow is documented in `../BUILDING.md`. A source transform is not a release: 0.0.1 requires exact-SHA compile, runtime, benchmark, package, provenance and production-signing evidence before publication.',
-              'The canonical build flow is documented in `../BUILDING.md`. The released 0.0.1 package is backed by exact-SHA compile, runtime, benchmark, package, provenance and production-signing evidence.'
+              'The canonical build flow is documented in `../BUILDING.md`. The released 0.0.1 package is backed by exact-SHA compile, runtime, benchmark, package, provenance and production-signing evidence.',
+              'Engine release status',
           )
           engine.write_text(text, encoding='utf-8')
 
