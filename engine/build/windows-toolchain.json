@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "visualStudioMajorMinimum": 18,
+  "windowsSdkPackageRevision": "10.0.28000.2270",
+  "windowsSdkVersion": "10.0.28000.0",
+  "windowsSdkComponent": "Microsoft.VisualStudio.Component.Windows11SDK.28000",
+  "debuggingToolsMinimum": "10.0.26100.3323"
+}
