@@ -162,16 +162,21 @@ jobs:
               if '0.0.1' not in versions:
                   raise SystemExit(f'{path} lost the current 0.0.1 product version.')
 
-      - name: Commit finalized release documentation
+      - name: Remove one-time release workflows and commit final release state
         shell: bash
         run: |
           set -euo pipefail
-          if git diff --quiet -- README.md CHANGELOG.md docs/RELEASE.md BUILDING.md engine/README.md; then
-            echo 'Documentation is already finalized.'
+          git rm -f --ignore-unmatch \
+            .github/workflows/ghosium-0.0.1-release-bridge.yml \
+            .github/workflows/ghosium-0.0.1-post-release-cleanup.yml
+
+          if git diff --quiet --cached && git diff --quiet -- README.md CHANGELOG.md docs/RELEASE.md BUILDING.md engine/README.md; then
+            echo 'Final 0.0.1 repository state is already clean.'
             exit 0
           fi
+
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add README.md CHANGELOG.md docs/RELEASE.md BUILDING.md engine/README.md
-          git commit -m "docs: mark Ghosium 0.0.1 released"
+          git commit -m "docs: finalize Ghosium 0.0.1 release"
           git push origin HEAD:main
