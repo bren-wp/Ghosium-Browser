@@ -17,6 +17,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ghosium-hosted-source-builder-parity-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   hosted-builder-parity:
     name: Prove hosted Windows satisfies the production source-builder preflight
@@ -116,9 +120,18 @@ jobs:
               $builder.windowsSdkPackageRevision -ne $provisioning.windowsSdkPackageRevision) {
             throw 'Builder and provisioning evidence disagree on the Windows SDK contract.'
           }
-          if ([string]::IsNullOrWhiteSpace([string]$provisioning.python3Path) -or
-              !([string]$provisioning.python3Path).StartsWith(([string]$provisioning.depotToolsRoot).TrimEnd('\') + '\', [StringComparison]::OrdinalIgnoreCase)) {
-            throw 'Hosted provisioning evidence does not bind python3 to pinned depot_tools.'
+          if ([string]::IsNullOrWhiteSpace([string]$builder.python3Path) -or
+              [string]::IsNullOrWhiteSpace([string]$builder.python3Version) -or
+              $builder.python3Path -ne $provisioning.python3Path -or
+              $builder.python3Version -ne $provisioning.python3Version) {
+            throw 'Builder and provisioning evidence disagree on the verified 64-bit Python 3 host prerequisite.'
+          }
+          foreach ($property in @('fetchPath', 'gclientPath', 'gnPath', 'autoninjaPath')) {
+            $toolPath = [string]$builder.$property
+            if ([string]::IsNullOrWhiteSpace($toolPath) -or
+                !$toolPath.StartsWith(([string]$builder.depotToolsRoot).TrimEnd('\') + '\', [StringComparison]::OrdinalIgnoreCase)) {
+              throw "Builder evidence does not bind $property to pinned depot_tools."
+            }
           }
           if (!$interactive.mainWindowHandleNonZero -or !$interactive.userInteractive) {
             throw 'Hosted interactive-window evidence is invalid.'
