@@ -31,6 +31,20 @@ if ($version -notmatch '^0\.[1-9]\d*\.\d+$') {
   throw "Ghosium product VERSION is invalid: '$version'"
 }
 
+$toolchainContractPath = Join-Path $repoRoot 'engine/build/windows-toolchain.json'
+if (!(Test-Path $toolchainContractPath -PathType Leaf)) {
+  throw 'Pinned Windows toolchain contract is missing: engine/build/windows-toolchain.json'
+}
+$toolchainContract = Get-Content $toolchainContractPath -Raw | ConvertFrom-Json
+if ([int]$toolchainContract.schemaVersion -ne 1) {
+  throw "Unsupported Windows toolchain contract schema: '$($toolchainContract.schemaVersion)'"
+}
+$windowsSdkPackageRevision = ([string]$toolchainContract.windowsSdkPackageRevision).Trim()
+$windowsSdkVersion = ([string]$toolchainContract.windowsSdkVersion).Trim()
+if ($windowsSdkPackageRevision -notmatch '^10\.0\.\d+\.\d+$' -or $windowsSdkVersion -notmatch '^10\.0\.\d+\.0$') {
+  throw 'Pinned Windows SDK package/toolchain contract is invalid.'
+}
+
 $sourceRootResolved = (Resolve-Path $SourceRoot).Path
 $artifactsPath = [IO.Path]::GetFullPath($ArtifactsDir)
 New-Item -ItemType Directory -Force -Path $artifactsPath | Out-Null
@@ -69,6 +83,8 @@ $signing = [ordered]@{
   certificateThumbprint = ''
   publisherSubject = ''
   timestampUrl = ''
+  windowsSdkPackageRevision = $windowsSdkPackageRevision
+  windowsSdkVersion = $windowsSdkVersion
   browserStatus = [string](Get-AuthenticodeSignature $browserPath).Status
   proxyStatus = [string](Get-AuthenticodeSignature $proxyPath).Status
   setupStatus = 'NotBuilt'
@@ -114,10 +130,9 @@ function Resolve-GhosiumSigningIdentity {
   }
 
   $kitsRoot = (Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows Kits\Installed Roots' -Name KitsRoot10 -ErrorAction Stop).KitsRoot10
-  $sdkVersion = '10.0.28000.2270'
-  $tool = Join-Path $kitsRoot "bin\$sdkVersion\x64\signtool.exe"
+  $tool = Join-Path $kitsRoot "bin\$windowsSdkVersion\x64\signtool.exe"
   if (!(Test-Path $tool -PathType Leaf)) {
-    throw "Required Windows SDK signtool.exe is missing: $tool"
+    throw "Required Windows SDK package $windowsSdkPackageRevision signtool.exe is missing from toolchain folder $windowsSdkVersion`: $tool"
   }
 
   return [ordered]@{
