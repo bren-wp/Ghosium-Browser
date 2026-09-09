@@ -133,6 +133,34 @@ jobs:
           print('Independent exact candidate evidence verification: OK')
           PY
 
+      - name: Require current main to remain source-equivalent to exact candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          main_sha="$(gh api --method GET "/repos/${GITHUB_REPOSITORY}/git/ref/heads/main" --jq '.object.sha')"
+          compare_json="$(gh api --method GET "/repos/${GITHUB_REPOSITORY}/compare/${CANDIDATE_SHA}...${main_sha}")"
+
+          [[ "$(jq -r '.merge_base_commit.sha' <<<"$compare_json")" == "$CANDIDATE_SHA" ]] || {
+            echo "Current main is not a descendant of the exact candidate SHA." >&2
+            exit 1
+          }
+
+          unexpected="$(jq -r '
+            [.files[].filename
+             | select(. != ".github/workflows/ghosium-0.0.1-release-bridge.yml")
+             | select(. != ".github/workflows/ghosium-0.0.1-post-release-cleanup.yml")]
+            | unique | .[]?' <<<"$compare_json")"
+          [[ -z "$unexpected" ]] || {
+            echo 'Current main contains changes beyond the approved release-control workflows:' >&2
+            printf '%s\n' "$unexpected" >&2
+            echo 'A fresh exact-SHA candidate is required before production.' >&2
+            exit 1
+          }
+
+          version="$(gh api --method GET "/repos/${GITHUB_REPOSITORY}/contents/VERSION?ref=${main_sha}" --jq '.content' | tr -d '\n' | base64 --decode | tr -d '\r\n ')"
+          [[ "$version" == "$VERSION" ]] || { echo "main VERSION is $version, expected $VERSION" >&2; exit 1; }
+          echo "Current main remains source-equivalent to exact 0.0.1 candidate: $main_sha"
+
       - name: Refuse an already-published 0.0.1 release
         shell: bash
         run: |
