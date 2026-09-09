@@ -19,9 +19,34 @@ if ($expectedDepotToolsRevision -notmatch '^[0-9a-f]{40}$') {
   throw "DEPOT_TOOLS_REVISION must contain one exact 40-character Git commit: '$expectedDepotToolsRevision'"
 }
 
-$requiredVisualStudioMajor = 18
-$requiredWindowsSdk = '10.0.28000.2270'
-$minimumDebuggerVersion = [version]'10.0.26100.3323'
+$toolchainContractPath = Join-Path $repoRoot 'engine/build/windows-toolchain.json'
+if (!(Test-Path $toolchainContractPath -PathType Leaf)) {
+  throw 'Pinned Windows toolchain contract is missing: engine/build/windows-toolchain.json'
+}
+$toolchainContract = Get-Content $toolchainContractPath -Raw | ConvertFrom-Json
+if ([int]$toolchainContract.schemaVersion -ne 1) {
+  throw "Unsupported Windows toolchain contract schema: '$($toolchainContract.schemaVersion)'"
+}
+
+$requiredVisualStudioMajor = [int]$toolchainContract.visualStudioMajorMinimum
+$requiredWindowsSdkPackageRevision = ([string]$toolchainContract.windowsSdkPackageRevision).Trim()
+$requiredWindowsSdk = ([string]$toolchainContract.windowsSdkVersion).Trim()
+$requiredWindowsSdkComponent = ([string]$toolchainContract.windowsSdkComponent).Trim()
+$minimumDebuggerVersion = [version]([string]$toolchainContract.debuggingToolsMinimum)
+
+if ($requiredVisualStudioMajor -lt 18) {
+  throw "Pinned Chromium requires Visual Studio 2026 or newer; contract specifies major $requiredVisualStudioMajor"
+}
+if ($requiredWindowsSdkPackageRevision -notmatch '^10\.0\.\d+\.\d+$') {
+  throw "Windows SDK package revision is invalid: '$requiredWindowsSdkPackageRevision'"
+}
+if ($requiredWindowsSdk -notmatch '^10\.0\.\d+\.0$') {
+  throw "Windows SDK filesystem/toolchain version is invalid: '$requiredWindowsSdk'"
+}
+if ($requiredWindowsSdkComponent -notmatch '^Microsoft\.VisualStudio\.Component\.Windows11SDK\.\d+$') {
+  throw "Windows SDK Visual Studio component ID is invalid: '$requiredWindowsSdkComponent'"
+}
+
 $minimumRamGiB = 8
 $recommendedRamGiB = 32
 $recommendedLogicalProcessors = 16
@@ -222,7 +247,7 @@ $windowsKitsRoot = (Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows Kits\Inst
 $sdkInclude = Join-Path $windowsKitsRoot "Include\$requiredWindowsSdk\um\Windows.h"
 $sdkLibrary = Join-Path $windowsKitsRoot "Lib\$requiredWindowsSdk\um\x64\Kernel32.Lib"
 if (!(Test-Path $sdkInclude -PathType Leaf) -or !(Test-Path $sdkLibrary -PathType Leaf)) {
-  throw "Required Windows 11 SDK $requiredWindowsSdk is not installed completely under $windowsKitsRoot"
+  throw "Required Windows 11 SDK package $requiredWindowsSdkPackageRevision (toolchain folder $requiredWindowsSdk) is not installed completely under $windowsKitsRoot"
 }
 
 $debugger = Join-Path $windowsKitsRoot 'Debuggers\x64\cdb.exe'
@@ -236,7 +261,7 @@ if ($debuggerVersion -lt $minimumDebuggerVersion) {
 
 $gitVersion = (& $git.Source --version | Select-Object -First 1).Trim()
 $report = [ordered]@{
-  schemaVersion = 3
+  schemaVersion = 4
   status = 'ready'
   architecture = 'windows-x64'
   osArchitecture = $osArchitecture
@@ -259,7 +284,9 @@ $report = [ordered]@{
   gitTerminalPrompt = [string]$env:GIT_TERMINAL_PROMPT
   gitVersion = $gitVersion
   visualStudioVersion = [string]$vsVersion
+  windowsSdkPackageRevision = $requiredWindowsSdkPackageRevision
   windowsSdkVersion = $requiredWindowsSdk
+  windowsSdkComponent = $requiredWindowsSdkComponent
   debuggingToolsVersion = $debuggerVersion.ToString()
 }
 
@@ -284,5 +311,5 @@ Write-Host "Reusable checkout: $reuse"
 Write-Host "NTFS free disk: ${freeGiB} GiB"
 Write-Host "RAM: ${ramGiB} GiB; logical processors: $logicalProcessors"
 Write-Host "Visual Studio: $vsVersion"
-Write-Host "Windows SDK: $requiredWindowsSdk; Debugging Tools: $debuggerVersion"
+Write-Host "Windows SDK package: $requiredWindowsSdkPackageRevision; toolchain folder: $requiredWindowsSdk; Debugging Tools: $debuggerVersion"
 Write-Host "depot_tools: $depotToolsRoot @ $depotToolsRevision"
