@@ -1,32 +1,44 @@
 name: Ghosium Windows Installer Contract
 
 on:
-  pull_request:
-    branches:
-      - main
-    paths:
-      - 'installer/**'
-      - 'scripts/**'
-      - 'engine/branding/**'
-      - '.github/workflows/**'
   push:
     branches:
       - main
     paths:
-      - 'installer/**'
-      - 'scripts/**'
-      - 'engine/branding/**'
-      - '.github/workflows/**'
+      - VERSION
+      - LICENSE
+      - THIRD_PARTY_NOTICES.md
+      - ghosium.ico
+      - installer/**
+      - scripts/resolve-nsis.ps1
+      - scripts/smoke-test-windows-installer.ps1
+      - scripts/smoke-test-installer-contract-fixture.ps1
+      - .github/workflows/installer-contract.yml
+  pull_request:
+    paths:
+      - VERSION
+      - LICENSE
+      - THIRD_PARTY_NOTICES.md
+      - ghosium.ico
+      - installer/**
+      - scripts/resolve-nsis.ps1
+      - scripts/smoke-test-windows-installer.ps1
+      - scripts/smoke-test-installer-contract-fixture.ps1
+      - .github/workflows/installer-contract.yml
   workflow_dispatch:
 
 permissions:
   contents: read
 
+concurrency:
+  group: ghosium-installer-contract-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   installer-contract:
-    name: Verify canonical install update and uninstall architecture
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
+    name: Compile and verify same-Setup lifecycle
+    runs-on: windows-2025
+    timeout-minutes: 20
 
     steps:
       - name: Checkout
@@ -35,283 +47,8 @@ jobs:
           persist-credentials: false
           fetch-depth: 1
 
-      - name: Require immutable GitHub Actions references
-        shell: python
-        run: |
-          from pathlib import Path
-          import re
-
-          action_ref = re.compile(r'^\s*uses:\s*([^\s#]+)')
-          immutable = re.compile(r'^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+@[0-9a-f]{40}$')
-          docker_digest = re.compile(r'^docker://[^@\s]+@sha256:[0-9a-f]{64}$')
-          failures = []
-          for path in sorted(Path('.github/workflows').glob('*.y*ml')):
-              for number, line in enumerate(path.read_text(encoding='utf-8').splitlines(), 1):
-                  match = action_ref.match(line)
-                  if not match:
-                      continue
-                  ref = match.group(1)
-                  if ref.startswith('./') or immutable.fullmatch(ref) or docker_digest.fullmatch(ref):
-                      continue
-                  failures.append(f'{path}:{number}: {ref}')
-          if failures:
-              raise SystemExit(
-                  'Workflow actions must be pinned to immutable commit SHAs/digests:\n' +
-                  '\n'.join(failures)
-              )
-          print('GitHub Actions immutable-reference contract: OK')
-
-      - name: Validate canonical installer and release scripts
+      - name: Compile Setup and Portable and verify lifecycle
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          foreach ($path in @(
-            'scripts/resolve-nsis.ps1',
-            'scripts/assemble-source-release-stage.ps1',
-            'scripts/build-source-release-installer.ps1',
-            'scripts/smoke-test-windows-installer.ps1',
-            'scripts/smoke-test-source-windows-installer.ps1',
-            'scripts/generate-update-manifest.ps1'
-          )) {
-            $tokens = $null
-            $errors = $null
-            [void][System.Management.Automation.Language.Parser]::ParseFile(
-              (Resolve-Path $path), [ref]$tokens, [ref]$errors)
-            if ($errors.Count -gt 0) {
-              $errors | ForEach-Object { Write-Error $_.Message }
-              throw "PowerShell parser errors found in $path"
-            }
-          }
-
-      - name: Reject retired wrapper and portable packaging artifacts
-        shell: python
-        run: |
-          from pathlib import Path
-
-          retired = (
-              Path('launcher/main.cpp'),
-              Path('launcher/ghosium.rc'),
-              Path('scripts/build-native-launcher.ps1'),
-              Path('installer/portable.nsi'),
-              Path('docs/NEXT-CHAT-PROMPT.md'),
-          )
-          found = [str(path) for path in retired if path.exists()]
-          if found:
-              raise SystemExit(
-                  'Retired pre-source/portable artifacts must not return:\n' + '\n'.join(found)
-              )
-          print('Retired wrapper/portable packaging artifacts: absent')
-
-      - name: Verify pinned NSIS bootstrap and warnings-as-errors
-        shell: bash
-        run: |
-          set -euo pipefail
-          resolver='scripts/resolve-nsis.ps1'
-          grep -Fq 'https://downloads.sourceforge.net/project/nsis/NSIS%203/3.12/nsis-3.12.zip' "$resolver"
-          grep -Fq '56581f90db321581c5381193d796fffcf2d24b2f8fed2160a6c6a3baa67f2c4f' "$resolver"
-          grep -Fq 'Get-FileHash $archive -Algorithm SHA256' "$resolver"
-          grep -Fq '& $Path /VERSION' "$resolver"
-          grep -Fq "'v3.12'" "$resolver"
-          if grep -Fqi 'Algorithm SHA1' "$resolver"; then
-            echo 'NSIS bootstrap must use SHA-256 rather than SHA-1.' >&2
-            exit 1
-          fi
-          if grep -RInFi 'choco install nsis' scripts installer .github/workflows/full-source-windows-build.yml; then
-            echo 'Ghosium installer tooling must not depend on mutable Chocolatey NSIS feeds.' >&2
-            exit 1
-          fi
-          test "$(grep -Fc '!pragma warning error all' installer/ghosium.nsi)" -eq 1 || {
-            echo 'Canonical Ghosium Setup must contain exactly one warnings-as-errors directive.' >&2
-            exit 1
-          }
-
-      - name: Verify deterministic Ghosium Setup icon wiring
-        shell: bash
-        run: |
-          set -euo pipefail
-          icon="${RUNNER_TEMP}/ghosium.ico"
-          python3 scripts/generate-engine-brand-assets.py --icon-output "$icon" --icon-only
-          python3 - "$icon" <<'PY'
-          from pathlib import Path
-          import struct
-          import sys
-          data = Path(sys.argv[1]).read_bytes()
-          assert data[:4] == b'\x00\x00\x01\x00'
-          count = struct.unpack_from('<H', data, 4)[0]
-          assert count >= 4
-          first_offset = struct.unpack_from('<I', data, 18)[0]
-          assert struct.unpack_from('<I', data, first_offset)[0] == 40
-          PY
-          grep -Fq '!define MUI_ICON "${GHOSIUM_ICON}"' installer/ghosium.nsi
-          if grep -Fq 'modern-install.ico' installer/ghosium.nsi; then
-            echo 'Canonical Setup must not use a generic NSIS product icon.' >&2
-            exit 1
-          fi
-
-      - name: Reject standalone maintenance executables
-        shell: bash
-        run: |
-          set -euo pipefail
-          if find . -type f \( \
-            -iname 'uninstall.exe' -o \
-            -iname 'ghosium-uninstall.exe' -o \
-            -iname 'ghosium-browser-uninstall.exe' -o \
-            -iname 'update.exe' -o \
-            -iname 'updater.exe' -o \
-            -iname 'ghosium-update.exe' -o \
-            -iname 'ghosium-updater.exe' -o \
-            -iname 'ghosium-browser-update.exe' -o \
-            -iname 'ghosium-browser-updater.exe' \
-          \) -print -quit | grep -q .; then
-            echo 'Standalone updater/uninstaller executable is forbidden.' >&2
-            exit 1
-          fi
-
-          python3 - <<'PY'
-          from pathlib import Path
-          text = Path('installer/ghosium.nsi').read_text(encoding='utf-8')
-          active = '\n'.join(line.split(';', 1)[0] for line in text.splitlines())
-          forbidden = (
-              'WriteUninstaller',
-              'Section "Uninstall"',
-              'Uninstall.exe',
-              'Ghosium-Update.exe',
-              'Ghosium-Updater.exe',
-          )
-          for token in forbidden:
-              if token.lower() in active.lower():
-                  raise SystemExit(f'Forbidden standalone maintenance construct: {token}')
-          PY
-
-      - name: Verify same-Setup uninstall contract
-        shell: python
-        run: |
-          from pathlib import Path
-          text = Path('installer/ghosium.nsi').read_text(encoding='utf-8')
-          required = [
-              '!define INSTALLED_SETUP "Installer\\Ghosium-Browser-Setup.exe"',
-              '!define INSTALL_MARKER "ghosium-install.marker"',
-              '${GetOptions} $R0 "/UNINSTALL" $R1',
-              '${GetOptions} $R0 "/CLEANUP" $R1',
-              'CopyFiles /SILENT "$EXEPATH" "$INSTDIR\\${INSTALLED_SETUP}"',
-              'IfFileExists "$INSTDIR\\${INSTALL_MARKER}" 0 unsafe_install_location',
-              'IfFileExists "$INSTDIR\\${INSTALLED_SETUP}" 0 unsafe_install_location',
-              '"UninstallString"',
-              '"QuietUninstallString"',
-              '/S /UNINSTALL',
-              'RMDir /r /REBOOTOK "$INSTDIR"',
-          ]
-          missing = [item for item in required if item not in text]
-          if missing:
-              raise SystemExit('Same-Setup uninstall contract is missing:\n' + '\n'.join(missing))
-          if '/UNINSTALL /S' in text:
-              raise SystemExit('/S must precede /UNINSTALL so NSIS is silent before custom switch handling.')
-          print('Same-Setup uninstall contract: OK')
-
-      - name: Verify same-Setup update and profile preservation contract
-        shell: python
-        run: |
-          from pathlib import Path
-          text = Path('installer/ghosium.nsi').read_text(encoding='utf-8')
-          required = [
-              'Var GhosiumUpdateMode',
-              'Function ValidateUpdateTarget',
-              '${GetOptions} $R0 "/UPDATE" $R1',
-              '${GetOptions} $R0 "/DELETESELF" $R1',
-              '${GetOptions} $R0 "/CLEANUPDATE" $R1',
-              'StrCpy $GhosiumUpdateMode "1"',
-              'SetSilent silent',
-              'IfFileExists "$INSTDIR\\${INSTALL_MARKER}" 0 update_target_invalid',
-              'IfFileExists "$INSTDIR\\${INSTALLED_SETUP}" 0 update_target_invalid',
-              'IfFileExists "$INSTDIR\\${PRODUCT_EXE}" 0 update_target_invalid',
-              '/IM "Ghosium-Browser.exe" /T /F',
-              'StrCmp $GhosiumUpdateMode "1" language_ready',
-              '"URLUpdateInfo" "https://ghosium.com/update"',
-          ]
-          missing = [item for item in required if item not in text]
-          if missing:
-              raise SystemExit('Same-Setup update contract is missing:\n' + '\n'.join(missing))
-
-          update_region = text[text.index('prepare_update:'):text.index('install_payload:')]
-          if 'RMDir /r' in update_region or 'DeleteRegKey' in update_region:
-              raise SystemExit('Update preparation must not uninstall Ghosium or erase profile/registration state.')
-          print('Same-Setup update/profile-preservation contract: OK')
-
-      - name: Verify canonical public Setup is independently packaged
-        shell: python
-        run: |
-          from pathlib import Path
-          workflow = Path('.github/workflows/full-source-windows-build.yml').read_text(encoding='utf-8')
-          packager = Path('scripts/build-source-release-installer.ps1').read_text(encoding='utf-8')
-          required_workflow = [
-              'autoninja -C out/Ghosium chrome mini_installer',
-              'GHOSIUM-UPSTREAM-MINI-INSTALLER-SMOKE.json',
-              './scripts/build-source-release-installer.ps1',
-              'GHOSIUM-PUBLIC-SETUP.json',
-              'GHOSIUM-CANONICAL-SETUP-SMOKE.json',
-              'GHOSIUM-UPDATE-MANIFEST.json',
-              '$params.RequireSigning = $true',
-              '-RequireAuthenticode',
-          ]
-          missing = [item for item in required_workflow if item not in workflow]
-          if missing:
-              raise SystemExit('Canonical public Setup workflow is missing:\n' + '\n'.join(missing))
-
-          forbidden_copy = "Copy-Item (Join-Path $out 'mini_installer.exe') 'artifacts/full-source/Ghosium-Browser-Setup.exe'"
-          if forbidden_copy in workflow:
-              raise SystemExit('Public Ghosium Setup must not be a renamed upstream technical installer artifact.')
-
-          required_packager = [
-              "Join-Path $outPath 'mini_installer.exe'",
-              'Public Ghosium Setup is still only a renamed Chromium mini_installer.exe.',
-              '[switch]$RequireSigning',
-              'GHOSIUM_SIGN_CERT_THUMBPRINT',
-              'GHOSIUM_TIMESTAMP_URL',
-              'Sign-GhosiumFile -Path $setupPath',
-              'publicSetupIsChromiumMiniInstallerRename = $false',
-              'sameSetupExecutable = $true',
-          ]
-          missing = [item for item in required_packager if item not in packager]
-          if missing:
-              raise SystemExit('Canonical source-release packager is missing:\n' + '\n'.join(missing))
-          print('Canonical public Setup identity/signing contract: OK')
-
-      - name: Verify canonical browser-equivalent update smoke
-        shell: python
-        run: |
-          from pathlib import Path
-          smoke = Path('scripts/smoke-test-windows-installer.ps1').read_text(encoding='utf-8')
-          required = [
-              'installedSetupHash',
-              'setupHash',
-              'Invoke-InstalledRuntimeSmoke',
-              "@('/S', '/UPDATE', '/DELETESELF')",
-              'profileSentinel',
-              'preserve-across-ghosium-update',
-              'languageBeforeUpdate',
-              'languageAfterUpdate',
-              "@('/S', '/UNINSTALL')",
-              'normalUninstallPreservedProfile',
-              'forbiddenStandaloneMaintenanceExecutables = $false',
-          ]
-          missing = [item for item in required if item not in smoke]
-          if missing:
-              raise SystemExit('Canonical Setup round-trip smoke is missing:\n' + '\n'.join(missing))
-          print('Canonical install -> runtime -> update -> runtime -> uninstall smoke contract: OK')
-
-      - name: Verify full-source engine uninstall remains setup-based
-        shell: bash
-        run: |
-          set -euo pipefail
-          verifier='scripts/verify-engine-build-output.ps1'
-          grep -Fq 'setup.exe --uninstall' "$verifier"
-          grep -Fq 'standaloneExecutable = $false' "$verifier"
-          grep -Fq "'GHOSIUM-LICENSE.txt'" "$verifier"
-          grep -Fq "'THIRD_PARTY_NOTICES.md'" "$verifier"
-          grep -Fq 'thirdPartyLicensesPreserved = $true' "$verifier"
-
-      - name: Verify repository formatting
-        shell: bash
-        run: |
-          set -euo pipefail
-          git diff --check
+          ./scripts/smoke-test-installer-contract-fixture.ps1
