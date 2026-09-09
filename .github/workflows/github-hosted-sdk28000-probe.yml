@@ -1,0 +1,134 @@
+name: Ghosium GitHub-Hosted SDK 28000 Provisioning Probe
+
+on:
+  push:
+    branches:
+      - 'ghosium/ops/github-hosted-builder-probe-0.1.9'
+    paths:
+      - '.github/workflows/github-hosted-sdk28000-probe.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  provision-sdk:
+    name: Provision exact Chromium Windows SDK on GitHub-hosted runner
+    runs-on: windows-2025
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout Ghosium contract
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Validate pinned Chromium SDK contract
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $revision = (Get-Content ENGINE_SOURCE_REVISION -Raw).Trim()
+          if ($revision -ne 'fac978ddceaae0358a2bd69e20a5156ec8dc86ab') {
+            throw "Unexpected pinned Chromium revision: $revision"
+          }
+
+          $vsPath = 'C:\Program Files\Microsoft Visual Studio\18\Enterprise'
+          $installer = 'C:\Program Files (x86)\Microsoft Visual Studio\Installer\vs_installer.exe'
+          if (!(Test-Path $vsPath -PathType Container)) { throw "Missing VS 18 Enterprise: $vsPath" }
+          if (!(Test-Path $installer -PathType Leaf)) { throw "Missing Visual Studio Installer: $installer" }
+
+          $d = Get-CimInstance Win32_LogicalDisk -Filter "DeviceID='D:'"
+          if ([string]$d.FileSystem -ne 'NTFS') { throw 'D: must be NTFS.' }
+          if ([double]$d.FreeSpace / 1GB -lt 120) { throw 'D: does not satisfy the existing 120 GiB fresh-workspace gate.' }
+
+      - name: Install Windows 11 SDK 28000 through Visual Studio Installer
+        shell: cmd
+        run: |
+          "C:\Program Files (x86)\Microsoft Visual Studio\Installer\vs_installer.exe" modify --installPath "C:\Program Files\Microsoft Visual Studio\18\Enterprise" --quiet --force --norestart --add Microsoft.VisualStudio.Component.Windows11SDK.28000
+
+      - name: Verify SDK filesystem and Chromium vcvars selection
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Set-StrictMode -Version Latest
+
+          $sdkFolderVersion = '10.0.28000.0'
+          $sdkPackageRevision = '10.0.28000.2270'
+          $kits = 'C:\Program Files (x86)\Windows Kits\10'
+          $header = Join-Path $kits "Include\$sdkFolderVersion\um\Windows.h"
+          $library = Join-Path $kits "Lib\$sdkFolderVersion\um\x64\Kernel32.Lib"
+          $vcvars = 'C:\Program Files\Microsoft Visual Studio\18\Enterprise\VC\Auxiliary\Build\vcvarsall.bat'
+
+          if (!(Test-Path $header -PathType Leaf)) { throw "Missing SDK header after provisioning: $header" }
+          if (!(Test-Path $library -PathType Leaf)) { throw "Missing SDK x64 library after provisioning: $library" }
+          if (!(Test-Path $vcvars -PathType Leaf)) { throw "Missing vcvarsall.bat: $vcvars" }
+
+          $cmd = 'call "' + $vcvars + '" amd64 ' + $sdkFolderVersion + ' >nul && set'
+          $environment = & cmd.exe /d /s /c $cmd
+          if ($LASTEXITCODE -ne 0) { throw "vcvarsall rejected SDK $sdkFolderVersion." }
+
+          $includeLine = @($environment | Where-Object { $_ -like 'INCLUDE=*' }) | Select-Object -First 1
+          $libLine = @($environment | Where-Object { $_ -like 'LIB=*' }) | Select-Object -First 1
+          if ([string]::IsNullOrWhiteSpace([string]$includeLine) -or !([string]$includeLine).Contains($sdkFolderVersion)) {
+            throw "vcvarsall INCLUDE did not select SDK $sdkFolderVersion."
+          }
+          if ([string]::IsNullOrWhiteSpace([string]$libLine) -or !([string]$libLine).Contains($sdkFolderVersion)) {
+            throw "vcvarsall LIB did not select SDK $sdkFolderVersion."
+          }
+
+          $debugger = Join-Path $kits 'Debuggers\x64\cdb.exe'
+          if (!(Test-Path $debugger -PathType Leaf)) { throw "Missing cdb.exe: $debugger" }
+          $debuggerVersionText = [string](Get-Item $debugger).VersionInfo.FileVersion
+          $debuggerMatch = [regex]::Match($debuggerVersionText, '\d+\.\d+\.\d+\.\d+')
+          if (!$debuggerMatch.Success -or [version]$debuggerMatch.Value -lt [version]'10.0.26100.3323') {
+            throw "Debugging Tools version is below Ghosium minimum: $debuggerVersionText"
+          }
+
+          $d = Get-CimInstance Win32_LogicalDisk -Filter "DeviceID='D:'"
+          $report = [ordered]@{
+            schemaVersion = 1
+            purpose = 'github-hosted-sdk-28000-provisioning-proof'
+            productVersion = (Get-Content VERSION -Raw).Trim()
+            engineSourceRevision = (Get-Content ENGINE_SOURCE_REVISION -Raw).Trim()
+            repositoryCommit = $env:GITHUB_SHA
+            runner = [ordered]@{
+              imageOS = $env:ImageOS
+              imageVersion = $env:ImageVersion
+              workspace = $env:GITHUB_WORKSPACE
+            }
+            sdk = [ordered]@{
+              documentationPackageRevision = $sdkPackageRevision
+              chromiumToolchainFolderVersion = $sdkFolderVersion
+              component = 'Microsoft.VisualStudio.Component.Windows11SDK.28000'
+              headerPresent = (Test-Path $header -PathType Leaf)
+              x64KernelLibraryPresent = (Test-Path $library -PathType Leaf)
+              vcvarsAcceptedFolderVersion = $true
+              vcvarsIncludeSelectedFolderVersion = ([string]$includeLine).Contains($sdkFolderVersion)
+              vcvarsLibSelectedFolderVersion = ([string]$libLine).Contains($sdkFolderVersion)
+            }
+            debugger = [ordered]@{
+              present = (Test-Path $debugger -PathType Leaf)
+              version = $debuggerMatch.Value
+              minimum = '10.0.26100.3323'
+            }
+            workspaceDisk = [ordered]@{
+              drive = 'D:'
+              fileSystem = [string]$d.FileSystem
+              freeGiB = [math]::Floor([double]$d.FreeSpace / 1GB)
+              freshMinimumGiB = 120
+              meetsFreshMinimum = ([string]$d.FileSystem -eq 'NTFS' -and ([double]$d.FreeSpace / 1GB) -ge 120)
+            }
+            result = 'provisioning-contract-satisfied'
+          }
+
+          New-Item -ItemType Directory -Force -Path artifacts | Out-Null
+          $report | ConvertTo-Json -Depth 8 | Set-Content 'artifacts/GHOSIUM-GITHUB-HOSTED-SDK28000.json' -Encoding utf8
+          $report | ConvertTo-Json -Depth 8
+
+      - name: Upload SDK provisioning evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: ghosium-github-hosted-sdk28000-0.1.9
+          path: artifacts/GHOSIUM-GITHUB-HOSTED-SDK28000.json
+          if-no-files-found: error
+          retention-days: 30

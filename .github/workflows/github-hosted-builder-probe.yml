@@ -1,0 +1,208 @@
+name: Ghosium GitHub-Hosted Windows Builder Probe
+
+on:
+  push:
+    branches:
+      - 'ghosium/ops/github-hosted-builder-probe-0.1.9'
+    paths:
+      - '.github/workflows/github-hosted-builder-probe.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    name: Measure GitHub-hosted Windows against Ghosium builder contract
+    runs-on: windows-2025
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout Ghosium builder contract
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Probe runner image without provisioning
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Set-StrictMode -Version Latest
+
+          $requiredVsMajor = 18
+          $requiredSdk = '10.0.28000.2270'
+          $minimumDebugger = [version]'10.0.26100.3323'
+          $minimumRamGiB = 8
+          $recommendedRamGiB = 32
+          $recommendedLogicalProcessors = 16
+          $minimumFreshDiskGiB = 120
+
+          function Command-Probe([string]$Name) {
+            $command = Get-Command $Name -ErrorAction SilentlyContinue | Select-Object -First 1
+            if ($null -eq $command) {
+              return [ordered]@{ present = $false; path = $null }
+            }
+            return [ordered]@{ present = $true; path = [string]$command.Source }
+          }
+
+          function Numeric-File-Version([string]$Path) {
+            if (!(Test-Path $Path -PathType Leaf)) { return $null }
+            $text = [string](Get-Item $Path).VersionInfo.FileVersion
+            $match = [regex]::Match($text, '\d+\.\d+\.\d+\.\d+')
+            if (!$match.Success) { return $null }
+            return [version]$match.Value
+          }
+
+          $os = Get-CimInstance Win32_OperatingSystem
+          $computer = Get-CimInstance Win32_ComputerSystem
+          $ramGiB = [math]::Floor([double]$computer.TotalPhysicalMemory / 1GB)
+          $logicalProcessors = [int]$computer.NumberOfLogicalProcessors
+
+          $fixedDisks = @(
+            Get-CimInstance Win32_LogicalDisk -Filter 'DriveType=3' |
+              Sort-Object DeviceID |
+              ForEach-Object {
+                [ordered]@{
+                  drive = [string]$_.DeviceID
+                  fileSystem = [string]$_.FileSystem
+                  totalGiB = [math]::Floor([double]$_.Size / 1GB)
+                  freeGiB = [math]::Floor([double]$_.FreeSpace / 1GB)
+                  meetsFreshMinimum = ([string]$_.FileSystem -eq 'NTFS' -and ([double]$_.FreeSpace / 1GB) -ge $minimumFreshDiskGiB)
+                }
+              }
+          )
+          $bestDisk = $fixedDisks | Sort-Object { [int64]$_.freeGiB } -Descending | Select-Object -First 1
+          $anyFixedDiskMeetsFresh = @($fixedDisks | Where-Object { $_.meetsFreshMinimum }).Count -gt 0
+
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $vsPath = $null
+          $vsVersionText = $null
+          $vsMajor = $null
+          if (Test-Path $vswhere -PathType Leaf) {
+            $vsPath = (& $vswhere -latest -products * -requires Microsoft.VisualStudio.Workload.NativeDesktop Microsoft.VisualStudio.Component.VC.ATLMFC -property installationPath | Select-Object -First 1)
+            $vsVersionText = (& $vswhere -latest -products * -requires Microsoft.VisualStudio.Workload.NativeDesktop Microsoft.VisualStudio.Component.VC.ATLMFC -property installationVersion | Select-Object -First 1)
+            if (![string]::IsNullOrWhiteSpace([string]$vsVersionText)) {
+              $vsMajor = [int](([string]$vsVersionText).Split('.')[0])
+            }
+          }
+
+          $kitsRoot = $null
+          try {
+            $kitsRoot = (Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows Kits\Installed Roots' -Name KitsRoot10 -ErrorAction Stop).KitsRoot10
+          } catch {
+            $kitsRoot = $null
+          }
+
+          $installedSdkVersions = @()
+          $sdkHeader = $null
+          $sdkLibrary = $null
+          $debuggerPath = $null
+          $debuggerVersion = $null
+          if (![string]::IsNullOrWhiteSpace([string]$kitsRoot)) {
+            $includeRoot = Join-Path $kitsRoot 'Include'
+            if (Test-Path $includeRoot -PathType Container) {
+              $installedSdkVersions = @(
+                Get-ChildItem $includeRoot -Directory |
+                  Where-Object { $_.Name -match '^10\.0\.\d+\.\d+$' } |
+                  Select-Object -ExpandProperty Name |
+                  Sort-Object
+              )
+            }
+            $sdkHeader = Join-Path $kitsRoot "Include\$requiredSdk\um\Windows.h"
+            $sdkLibrary = Join-Path $kitsRoot "Lib\$requiredSdk\um\x64\Kernel32.Lib"
+            $debuggerPath = Join-Path $kitsRoot 'Debuggers\x64\cdb.exe'
+            $debuggerVersion = Numeric-File-Version $debuggerPath
+          }
+
+          $sdkHeaderPresent = ($null -ne $sdkHeader -and (Test-Path $sdkHeader -PathType Leaf))
+          $sdkLibraryPresent = ($null -ne $sdkLibrary -and (Test-Path $sdkLibrary -PathType Leaf))
+          $sdkExactPresent = $sdkHeaderPresent -and $sdkLibraryPresent
+          $debuggerPresent = ($null -ne $debuggerPath -and (Test-Path $debuggerPath -PathType Leaf))
+          $debuggerMeetsMinimum = ($null -ne $debuggerVersion -and $debuggerVersion -ge $minimumDebugger)
+          $vsMeetsMinimum = ($null -ne $vsMajor -and $vsMajor -ge $requiredVsMajor)
+          $ramMeetsMinimum = ($ramGiB -ge $minimumRamGiB)
+          $ramMeetsRecommended = ($ramGiB -ge $recommendedRamGiB)
+          $cpuMeetsRecommended = ($logicalProcessors -ge $recommendedLogicalProcessors)
+
+          $commands = [ordered]@{}
+          foreach ($name in @('git','python3','fetch','gclient','gn','autoninja')) {
+            $commands[$name] = Command-Probe $name
+          }
+          $chromiumToolsPreinstalled = $commands.fetch.present -and $commands.gclient.present -and $commands.gn.present -and $commands.autoninja.present -and $commands.python3.present
+
+          $staticImageRequirementsMet = $anyFixedDiskMeetsFresh -and $ramMeetsMinimum -and $vsMeetsMinimum -and $sdkExactPresent -and $debuggerMeetsMinimum
+
+          $report = [ordered]@{
+            schemaVersion = 2
+            purpose = 'github-hosted-read-only-builder-feasibility'
+            productVersion = (Get-Content VERSION -Raw).Trim()
+            repositoryCommit = $env:GITHUB_SHA
+            runner = [ordered]@{
+              name = $env:RUNNER_NAME
+              os = $env:RUNNER_OS
+              architecture = $env:RUNNER_ARCH
+              imageOS = $env:ImageOS
+              imageVersion = $env:ImageVersion
+              workspace = $env:GITHUB_WORKSPACE
+              temp = $env:RUNNER_TEMP
+            }
+            requirements = [ordered]@{
+              visualStudioMajorMinimum = $requiredVsMajor
+              windowsSdkExact = $requiredSdk
+              debuggerMinimum = [string]$minimumDebugger
+              ramGiBMinimum = $minimumRamGiB
+              ramGiBRecommended = $recommendedRamGiB
+              logicalProcessorsRecommended = $recommendedLogicalProcessors
+              freshDiskGiBMinimum = $minimumFreshDiskGiB
+              workspaceFileSystem = 'NTFS'
+            }
+            observed = [ordered]@{
+              osCaption = [string]$os.Caption
+              osVersion = [string]$os.Version
+              osArchitecture = [Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString()
+              is64BitProcess = [Environment]::Is64BitProcess
+              fixedDisks = $fixedDisks
+              bestFixedDisk = $bestDisk
+              ramGiB = $ramGiB
+              logicalProcessors = $logicalProcessors
+              visualStudioPath = if ($null -eq $vsPath) { $null } else { [string]$vsPath }
+              visualStudioVersion = if ($null -eq $vsVersionText) { $null } else { [string]$vsVersionText }
+              windowsKitsRoot = if ($null -eq $kitsRoot) { $null } else { [string]$kitsRoot }
+              installedWindowsSdkVersions = $installedSdkVersions
+              requiredSdkHeaderPresent = [bool]$sdkHeaderPresent
+              requiredSdkLibraryPresent = [bool]$sdkLibraryPresent
+              debuggerPresent = [bool]$debuggerPresent
+              debuggerVersion = if ($null -eq $debuggerVersion) { $null } else { [string]$debuggerVersion }
+              commands = $commands
+            }
+            evaluation = [ordered]@{
+              anyFixedNtfsDiskMeetsFreshMinimum = [bool]$anyFixedDiskMeetsFresh
+              ramMeetsMinimum = [bool]$ramMeetsMinimum
+              ramMeetsRecommended = [bool]$ramMeetsRecommended
+              logicalProcessorsMeetRecommendation = [bool]$cpuMeetsRecommended
+              visualStudioMeetsMinimum = [bool]$vsMeetsMinimum
+              exactWindowsSdkPresent = [bool]$sdkExactPresent
+              debuggerMeetsMinimum = [bool]$debuggerMeetsMinimum
+              chromiumDepotToolsCommandsPreinstalled = [bool]$chromiumToolsPreinstalled
+              staticImageMeetsCurrentGhosiumHostRequirements = [bool]$staticImageRequirementsMet
+            }
+            interpretation = @(
+              'This probe is read-only and does not install or provision build dependencies.',
+              'Missing depot_tools commands alone do not prove GitHub-hosted builds are impossible because those tools can be provisioned in a workflow.',
+              'All local fixed disks are measured because a hosted migration could select a non-C workspace if it is local NTFS and satisfies the existing source-builder contract.',
+              'The exact Windows SDK requirement is reported separately from whatever SDK versions the image currently ships.',
+              'The canonical 0.1.9 release workflow remains unchanged and continues to require the existing fail-closed source-builder contract.'
+            )
+          }
+
+          New-Item -ItemType Directory -Force -Path artifacts | Out-Null
+          $report | ConvertTo-Json -Depth 10 | Set-Content 'artifacts/GHOSIUM-GITHUB-HOSTED-BUILDER-PROBE.json' -Encoding utf8
+          $report | ConvertTo-Json -Depth 10
+
+      - name: Upload read-only feasibility evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: ghosium-github-hosted-builder-probe-0.1.9
+          path: artifacts/GHOSIUM-GITHUB-HOSTED-BUILDER-PROBE.json
+          if-no-files-found: error
+          retention-days: 30
