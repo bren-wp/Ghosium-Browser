@@ -6,6 +6,9 @@ on:
       - ghosium/ops/github-hosted-full-source-proof-0.1.10
     paths:
       - .github/workflows/hosted-full-source-proof-dispatch.yml
+      - .github/workflows/full-source-windows-build.yml
+      - scripts/bootstrap-engine-source.ps1
+      - scripts/provision-github-hosted-source-builder.ps1
 
 permissions:
   contents: read
