@@ -3,7 +3,8 @@ name: Ghosium GitHub-Hosted Source Builder Parity
 on:
   push:
     branches:
-      - ghosium/fix/windows-toolchain-contract-0.1.9
+      - 'ghosium/fix/github-hosted-*'
+      - 'ghosium/fix/windows-toolchain-contract-*'
     paths:
       - 'engine/build/windows-toolchain.json'
       - 'DEPOT_TOOLS_REVISION'
@@ -115,6 +116,10 @@ jobs:
               $builder.windowsSdkPackageRevision -ne $provisioning.windowsSdkPackageRevision) {
             throw 'Builder and provisioning evidence disagree on the Windows SDK contract.'
           }
+          if ([string]::IsNullOrWhiteSpace([string]$provisioning.python3Path) -or
+              !([string]$provisioning.python3Path).StartsWith(([string]$provisioning.depotToolsRoot).TrimEnd('\') + '\', [StringComparison]::OrdinalIgnoreCase)) {
+            throw 'Hosted provisioning evidence does not bind python3 to pinned depot_tools.'
+          }
           if (!$interactive.mainWindowHandleNonZero -or !$interactive.userInteractive) {
             throw 'Hosted interactive-window evidence is invalid.'
           }
@@ -122,7 +127,7 @@ jobs:
       - name: Upload hosted source-builder parity evidence
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: ghosium-github-hosted-source-builder-parity-0.1.9
+          name: ghosium-github-hosted-source-builder-parity-${{ github.run_id }}
           path: artifacts/hosted-parity/
           if-no-files-found: error
           retention-days: 30
