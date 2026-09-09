@@ -112,9 +112,23 @@ if ($reuseCheckout) {
   }
 }
 
-& git -C $src fetch origin $sourceRevision --no-tags
-if ($LASTEXITCODE -ne 0) {
-  throw "Unable to fetch pinned Chromium commit $sourceRevision"
+$fetchSucceeded = $false
+$fetchAttempts = 3
+for ($attempt = 1; $attempt -le $fetchAttempts; $attempt++) {
+  & git -C $src fetch origin $sourceRevision --no-tags
+  if ($LASTEXITCODE -eq 0) {
+    $fetchSucceeded = $true
+    break
+  }
+
+  if ($attempt -lt $fetchAttempts) {
+    $retryDelaySeconds = 15 * $attempt
+    Write-Warning "Pinned Chromium fetch attempt $attempt/$fetchAttempts failed; retrying the exact revision in $retryDelaySeconds seconds."
+    Start-Sleep -Seconds $retryDelaySeconds
+  }
+}
+if (!$fetchSucceeded) {
+  throw "Unable to fetch pinned Chromium commit $sourceRevision after $fetchAttempts attempts"
 }
 & git -C $src checkout --detach $sourceRevision
 if ($LASTEXITCODE -ne 0) {
