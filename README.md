@@ -6,7 +6,7 @@
 
 **Ghosium Browser by Brendigo** is a Windows x64 browser. The active product version is **0.0.1**.
 
-The current public downloadable build is **Ghosium Browser 0.0.1 Preview 1**, published through the verified GitHub-hosted pinned-snapshot release path. The separate canonical full-source production build remains subject to its stricter source-build, performance, signing, provenance and updater gates.
+The current public downloadable build is **Ghosium Browser 0.0.1 Preview 1**, published through the verified GitHub-hosted pinned upstream-engine snapshot release path. The separate canonical full-source production build remains subject to its stricter source-build, performance, signing, provenance and updater gates.
 
 Current public release: `ghosium-v0.0.1-preview.1`  
 Release page: `https://github.com/bren-wp/Ghosium-Browser/releases/tag/ghosium-v0.0.1-preview.1`
@@ -78,7 +78,7 @@ Canonical Setup/Portable publication remains a separate production gate and is n
 
 ## Release status
 
-**Ghosium Browser 0.0.1 Preview 1 is publicly released.** It is a GitHub-hosted pinned Chromium snapshot Preview using the same release model previously used for the superseded 0.1.8 Preview. It is not the canonical full-source production release.
+**Ghosium Browser 0.0.1 Preview 1 is publicly released.** It is a GitHub-hosted pinned upstream-engine snapshot Preview and is not the canonical full-source production release.
 
 The checked-in stable update manifest remains fail-closed (`enabled:false`, empty SHA-256, zero size) for the Preview. Canonical production publication still requires exact full-source candidate evidence, runtime/performance verification, canonical Setup/Portable provenance, production signing and update-manifest binding.
 

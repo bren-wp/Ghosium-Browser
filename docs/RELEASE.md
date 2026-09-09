@@ -6,15 +6,15 @@ The active product version is `0.0.1`.
 
 **Ghosium Browser 0.0.1 Preview 1** is publicly available as `ghosium-v0.0.1-preview.1`.
 
-This public build uses the verified GitHub-hosted pinned Chromium snapshot release path previously used for the superseded 0.1.8 Preview. Its Setup passed install → runtime → same-Setup update → runtime → uninstall verification, and the release includes Preview provenance, smoke evidence, SHA-256 checksums and build status.
+This public build uses the verified GitHub-hosted pinned upstream-engine snapshot release path. Its Setup passed install → runtime → same-Setup update → runtime → uninstall verification, and the release includes Preview provenance, smoke evidence, SHA-256 checksums and build status.
 
-The Preview is intentionally distinct from the canonical full-source production release. It does not claim a full Chromium source build, production Authenticode signing, canonical Portable provenance or stable updater enablement.
+The Preview is intentionally distinct from the canonical full-source production release. It does not claim a full upstream-engine source build, production Authenticode signing, canonical Portable provenance or stable updater enablement.
 
 The checked-in stable update baseline remains disabled for the Preview.
 
 ## 0.0.1 canonical production scope
 
-The canonical 0.0.1 production path carries the current Ghosium branding, native Chromium New Tab integration, privacy/stability hardening, `ghost://` WebUI namespace, 38-locale contract, canonical Windows Setup/Portable packaging and fail-closed update/signing/provenance controls.
+The canonical 0.0.1 production path carries the current Ghosium branding, native upstream New Tab integration, privacy/stability hardening, `ghost://` WebUI namespace, 38-locale contract, canonical Windows Setup/Portable packaging and fail-closed update/signing/provenance controls.
 
 ## Canonical candidate sequence
 
