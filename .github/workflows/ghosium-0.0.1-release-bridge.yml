@@ -17,13 +17,13 @@ concurrency:
 
 jobs:
   promote-and-dispatch-production:
-    name: Promote exact 0.0.1 candidate and dispatch production
+    name: Verify exact 0.0.1 candidate and dispatch production
     if: >-
       github.event.workflow_run.id == 34397578624 &&
       github.event.workflow_run.head_branch == 'ghosium/release/0.0.1' &&
       github.event.workflow_run.head_sha == 'effbb2ee968597f5091a1cda2c0fd537e59fa93a'
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     env:
       GH_TOKEN: ${{ github.token }}
       CANDIDATE_SHA: effbb2ee968597f5091a1cda2c0fd537e59fa93a
@@ -53,8 +53,85 @@ jobs:
 
           artifact_json="$(gh api --method GET "/repos/${GITHUB_REPOSITORY}/actions/runs/${CANDIDATE_RUN_ID}/artifacts" -f per_page=100)"
           artifact_name="ghosium-full-source-windows-x64-${VERSION}"
+          artifact_id="$(jq -r --arg name "$artifact_name" '[.artifacts[] | select(.name == $name and .expired == false)] | sort_by(.created_at) | last | .id // empty' <<<"$artifact_json")"
           count="$(jq --arg name "$artifact_name" '[.artifacts[] | select(.name == $name and .expired == false)] | length' <<<"$artifact_json")"
-          [[ "$count" == '1' ]] || { echo "Expected exactly one live candidate artifact $artifact_name; found $count." >&2; exit 1; }
+          [[ "$count" == '1' && -n "$artifact_id" ]] || {
+            echo "Expected exactly one live candidate artifact $artifact_name; found $count." >&2
+            exit 1
+          }
+          echo "artifact_id=$artifact_id" >> "$GITHUB_ENV"
+
+      - name: Independently verify candidate evidence bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          zip_path="$RUNNER_TEMP/ghosium-candidate.zip"
+          evidence_dir="$RUNNER_TEMP/ghosium-candidate"
+          mkdir -p "$evidence_dir"
+          gh api -H 'Accept: application/vnd.github+json' "/repos/${GITHUB_REPOSITORY}/actions/artifacts/${artifact_id}/zip" > "$zip_path"
+          unzip -q "$zip_path" -d "$evidence_dir"
+
+          expected=(
+            Ghosium-Browser-Setup.exe
+            Ghosium-Browser-Portable.exe
+            Ghosium-Browser-Source-Runtime.7z
+            GHOSIUM-SOURCE-BUILD.json
+            GHOSIUM-PERFORMANCE.json
+            GHOSIUM-BUILDER-READY.json
+            GHOSIUM-UPSTREAM-MINI-INSTALLER-SMOKE.json
+            GHOSIUM-SOURCE-STAGE.json
+            GHOSIUM-PUBLIC-SETUP.json
+            GHOSIUM-CANONICAL-SETUP-SMOKE.json
+            GHOSIUM-VERSION.txt
+            GHOSIUM-LICENSE.txt
+            THIRD_PARTY_NOTICES.md
+            SHA256SUMS.txt
+          )
+          for file in "${expected[@]}"; do
+            test -s "$evidence_dir/$file" || { echo "Candidate evidence is missing or empty: $file" >&2; exit 1; }
+          done
+          test "$(tr -d '\r\n ' < "$evidence_dir/GHOSIUM-VERSION.txt")" = "$VERSION"
+
+          pushd "$evidence_dir" >/dev/null
+          sha256sum -c SHA256SUMS.txt
+          popd >/dev/null
+
+          EVIDENCE_DIR="$evidence_dir" GHOSIUM_VERSION="$VERSION" python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          root = Path(os.environ['EVIDENCE_DIR'])
+          version = os.environ['GHOSIUM_VERSION']
+
+          public = json.loads((root / 'GHOSIUM-PUBLIC-SETUP.json').read_text(encoding='utf-8-sig'))
+          if public.get('product') != 'Ghosium Browser' or public.get('productVersion') != version:
+              raise SystemExit('Candidate Setup provenance product/version mismatch.')
+          if public.get('publicSetupIsChromiumMiniInstallerRename') is not False:
+              raise SystemExit('Candidate public Setup may not be a renamed Chromium mini-installer.')
+          if (public.get('maintenance') or {}).get('sameSetupExecutable') is not True:
+              raise SystemExit('Candidate must preserve same-Setup maintenance.')
+          if public.get('portablePackage') != 'Ghosium-Browser-Portable.exe':
+              raise SystemExit('Candidate Portable package provenance mismatch.')
+          if int(public.get('portableBytes') or 0) <= 0:
+              raise SystemExit('Candidate Portable package is empty.')
+
+          performance = json.loads((root / 'GHOSIUM-PERFORMANCE.json').read_text(encoding='utf-8-sig'))
+          if performance.get('schemaVersion') != 2 or performance.get('profileMode') != 'UserDataDir':
+              raise SystemExit('Candidate performance evidence schema/profile contract failed.')
+          if len(performance.get('tabs') or []) != 3:
+              raise SystemExit('Candidate performance evidence must contain 1/5/10-tab scenarios.')
+
+          source = json.loads((root / 'GHOSIUM-SOURCE-BUILD.json').read_text(encoding='utf-8-sig'))
+          if source.get('product') not in (None, 'Ghosium Browser'):
+              raise SystemExit('Candidate source-build provenance has unexpected product identity.')
+
+          smoke = json.loads((root / 'GHOSIUM-CANONICAL-SETUP-SMOKE.json').read_text(encoding='utf-8-sig'))
+          if not isinstance(smoke, dict) or not smoke:
+              raise SystemExit('Canonical Setup smoke evidence is empty or invalid.')
+
+          print('Independent exact candidate evidence verification: OK')
+          PY
 
       - name: Refuse an already-published 0.0.1 release
         shell: bash
@@ -65,7 +142,7 @@ jobs:
             exit 1
           fi
 
-      - name: Rerun preserved marker promotion evidence gate
+      - name: Rerun preserved marker promotion workflow for audit
         shell: bash
         run: |
           set -euo pipefail
@@ -74,18 +151,18 @@ jobs:
           for attempt in $(seq 1 90); do
             checks="$(gh api --method GET "/repos/${GITHUB_REPOSITORY}/commits/${CANDIDATE_SHA}/check-runs" -f per_page=100)"
             if jq -e '[.check_runs[] | select(.name == "Verify release-marker-only promotion and candidate evidence") | select(.status == "completed") | select(.conclusion == "success")] | length > 0' <<<"$checks" >/dev/null; then
-              echo 'Release marker promotion evidence: success'
+              echo 'Preserved marker promotion workflow rerun: success'
               exit 0
             fi
 
             if jq -e '[.check_runs[] | select(.name == "Verify release-marker-only promotion and candidate evidence") | select(.status == "completed") | select(.conclusion == "failure") | select(.started_at > "2026-09-09T20:30:00Z")] | length > 0' <<<"$checks" >/dev/null; then
-              echo 'Rerun release marker promotion evidence failed.' >&2
+              echo 'Rerun release marker promotion workflow failed.' >&2
               exit 1
             fi
             sleep 10
           done
 
-          echo 'Timed out waiting for successful marker promotion evidence.' >&2
+          echo 'Timed out waiting for marker promotion workflow rerun.' >&2
           exit 1
 
       - name: Dispatch exact current main to production full-source workflow
