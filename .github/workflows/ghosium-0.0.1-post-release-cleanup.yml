@@ -4,6 +4,11 @@ on:
   release:
     types:
       - published
+  workflow_run:
+    workflows:
+      - Ghosium Full-Source Windows Build
+    types:
+      - completed
   workflow_dispatch:
 
 permissions:
@@ -18,7 +23,11 @@ jobs:
     name: Verify 0.0.1 release clean legacy release and finalize docs
     if: >-
       github.event_name == 'workflow_dispatch' ||
-      github.event.release.tag_name == 'ghosium-v0.0.1'
+      (github.event_name == 'release' && github.event.release.tag_name == 'ghosium-v0.0.1') ||
+      (github.event_name == 'workflow_run' &&
+       github.event.workflow_run.head_branch == 'main' &&
+       github.event.workflow_run.event == 'workflow_dispatch' &&
+       github.event.workflow_run.conclusion == 'success')
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
