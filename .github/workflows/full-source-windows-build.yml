@@ -36,7 +36,7 @@ jobs:
           from pathlib import Path
 
           version = Path('VERSION').read_text(encoding='utf-8').strip()
-          if not re.fullmatch(r'0\.[1-9]\d*\.\d+', version):
+          if not re.fullmatch(r'0\.\d+\.\d+', version):
               raise SystemExit(f'Ghosium VERSION must use the 0.x.y product line: {version!r}')
 
           manifests = [
