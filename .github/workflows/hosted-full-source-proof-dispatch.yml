@@ -1,0 +1,29 @@
+name: Ghosium Hosted Full-Source Proof Dispatch
+
+on:
+  push:
+    branches:
+      - ghosium/ops/github-hosted-full-source-proof-0.1.10
+    paths:
+      - .github/workflows/hosted-full-source-proof-dispatch.yml
+
+permissions:
+  contents: read
+  actions: write
+
+jobs:
+  dispatch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Dispatch canonical full-source proof
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh api \
+            --method POST \
+            -H 'Accept: application/vnd.github+json' \
+            "/repos/${GITHUB_REPOSITORY}/actions/workflows/full-source-windows-build.yml/dispatches" \
+            -f ref="${GITHUB_REF_NAME}"
