@@ -2,7 +2,7 @@
 
 ## Current development line
 
-The active product version is `0.1.11`. Ghosium Browser is built as a full-source Windows x64 product. A source audit, patch-only result, historical precompiled package, renamed technical installer or wrapper executable is not a production Ghosium release.
+The active product version is `0.1.12`. Ghosium Browser is built as a full-source Windows x64 product. A source audit, patch-only result, historical precompiled package, renamed technical installer or wrapper executable is not a production Ghosium release.
 
 The canonical production workflow is:
 
@@ -29,25 +29,27 @@ The release path is fail-closed:
 3. provision a non-main hosted candidate builder when applicable, then validate the Windows builder and exact `DEPOT_TOOLS_REVISION` with the same production preflight;
 4. validate revision-pinned transformation anchors;
 5. bootstrap/reset the source workspace to `ENGINE_SOURCE_REVISION`;
-6. apply Ghosium identity, branding, public-surface removal, localization, product version, native `ghost://` routing, Google Search fallback preservation, Store/update destinations and Windows executable identity;
+6. apply Ghosium identity, branding, public-surface removal, localization, product version, native `ghost://` routing, external Google Search fallback preservation, Store/update destinations and Windows executable identity;
 7. verify the transformed source, including canonical native profile/password WebUI hosts, and prove Ghosium transformations did not edit `third_party/`;
-8. apply/verify native performance defaults;
-9. configure the reviewed Windows x64 GN arguments;
-10. compile the browser and technical packaging targets from source;
-11. verify the compiled Ghosium binaries and run sandbox-preserving runtime smoke tests;
-12. benchmark the newly compiled runtime and require `GHOSIUM-PERFORMANCE.json`;
-13. verify the technical source-installer path as internal build evidence;
-14. extract and verify the newly built runtime archive;
-15. assemble the canonical Ghosium release stage;
-16. on production `main`, sign `Ghosium-Browser.exe` and `Ghosium-Proxy.exe`;
-17. build `Ghosium-Browser-Setup.exe` and `Ghosium-Browser-Portable.exe` from the same verified source stage;
-18. prove the public Setup is not a renamed technical installer and validate the Portable registry-free/profile-isolation contract;
-19. on production `main`, sign both public packages and verify their publisher relationship to the signed browser;
-20. run install → runtime → update → runtime → uninstall smoke verification for Setup;
-21. verify locale/profile preservation, Portable profile isolation and cleanup behavior;
-22. generate the production update manifest for the exact signed Setup;
-23. generate provenance, performance and SHA-256 evidence including both public packages;
-24. publish a new immutable `ghosium-v0.x.y` release with Setup and Portable only if the tag does not already exist.
+8. apply/verify the native Ghosium New Tab hardening: local product mark, no remote Doodle initialization, provider cloud/promotional modules disabled and local shortcuts/customization preserved;
+9. apply/verify privacy-strong native defaults for third-party cookies, suggestions, speculative network prediction/preloading, alternate-error pages and online spelling-service upload;
+10. apply/verify native performance defaults;
+11. configure the reviewed Windows x64 GN arguments;
+12. compile the browser and technical packaging targets from source;
+13. verify the compiled Ghosium binaries and run sandbox-preserving runtime smoke tests;
+14. benchmark the newly compiled runtime and require `GHOSIUM-PERFORMANCE.json`;
+15. verify the technical source-installer path as internal build evidence;
+16. extract and verify the newly built runtime archive;
+17. assemble the canonical Ghosium release stage;
+18. on production `main`, sign `Ghosium-Browser.exe` and `Ghosium-Proxy.exe`;
+19. build `Ghosium-Browser-Setup.exe` and `Ghosium-Browser-Portable.exe` from the same verified source stage;
+20. prove the public Setup is not a renamed technical installer and validate the Portable registry-free/profile-isolation contract;
+21. on production `main`, sign both public packages and verify their publisher relationship to the signed browser;
+22. run install → runtime → update → runtime → uninstall smoke verification for Setup;
+23. verify locale/profile preservation, Portable profile isolation and cleanup behavior;
+24. generate the production update manifest for the exact signed Setup;
+25. generate provenance, performance and SHA-256 evidence including both public packages;
+26. publish a new immutable `ghosium-v0.x.y` release with Setup and Portable only if the tag does not already exist.
 
 The repository must not claim a source-built release until this controlled chain actually succeeds for the exact commit.
 
@@ -90,19 +92,33 @@ The product namespace is `ghost://` / `ghost-untrusted://`.
 
 This preserves the maintained profile/password implementations while making the Ghosium URLs canonical product hosts instead of redirect shims.
 
+## Native New Tab contract
+
+`scripts/harden-native-new-tab.ps1` and `scripts/verify-native-new-tab.ps1` operate only on the exact pinned source revision. Before GN generation they require the native New Tab to use the canonical Ghosium mark and disable provider-owned NTP cloud/promo paths that are not required for normal browsing.
+
+The transform disables OneGoogleBar, remote Doodle initialization, animated Doodles/murals, Microsoft/provider modules, AI/Composebox/Threads entry points, Lens/voice entry points, action chips, browser promos and NTP prefetch/prerender triggers. Local shortcuts, local customization and the normal omnibox/search flow remain available.
+
+The upstream technical filename used by the source graph may remain `google_logo.svg`; verifier hash equality proves that its shipped bytes are the canonical Ghosium mark. Internal filenames are not accepted as public product branding.
+
+## Native privacy-default contract
+
+`scripts/harden-privacy-defaults.ps1` and `scripts/verify-privacy-defaults.ps1` use Chromium's own preference registration machinery. New/default profiles start with third-party cookies blocked, search suggestions disabled, network prediction/preloading disabled and remote alternate-error pages disabled. The verifier also requires online spelling-service upload to remain disabled by default.
+
+These defaults remain user/policy controllable where Chromium supports that behavior. The hardening does not disable Safe Browsing, TLS/certificate validation, browser/renderer/GPU sandboxing, site/process isolation, extension trust or update verification.
+
 ## 38-language contract
 
-Ghosium 0.1.11 supports 38 locales. English (`en-US`) is the primary/default language and Croatian (`hr`) is mandatory.
+Ghosium 0.1.12 supports 38 locales. English (`en-US`) is the primary/default language and Croatian (`hr`) is mandatory.
 
 The browser and interactive Setup must expose the same locale set. CI verifies that contract and verifies the corresponding pinned source translation bundles before an expensive build.
 
 A fresh install initializes the native browser locale from the Setup selection. Reinstall/update preserves an existing browser language preference.
 
-## Google Search contract
+## External Search contract
 
 Ghosium does not ship a first-party web search backend or bundled Ghosium Search provider. New Tab submits the standard `q` parameter directly to `https://www.google.com/search`.
 
-The source transformation preserves the pinned engine's reviewed Google fallback and must not inject a Ghosium-owned default-search provider. Explicit user search-engine choices, enterprise policy and extension overrides keep their native precedence.
+Ghosium-owned New Tab copy is product-neutral rather than provider-branded. The source transformation preserves the pinned engine's reviewed Google fallback and must not inject a Ghosium-owned default-search provider. Explicit user search-engine choices, enterprise policy and extension overrides keep their native precedence.
 
 The repository hygiene contract rejects restoration of `search-provider/`, `search-web/`, the retired Search CI/deployment paths or legacy snapshot stable-release workflow.
 
@@ -110,7 +126,7 @@ The repository hygiene contract rejects restoration of `search-provider/`, `sear
 
 Performance work uses native engine mechanisms and must be benchmark-driven.
 
-The 0.1.11 Windows source configuration includes:
+The 0.1.12 Windows source configuration includes:
 
 ```text
 enable_background_mode = false
@@ -119,6 +135,8 @@ enable_background_mode = false
 This removes legacy background-app keep-alive behavior after the last window closes.
 
 `scripts/rewrite-engine-performance-defaults.ps1` enables native Memory Saver by default only when a profile has not explicitly selected another state. Medium aggressiveness, existing discard timing, tab freezing, user exceptions and explicit user preferences remain unchanged.
+
+0.1.12 additionally reduces unnecessary NTP background work by removing remote Doodle initialization, provider cloud modules and NTP speculative prefetch/prerender triggers. No numerical benefit is claimed until the compiled binary is measured.
 
 The following are forbidden performance shortcuts:
 
@@ -129,7 +147,7 @@ The following are forbidden performance shortcuts:
 - disabling extension or update trust verification;
 - applying a renderer-process cap solely to improve RAM numbers.
 
-Do not publish performance claims until the compiled source-built 0.1.11 binary is measured with the same benchmark methodology as the accepted baseline.
+Do not publish performance claims until the compiled source-built 0.1.12 binary is measured with the same benchmark methodology as the accepted baseline.
 
 The full-source workflow requires `GHOSIUM-PERFORMANCE.json` from the newly compiled runtime. Benchmark schema v2 records cold/warm first-usable-window startup, memory, process count, handles, CPU, process I/O, 1/5/10-tab scenarios, 60-second idle activity, best-effort per-process GPU memory and Ghosium-owned TCP/UDP endpoint activity. Unsupported GPU telemetry is reported as unavailable rather than as zero. Endpoint counts are not represented as byte-level network attribution.
 
@@ -207,7 +225,7 @@ Use repository scripts rather than ad-hoc source edits:
 ./scripts/configure-engine-build.ps1 -SourceRoot <work-root>\src -OutDir out/Ghosium
 ```
 
-`apply-engine-branding.ps1` already invokes the product-version and internal-scheme rewrites; do not invoke those transforms a second time in the normal build sequence.
+`configure-engine-build.ps1` applies and verifies native NTP, privacy-default, performance and legal transforms before `gn gen`; do not bypass it with ad-hoc source edits.
 
 The pinned build graph currently requires the technical targets:
 
