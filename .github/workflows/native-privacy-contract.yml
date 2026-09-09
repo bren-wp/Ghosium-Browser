@@ -1,0 +1,114 @@
+name: Ghosium Native UI and Privacy Contract
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'VERSION'
+      - 'ENGINE_SOURCE_REVISION'
+      - 'engine/branding/**'
+      - 'scripts/harden-native-new-tab.ps1'
+      - 'scripts/verify-native-new-tab.ps1'
+      - 'scripts/harden-privacy-defaults.ps1'
+      - 'scripts/verify-privacy-defaults.ps1'
+      - 'scripts/configure-engine-build.ps1'
+      - '.github/workflows/native-privacy-contract.yml'
+  push:
+    branches:
+      - main
+    paths:
+      - 'VERSION'
+      - 'ENGINE_SOURCE_REVISION'
+      - 'engine/branding/**'
+      - 'scripts/harden-native-new-tab.ps1'
+      - 'scripts/verify-native-new-tab.ps1'
+      - 'scripts/harden-privacy-defaults.ps1'
+      - 'scripts/verify-privacy-defaults.ps1'
+      - 'scripts/configure-engine-build.ps1'
+      - '.github/workflows/native-privacy-contract.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  native-privacy-contract:
+    name: Verify native Ghosium NTP and privacy defaults
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout Ghosium tooling
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Validate PowerShell tooling
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          foreach ($path in @(
+            'scripts/harden-native-new-tab.ps1',
+            'scripts/verify-native-new-tab.ps1',
+            'scripts/harden-privacy-defaults.ps1',
+            'scripts/verify-privacy-defaults.ps1'
+          )) {
+            $tokens = $null
+            $errors = $null
+            [void][System.Management.Automation.Language.Parser]::ParseFile(
+              (Resolve-Path $path), [ref]$tokens, [ref]$errors)
+            if ($errors.Count -gt 0) {
+              $errors | ForEach-Object { Write-Error $_.Message }
+              throw "PowerShell parser errors found in $path"
+            }
+          }
+
+      - name: Sparse checkout exact pinned Chromium surfaces
+        shell: bash
+        run: |
+          set -euo pipefail
+          src="${RUNNER_TEMP}/ghosium-native-privacy-src"
+          revision="$(tr -d '\r\n ' < ENGINE_SOURCE_REVISION)"
+          git init "$src"
+          git -C "$src" remote add origin https://github.com/chromium/chromium.git
+          git -C "$src" config core.sparseCheckout true
+          mkdir -p "$src/.git/info"
+          cat > "$src/.git/info/sparse-checkout" <<'EOF'
+          /chrome/browser/ui/webui/new_tab_page/new_tab_page_ui.cc
+          /chrome/browser/resources/new_tab_page/logo.ts
+          /chrome/browser/resources/new_tab_page/logo.css
+          /chrome/browser/resources/new_tab_page/icons/google_logo.svg
+          /components/content_settings/core/browser/cookie_settings.cc
+          /chrome/browser/profiles/profile.cc
+          /chrome/browser/preloading/preloading_prefs.cc
+          /chrome/browser/net/profile_network_context_service.cc
+          /chrome/browser/spellchecker/spellcheck_factory.cc
+          EOF
+          git -C "$src" fetch --depth=1 --filter=blob:none origin "$revision"
+          git -C "$src" checkout --detach FETCH_HEAD
+          test "$(git -C "$src" rev-parse HEAD)" = "$revision"
+          echo "ENGINE_SRC=$src" >> "$GITHUB_ENV"
+
+      - name: Apply and verify Ghosium native hardening
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          ./scripts/harden-native-new-tab.ps1 -SourceRoot $env:ENGINE_SRC
+          ./scripts/verify-native-new-tab.ps1 -SourceRoot $env:ENGINE_SRC
+          ./scripts/harden-privacy-defaults.ps1 -SourceRoot $env:ENGINE_SRC
+          ./scripts/verify-privacy-defaults.ps1 -SourceRoot $env:ENGINE_SRC
+
+      - name: Validate deterministic source diff
+        shell: bash
+        run: |
+          set -euo pipefail
+          git -C "$ENGINE_SRC" diff --check
+          test -z "$(git -C "$ENGINE_SRC" status --porcelain=v1 -- third_party)"
+          grep -F 'source->AddBoolean("oneGoogleBarEnabled", false);' "$ENGINE_SRC/chrome/browser/ui/webui/new_tab_page/new_tab_page_ui.cc"
+          grep -F 'source->AddBoolean("modulesLoadEnabled", false);' "$ENGINE_SRC/chrome/browser/ui/webui/new_tab_page/new_tab_page_ui.cc"
+          grep -F 'this.loaded_ = true;' "$ENGINE_SRC/chrome/browser/resources/new_tab_page/logo.ts"
+          ! grep -Fq 'getDoodle().then' "$ENGINE_SRC/chrome/browser/resources/new_tab_page/logo.ts"
+          grep -F 'CookieControlsMode::kBlockThirdParty' "$ENGINE_SRC/components/content_settings/core/browser/cookie_settings.cc"
+          echo 'Pinned native Ghosium branding/privacy source contract: OK'

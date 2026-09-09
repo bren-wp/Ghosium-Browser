@@ -10,6 +10,12 @@ const ids = Object.keys(defaults);
 const saveState = document.querySelector('#saveState');
 let saveTimer = 0;
 
+function requireElement(selector) {
+  const element = document.querySelector(selector);
+  if (!element) throw new Error(`Missing required Ghosium options control: ${selector}`);
+  return element;
+}
+
 function normalize(settings) {
   return {
     accent: ['mint', 'violet', 'blue'].includes(settings.accent) ? settings.accent : defaults.accent,
@@ -22,41 +28,56 @@ function normalize(settings) {
 
 function render(settings) {
   const normalized = normalize(settings);
-  document.querySelector('#accent').value = normalized.accent;
-  document.querySelector('#compactMode').checked = normalized.compactMode;
-  document.querySelector('#showTopNav').checked = normalized.showTopNav;
-  document.querySelector('#showStatus').checked = normalized.showStatus;
-  document.querySelector('#reduceEffects').checked = normalized.reduceEffects;
+  requireElement('#accent').value = normalized.accent;
+  requireElement('#compactMode').checked = normalized.compactMode;
+  requireElement('#showTopNav').checked = normalized.showTopNav;
+  requireElement('#showStatus').checked = normalized.showStatus;
+  requireElement('#reduceEffects').checked = normalized.reduceEffects;
 }
 
 function collect() {
   return {
-    accent: document.querySelector('#accent').value,
-    compactMode: document.querySelector('#compactMode').checked,
-    showTopNav: document.querySelector('#showTopNav').checked,
-    showStatus: document.querySelector('#showStatus').checked,
-    reduceEffects: document.querySelector('#reduceEffects').checked,
+    accent: requireElement('#accent').value,
+    compactMode: requireElement('#compactMode').checked,
+    showTopNav: requireElement('#showTopNav').checked,
+    showStatus: requireElement('#showStatus').checked,
+    reduceEffects: requireElement('#reduceEffects').checked,
   };
 }
 
+function setStatus(message) {
+  if (saveState) saveState.textContent = message;
+}
+
 async function save() {
-  const values = normalize(collect());
-  await chrome.storage.local.set(values);
-  saveState.textContent = 'Saved locally';
-  window.clearTimeout(saveTimer);
-  saveTimer = window.setTimeout(() => {
-    saveState.textContent = 'Up to date';
-  }, 1200);
+  try {
+    await chrome.storage.local.set(normalize(collect()));
+    setStatus('Saved locally');
+    window.clearTimeout(saveTimer);
+    saveTimer = window.setTimeout(() => setStatus('Up to date'), 1200);
+  } catch (error) {
+    console.error('Unable to save local Ghosium settings.', error);
+    setStatus('Unable to save');
+  }
 }
 
 for (const id of ids) {
-  document.querySelector(`#${id}`).addEventListener('change', save);
+  requireElement(`#${id}`).addEventListener('change', () => void save());
 }
 
-document.querySelector('#reset').addEventListener('click', async () => {
-  await chrome.storage.local.set(defaults);
-  render(defaults);
-  saveState.textContent = 'Defaults restored';
+requireElement('#reset').addEventListener('click', async () => {
+  try {
+    await chrome.storage.local.set(defaults);
+    render(defaults);
+    setStatus('Defaults restored');
+  } catch (error) {
+    console.error('Unable to restore Ghosium defaults.', error);
+    setStatus('Unable to restore defaults');
+  }
 });
 
-chrome.storage.local.get(defaults).then(render);
+chrome.storage.local.get(defaults).then(render).catch((error) => {
+  console.error('Unable to load Ghosium options.', error);
+  render(defaults);
+  setStatus('Using local defaults');
+});

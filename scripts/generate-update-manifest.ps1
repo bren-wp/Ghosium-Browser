@@ -22,7 +22,7 @@ if (!$Version) {
 if (!$OutputPath) {
   $OutputPath = Join-Path $repoRoot 'updates-web/windows/stable.json'
 }
-if ($Version -notmatch '^0\.[1-9]\d*\.\d+$') {
+if ($Version -notmatch '^0\.\d+\.\d+$') {
   throw "Ghosium update version must use the 0.x.y product line; found '$Version'."
 }
 
@@ -43,9 +43,6 @@ if ($RequireAuthenticode -and !$runningOnWindows) {
   throw 'Production Authenticode manifest generation must run on Windows so PE identity and signature validation cannot be bypassed.'
 }
 
-# PE VersionInfo is a Windows release gate. Hosted Linux contract jobs still
-# exercise deterministic manifest hashing with a synthetic payload, so they do
-# not pretend to validate Windows PE metadata they cannot authoritatively read.
 if ($runningOnWindows) {
   $versionInfo = $setupItem.VersionInfo
   if ([string]$versionInfo.ProductName -ne 'Ghosium Browser') {

@@ -52,7 +52,7 @@ $productVersion = (Get-Content $productVersionPath -Raw).Trim()
 $sourceRevision = (Get-Content $sourceRevisionPath -Raw).Trim()
 $snapshotRevision = (Get-Content $snapshotRevisionPath -Raw).Trim()
 
-if ($productVersion -notmatch '^0\.[1-9]\d*\.\d+$') {
+if ($productVersion -notmatch '^0\.\d+\.\d+$') {
   throw "Ghosium VERSION must use the 0.x.y product line; found '$productVersion'."
 }
 if ($sourceRevision -notmatch '^[0-9a-f]{40}$') {

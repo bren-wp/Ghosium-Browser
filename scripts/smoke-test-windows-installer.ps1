@@ -15,7 +15,7 @@ Set-StrictMode -Version Latest
 if ([System.Environment]::OSVersion.Platform -ne [System.PlatformID]::Win32NT) {
   throw 'The Ghosium canonical Setup smoke test must run on Windows.'
 }
-if ($Version -notmatch '^0\.[1-9]\d*\.\d+$') {
+if ($Version -notmatch '^0\.\d+\.\d+$') {
   throw "Version must use the Ghosium 0.x.y line; received '$Version'."
 }
 
@@ -263,8 +263,6 @@ try {
   New-Item -ItemType Directory -Force -Path $profile | Out-Null
   [IO.File]::WriteAllText($profileSentinel, 'preserve-across-ghosium-update', [Text.UTF8Encoding]::new($false))
 
-  # Mirror the native browser updater exactly: it downloads the canonical Setup
-  # to this fixed private temp location and launches /S /UPDATE /DELETESELF.
   New-Item -ItemType Directory -Force -Path $updateDir | Out-Null
   Copy-Item $setup $updateSetup -Force
   if ((Get-FileHash $updateSetup -Algorithm SHA256).Hash.ToLowerInvariant() -ne $setupHash) {

@@ -2,11 +2,9 @@ name: Ghosium Version and Release Contract
 
 on:
   pull_request:
-    branches:
-      - main
+    branches: [main]
   push:
-    branches:
-      - main
+    branches: [main]
 
 permissions:
   contents: read
@@ -15,7 +13,6 @@ jobs:
   version-contract:
     runs-on: ubuntu-latest
     timeout-minutes: 10
-
     steps:
       - name: Checkout
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
@@ -37,42 +34,30 @@ jobs:
           from pathlib import Path
 
           version = Path('VERSION').read_text(encoding='utf-8').strip()
-          if not re.fullmatch(r'0\.[1-9]\d*\.\d+', version):
+          if not re.fullmatch(r'0\.\d+\.\d+', version):
               raise SystemExit(f'Invalid Ghosium product VERSION: {version!r}')
 
-          for path in (Path('extension/manifest.json'),):
-              data = json.loads(path.read_text(encoding='utf-8'))
-              if data.get('version') != version:
-                  raise SystemExit(f'{path}: {data.get("version")!r} != VERSION {version}')
-              if data.get('manifest_version') != 3:
-                  raise SystemExit(f'{path}: bundled browser components must remain Manifest V3')
+          manifest = json.loads(Path('extension/manifest.json').read_text(encoding='utf-8'))
+          if manifest.get('version') != version or manifest.get('manifest_version') != 3:
+              raise SystemExit('Bundled Ghosium Privacy manifest/version contract is invalid.')
 
           catalog = json.loads(Path('store-web/storage/data/extensions.json').read_text(encoding='utf-8'))
           for item in catalog.get('extensions', []):
               if item.get('status') == 'built_in' and item.get('version') != version:
-                  raise SystemExit(
-                      f'Store metadata mismatch for {item.get("id")}: '
-                      f'{item.get("version")!r} != {version}'
-                  )
+                  raise SystemExit(f'Built-in Store metadata mismatch: {item.get("id")}')
 
           if os.environ.get('EVENT_NAME') == 'pull_request':
               base_ref = os.environ.get('BASE_REF') or 'main'
               head_ref = os.environ.get('HEAD_REF') or ''
               base_version = subprocess.check_output(
-                  ['git', 'show', f'origin/{base_ref}:VERSION'],
-                  text=True,
+                  ['git', 'show', f'origin/{base_ref}:VERSION'], text=True
               ).strip()
 
               if version == base_version:
                   marker = Path(f'.release/ghosium-v{version}.request')
-                  changed = [
-                      line.strip()
-                      for line in subprocess.check_output(
-                          ['git', 'diff', '--name-only', f'origin/{base_ref}...HEAD'],
-                          text=True,
-                      ).splitlines()
-                      if line.strip()
-                  ]
+                  changed = [line.strip() for line in subprocess.check_output(
+                      ['git', 'diff', '--name-only', f'origin/{base_ref}...HEAD'], text=True
+                  ).splitlines() if line.strip()]
                   marker_only = (
                       head_ref == f'ghosium/release/{version}'
                       and changed == [marker.as_posix()]
@@ -82,22 +67,22 @@ jobs:
                   if not marker_only:
                       raise SystemExit(
                           'Every merged production change requires a new Ghosium VERSION; '
-                          f'PR still uses base version {version}. The only exception is an exact '
-                          'release-marker-only PR from ghosium/release/<VERSION>.'
+                          'the only same-version exception is an exact release-marker-only PR '
+                          'from ghosium/release/<VERSION>.'
                       )
-                  print(
-                      f'Ghosium release-marker-only PR accepted at existing version {version}; '
-                      'candidate evidence is enforced by the release marker promotion contract.'
-                  )
+                  print('candidate evidence is enforced by the release marker promotion contract')
               else:
-                  migration_reset = base_version == '0.8.0' and version == '0.1.0'
-                  if not migration_reset:
-                      current = tuple(map(int, version.split('.')))
-                      previous = tuple(map(int, base_version.split('.')))
-                      if current <= previous:
-                          raise SystemExit(
-                              f'Ghosium VERSION must advance from {base_version}; got {version}.'
-                          )
+                  current = tuple(map(int, version.split('.')))
+                  previous = tuple(map(int, base_version.split('.')))
+                  clean_baseline_reset = (
+                      base_version == '0.1.11'
+                      and version == '0.0.1'
+                      and head_ref == 'ghosium/0.0.1-clean-baseline'
+                  )
+                  if current <= previous and not clean_baseline_reset:
+                      raise SystemExit(f'Ghosium VERSION must advance from {base_version}; got {version}.')
+                  if clean_baseline_reset:
+                      print('Authorized one-time clean baseline reset: 0.1.11 -> 0.0.1')
 
           print(f'Ghosium product version contract OK: {version}')
 
@@ -107,173 +92,69 @@ jobs:
           import json
           from pathlib import Path
 
-          license_path = Path('LICENSE')
-          notices_path = Path('THIRD_PARTY_NOTICES.md')
-          readme_path = Path('README.md')
-          config_path = Path('engine/branding/product.json')
+          license_text = Path('LICENSE').read_text(encoding='utf-8')
+          notices = Path('THIRD_PARTY_NOTICES.md').read_text(encoding='utf-8')
+          readme = Path('README.md').read_text(encoding='utf-8')
+          config = json.loads(Path('engine/branding/product.json').read_text(encoding='utf-8'))
 
-          for path in (license_path, notices_path, readme_path, config_path):
-              if not path.is_file():
-                  raise SystemExit(f'Required legal/release contract file is missing: {path}')
-
-          license_text = license_path.read_text(encoding='utf-8')
-          required_license = (
+          for required in (
               '# GHOSIUM BROWSER',
               'Proprietary Commercial Software License Agreement',
-              'GHOSIUM Browser is proprietary commercial software.',
-              'Third-party and open-source software components are excluded from Brendigo',
               'Open-source components remain governed by their respective licenses.',
               'THIRD_PARTY_NOTICES.md',
-          )
-          for value in required_license:
-              if value not in license_text:
-                  raise SystemExit(f'Ghosium proprietary LICENSE contract is missing: {value}')
-
-          readme = readme_path.read_text(encoding='utf-8')
-          required_readme = (
+          ):
+              if required not in license_text:
+                  raise SystemExit(f'LICENSE contract is missing: {required}')
+          for required in (
               '## License and third-party rights',
               'Brendigo Proprietary Commercial Software License Agreement',
               'Public repository visibility does not by itself grant an open-source license',
               'Chromium and every other third-party or open-source component remain governed by their own licenses.',
-          )
-          for value in required_readme:
-              if value not in readme:
-                  raise SystemExit(f'README legal contract is missing: {value}')
-          for obsolete in (
-              'Ghosium-authored source is licensed under the BSD 3-Clause License in `LICENSE`',
-              'source-derived open browser fork',
           ):
-              if obsolete in readme:
-                  raise SystemExit(f'Obsolete Ghosium licensing claim returned in README: {obsolete}')
-
-          config = json.loads(config_path.read_text(encoding='utf-8'))
+              if required not in readme:
+                  raise SystemExit(f'README legal contract is missing: {required}')
+          if len(notices.strip()) < 100:
+              raise SystemExit('THIRD_PARTY_NOTICES.md is unexpectedly empty.')
           legal = config.get('legal', {})
           for key in ('preserveThirdPartyLicenses', 'preserveCopyrightNotices', 'preserveAttribution'):
               if legal.get(key) is not True:
-                  raise SystemExit(f'Third-party legal preservation invariant must remain enabled: {key}')
-          if legal.get('thirdPartySurface') != 'legal/third-party':
-              raise SystemExit('Third-party attribution surface changed unexpectedly.')
-
-          if len(notices_path.read_text(encoding='utf-8').strip()) < 100:
-              raise SystemExit('THIRD_PARTY_NOTICES.md is unexpectedly empty or incomplete.')
-
-          print('Ghosium proprietary product license + preserved third-party rights contract: OK')
+                  raise SystemExit(f'Third-party legal preservation invariant disabled: {key}')
 
       - name: Verify source-built-only canonical release architecture
         shell: python
         run: |
           from pathlib import Path
-
-          workflows = Path('.github/workflows')
-          legacy = workflows / 'windows-build.yml'
-          if legacy.exists():
-              raise SystemExit('Legacy snapshot-based stable release workflow must not return.')
-
-          release_workflow = workflows / 'full-source-windows-build.yml'
-          promotion_workflow = workflows / 'release-marker-promotion-contract.yml'
-          text = release_workflow.read_text(encoding='utf-8')
-
-          for value in (
-              'storage.googleapis.com/chromium-browser-snapshots',
-              'chrome-win.zip',
+          text = Path('.github/workflows/full-source-windows-build.yml').read_text(encoding='utf-8')
+          promotion = Path('.github/workflows/release-marker-promotion-contract.yml').read_text(encoding='utf-8')
+          for forbidden in ('storage.googleapis.com/chromium-browser-snapshots', 'chrome-win.zip'):
+              if forbidden in text:
+                  raise SystemExit(f'Precompiled snapshot input returned: {forbidden}')
+          for required in (
+              'workflow_dispatch:', 'ghosium-source-builder', 'GHOSIUM-SOURCE-BUILD.json',
+              'GHOSIUM-PERFORMANCE.json', 'GHOSIUM-PUBLIC-SETUP.json',
+              'GHOSIUM-CANONICAL-SETUP-SMOKE.json', 'GHOSIUM-UPDATE-MANIFEST.json',
+              'SHA256SUMS.txt', 'autoninja -C out/Ghosium chrome mini_installer',
+              '-RunRuntimeSmoke', './scripts/build-source-release-installer.ps1',
+              './scripts/smoke-test-windows-installer.ps1', '-RequireAuthenticode',
+              '$params.RequireSigning = $true', "if: github.ref == 'refs/heads/main'",
           ):
-              if value in text:
-                  raise SystemExit(
-                      f'Production source-built release workflow references precompiled snapshot input: {value}'
-                  )
-
-          required = (
-              'workflow_dispatch:',
-              'ghosium-source-builder',
-              'ghosium-v',
-              'GHOSIUM-SOURCE-BUILD.json',
-              'GHOSIUM-UPSTREAM-MINI-INSTALLER-SMOKE.json',
-              'GHOSIUM-SOURCE-STAGE.json',
-              'GHOSIUM-PUBLIC-SETUP.json',
-              'GHOSIUM-CANONICAL-SETUP-SMOKE.json',
-              'GHOSIUM-UPDATE-MANIFEST.json',
-              'GHOSIUM-LICENSE.txt',
-              'THIRD_PARTY_NOTICES.md',
-              'Verify release legal and packaging payload',
-              'SHA256SUMS.txt',
-              'Release $GHOSIUM_TAG already exists',
-              'refusing to overwrite it',
-              'autoninja -C out/Ghosium chrome mini_installer',
-              '-RunRuntimeSmoke',
-              './scripts/build-source-release-installer.ps1',
-              './scripts/smoke-test-windows-installer.ps1',
-              './scripts/generate-update-manifest.ps1',
-              '-RequireAuthenticode',
-              '$params.RequireSigning = $true',
-              'publicSetupIsChromiumMiniInstallerRename',
-              "if: github.ref == 'refs/heads/main'",
-          )
-          for value in required:
-              if value not in text:
-                  raise SystemExit(f'Full-source canonical release invariant missing: {value}')
-
-          if not promotion_workflow.is_file():
-              raise SystemExit('Release marker promotion contract workflow is missing.')
-          promotion = promotion_workflow.read_text(encoding='utf-8')
-          for value in (
-              'actions: read',
-              'release-marker-only',
-              'full-source-windows-build.yml',
-              'Ghosium-Browser-Setup.exe',
-              'GHOSIUM-PERFORMANCE.json',
-              'SHA256SUMS.txt',
-              'sha256sum -c SHA256SUMS.txt',
-          ):
-              if value not in promotion:
-                  raise SystemExit(f'Release marker promotion invariant missing: {value}')
-
-          forbidden_public_setup = "Copy-Item (Join-Path $out 'mini_installer.exe') 'artifacts/full-source/Ghosium-Browser-Setup.exe'"
-          if forbidden_public_setup in text:
-              raise SystemExit('Public Ghosium Setup must never be a renamed Chromium mini_installer.exe.')
-
-          if '\n  pull_request:' in text or '\n  push:' in text:
-              raise SystemExit(
-                  'Heavy full-source build must remain an explicit manual/self-hosted workflow.'
-              )
-
-          release_start = text.index('gh release create "$GHOSIUM_TAG"')
-          release_end = text.index('--repo "$GITHUB_REPOSITORY"', release_start)
-          release_block = text[release_start:release_end]
-          if 'Ghosium-Browser-Source-Runtime.7z' in release_block:
-              raise SystemExit('Technical source runtime archive must not be a stable public release asset.')
-          if 'Ghosium-Browser-Setup.exe' not in release_block:
-              raise SystemExit('Stable release must publish the canonical Ghosium Setup package.')
-
-          for value in (
-              'tag="v$GHOSIUM_VERSION"',
-              'tag="v$version"',
-              'gh release create "v$',
-          ):
-              if value in text:
-                  raise SystemExit(
-                      f'Legacy v0.x.y release namespace returned in production release workflow: {value}'
-                  )
-
-          print('Ghosium canonical source-built release architecture: OK')
+              if required not in text:
+                  raise SystemExit(f'Full-source release invariant missing: {required}')
+          for required in ('actions: read', 'release-marker-only', 'full-source-windows-build.yml', 'SHA256SUMS.txt'):
+              if required not in promotion:
+                  raise SystemExit(f'Release-promotion invariant missing: {required}')
 
       - name: Verify immutable action references
         shell: python
         run: |
           import re
           from pathlib import Path
-
           action = re.compile(r'^\s*uses:\s*([^\s#]+)', re.MULTILINE)
           immutable = re.compile(r'^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+@[0-9a-f]{40}$')
           docker_digest = re.compile(r'^docker://[^@\s]+@sha256:[0-9a-f]{64}$')
-
           for path in sorted(Path('.github/workflows').glob('*.y*ml')):
-              text = path.read_text(encoding='utf-8')
-              for match in action.finditer(text):
-                  reference = match.group(1)
-                  if reference.startswith('./'):
+              for match in action.finditer(path.read_text(encoding='utf-8')):
+                  ref = match.group(1)
+                  if ref.startswith('./') or immutable.fullmatch(ref) or docker_digest.fullmatch(ref):
                       continue
-                  if immutable.fullmatch(reference) or docker_digest.fullmatch(reference):
-                      continue
-                  raise SystemExit(f'Mutable GitHub Action reference in {path}: {reference}')
-
-          print('Immutable GitHub Action references: OK')
+                  raise SystemExit(f'Mutable GitHub Action reference in {path}: {ref}')

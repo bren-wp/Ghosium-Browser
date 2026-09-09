@@ -15,7 +15,7 @@ $actualCommit = (& git -C $sourceRootResolved rev-parse HEAD).Trim()
 if ($LASTEXITCODE -ne 0 -or $actualCommit -ne $expectedCommit) {
   throw "Refusing to rewrite product version in an unpinned checkout. Expected $expectedCommit; found $actualCommit"
 }
-if ($productVersion -notmatch '^0\.[1-9]\d*\.\d+$') {
+if ($productVersion -notmatch '^0\.\d+\.\d+$') {
   throw "Ghosium product VERSION must use the 0.x.y line; found '$productVersion'."
 }
 
@@ -98,18 +98,11 @@ if (!$verifyHeader.Contains("kProductVersion[] = `"$productVersion`"")) {
   throw 'Generated Ghosium product version header does not match repository VERSION.'
 }
 
-# The Windows About-page updater uses the same product VERSION contract. Keep
-# the updater source generation coupled to this version transform so a version
-# bump cannot produce a browser that checks updates using stale product data.
 & (Join-Path $PSScriptRoot 'rewrite-engine-version-updater.ps1') -SourceRoot $sourceRootResolved
 if ($LASTEXITCODE -ne 0) {
   throw 'Ghosium native Windows VersionUpdater integration failed.'
 }
 
-# Chromium's generic trust helper intentionally bypasses Authenticode for
-# unbranded builds unless verification is forced. Ghosium is an unbranded
-# Chromium fork, so force signature + publisher verification before the update
-# Setup can ever be launched.
 & (Join-Path $PSScriptRoot 'harden-engine-version-updater.ps1') -SourceRoot $sourceRootResolved
 if ($LASTEXITCODE -ne 0) {
   throw 'Ghosium native Windows VersionUpdater hardening failed.'
