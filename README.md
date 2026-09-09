@@ -4,9 +4,14 @@
 
 # Ghosium Browser 0.0.1
 
-**Ghosium Browser by Brendigo** is a Windows x64 browser. The current development version is **0.0.1**.
+**Ghosium Browser by Brendigo** is a Windows x64 browser. The active product version is **0.0.1**.
 
-This repository now uses **0.0.1 as the clean product baseline**. Older development version numbering is intentionally not part of the active documentation.
+The current public downloadable build is **Ghosium Browser 0.0.1 Preview 1**, published through the verified GitHub-hosted pinned-snapshot release path. The separate canonical full-source production build remains subject to its stricter source-build, performance, signing, provenance and updater gates.
+
+Current public release: `ghosium-v0.0.1-preview.1`  
+Release page: `https://github.com/bren-wp/Ghosium-Browser/releases/tag/ghosium-v0.0.1-preview.1`
+
+This repository uses **0.0.1 as the clean product baseline**. Older product-version numbering is intentionally not part of the active documentation.
 
 ## Product identity
 
@@ -50,24 +55,32 @@ Security boundaries remain mandatory: Safe Browsing, TLS/certificate validation,
 
 Native Memory Saver remains enabled by default for profiles without an explicit selection and legacy background-app keep-alive is disabled. New Tab remote Doodle initialization and unnecessary NTP prefetch/prerender paths are removed or disabled.
 
-No numerical 0.0.1 performance claim is valid until the compiled source-built 0.0.1 binary produces `GHOSIUM-PERFORMANCE.json` under the controlled benchmark workflow.
+The public 0.0.1 Preview does not establish canonical full-source performance claims. Numerical performance claims remain reserved for verified `GHOSIUM-PERFORMANCE.json` evidence from the controlled full-source benchmark workflow.
 
 ## Windows packages
 
-The public Windows packages are:
+The **currently published Preview** provides:
+
+```text
+Ghosium-Browser-Setup.exe
+```
+
+Its release also carries `GHOSIUM-PREVIEW-BUILD.json`, `GHOSIUM-PREVIEW-SETUP-SMOKE.json`, `SHA256SUMS.txt` and `BUILD-STATUS.txt`. The Setup passed install, runtime, same-Setup update, runtime and uninstall verification on GitHub Actions.
+
+The **canonical full-source production** release contract additionally requires:
 
 ```text
 Ghosium-Browser-Setup.exe
 Ghosium-Browser-Portable.exe
 ```
 
-Setup is the canonical install/update/uninstall package. Portable is generated from the same verified source stage and uses an isolated adjacent profile.
+Canonical Setup/Portable publication remains a separate production gate and is not implied by the Preview release.
 
 ## Release status
 
-**0.0.1 must not be described as a released source-built binary until the exact 0.0.1 candidate and production workflows compile, runtime-test, benchmark, package and satisfy required production signing/provenance gates.**
+**Ghosium Browser 0.0.1 Preview 1 is publicly released.** It is a GitHub-hosted pinned Chromium snapshot Preview using the same release model previously used for the superseded 0.1.8 Preview. It is not the canonical full-source production release.
 
-The checked-in update manifest remains fail-closed (`enabled:false`, empty SHA-256, zero size) until generated from a real verified production package.
+The checked-in stable update manifest remains fail-closed (`enabled:false`, empty SHA-256, zero size) for the Preview. Canonical production publication still requires exact full-source candidate evidence, runtime/performance verification, canonical Setup/Portable provenance, production signing and update-manifest binding.
 
 Ghosium 0.0.1 defines **38 supported product locales**. English (`en-US`) is the default language and Croatian (`hr`) is required.
 
