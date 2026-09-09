@@ -19,6 +19,10 @@ $argsTemplate = Join-Path $repoRoot 'engine/build/windows-x64.args.gn'
 $productLicense = Join-Path $repoRoot 'LICENSE'
 $thirdPartyNotices = Join-Path $repoRoot 'THIRD_PARTY_NOTICES.md'
 $legalPayloadRewrite = Join-Path $PSScriptRoot 'rewrite-engine-legal-payload.ps1'
+$nativeNewTabRewrite = Join-Path $PSScriptRoot 'harden-native-new-tab.ps1'
+$nativeNewTabVerifier = Join-Path $PSScriptRoot 'verify-native-new-tab.ps1'
+$privacyDefaultsRewrite = Join-Path $PSScriptRoot 'harden-privacy-defaults.ps1'
+$privacyDefaultsVerifier = Join-Path $PSScriptRoot 'verify-privacy-defaults.ps1'
 $performanceRewrite = Join-Path $PSScriptRoot 'rewrite-engine-performance-defaults.ps1'
 $performanceVerifier = Join-Path $PSScriptRoot 'verify-engine-performance-defaults.ps1'
 
@@ -27,6 +31,10 @@ foreach ($requiredFile in @(
   $productLicense,
   $thirdPartyNotices,
   $legalPayloadRewrite,
+  $nativeNewTabRewrite,
+  $nativeNewTabVerifier,
+  $privacyDefaultsRewrite,
+  $privacyDefaultsVerifier,
   $performanceRewrite,
   $performanceVerifier
 )) {
@@ -52,6 +60,29 @@ if (!(Test-Path (Join-Path $sourceRootResolved '.git'))) {
 $actualRevision = (& git -C $sourceRootResolved rev-parse HEAD).Trim()
 if ($LASTEXITCODE -ne 0 -or $actualRevision -ne $expectedRevision) {
   throw "Engine source must be detached at $expectedRevision; found $actualRevision"
+}
+
+# Remove provider-owned New Tab cloud surfaces before GN sees the source. The
+# local Ghosium mark, local shortcuts/customization and normal web search stay.
+& $nativeNewTabRewrite -SourceRoot $sourceRootResolved
+if ($LASTEXITCODE -ne 0) {
+  throw 'Ghosium native New Tab hardening failed.'
+}
+& $nativeNewTabVerifier -SourceRoot $sourceRootResolved
+if ($LASTEXITCODE -ne 0) {
+  throw 'Ghosium native New Tab verification failed.'
+}
+
+# Use native Chromium preference machinery with privacy-strong defaults. These
+# defaults stay user/policy controllable and do not weaken Safe Browsing, TLS,
+# certificate verification, sandboxing, process isolation or update signing.
+& $privacyDefaultsRewrite -SourceRoot $sourceRootResolved
+if ($LASTEXITCODE -ne 0) {
+  throw 'Ghosium native privacy-default integration failed.'
+}
+& $privacyDefaultsVerifier -SourceRoot $sourceRootResolved
+if ($LASTEXITCODE -ne 0) {
+  throw 'Ghosium native privacy-default verification failed.'
 }
 
 # Apply only reviewed performance defaults that use native engine mechanisms.
@@ -167,5 +198,7 @@ try {
 
 Write-Host "Ghosium full-source Windows build configuration ready: $outPath"
 Write-Host 'Verified legal build inputs: GHOSIUM-LICENSE.txt + THIRD_PARTY_NOTICES.md'
+Write-Host 'Native Ghosium New Tab cloud surfaces are disabled and the local Ghosium mark is enforced.'
+Write-Host 'Privacy defaults block third-party cookies and disable suggestions, speculative preloading and remote alternate-error pages.'
 Write-Host 'Native Memory Saver defaults are enabled; legacy background-app keep-alive is disabled.'
 Write-Host "Build command: autoninja -C $relativeOut chrome mini_installer"
