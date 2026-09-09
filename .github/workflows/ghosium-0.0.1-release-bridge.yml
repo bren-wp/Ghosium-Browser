@@ -93,7 +93,7 @@ jobs:
         run: |
           set -euo pipefail
           main_sha="$(gh api --method GET "/repos/${GITHUB_REPOSITORY}/git/ref/heads/main" --jq '.object.sha')"
-          version="$(gh api --method GET "/repos/${GITHUB_REPOSITORY}/contents/VERSION?ref=${main_sha}" --jq -r '.content' | tr -d '\n' | base64 --decode | tr -d '\r\n ')"
+          version="$(gh api --method GET "/repos/${GITHUB_REPOSITORY}/contents/VERSION?ref=${main_sha}" --jq '.content' | tr -d '\n' | base64 --decode | tr -d '\r\n ')"
           [[ "$version" == "$VERSION" ]] || { echo "main VERSION is $version, expected $VERSION" >&2; exit 1; }
 
           gh api --method POST "/repos/${GITHUB_REPOSITORY}/actions/workflows/full-source-windows-build.yml/dispatches" -f ref=main >/dev/null
