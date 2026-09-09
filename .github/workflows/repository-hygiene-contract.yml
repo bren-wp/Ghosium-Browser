@@ -24,7 +24,7 @@ jobs:
           persist-credentials: false
           fetch-depth: 0
 
-      - name: Verify Google Search and retired Search removal
+      - name: Verify external Search routing and retired Search removal
         shell: python
         run: |
           from pathlib import Path
@@ -46,11 +46,12 @@ jobs:
           required = (
               'action="https://www.google.com/search"',
               'name="q"',
-              'Google Search',
+              'GHOSIUM BROWSER',
+              'placeholder="Search the web"',
           )
           missing = [value for value in required if value not in newtab]
           if missing:
-              raise SystemExit('Google Search New Tab contract is missing:\n' + '\n'.join(missing))
+              raise SystemExit('External Search routing / Ghosium New Tab contract is missing:\n' + '\n'.join(missing))
 
           forbidden = (
               'search.ghosium.com',
@@ -62,7 +63,7 @@ jobs:
           if offenders:
               raise SystemExit('Retired first-party Search reference returned to New Tab:\n' + '\n'.join(offenders))
 
-          print('Google Search + retired Search stack hygiene: OK')
+          print('Ghosium-owned New Tab + external Search routing + retired Search stack hygiene: OK')
 
       - name: Verify fail-closed checked-in update baseline
         shell: python
