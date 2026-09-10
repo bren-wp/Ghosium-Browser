@@ -44,11 +44,27 @@ jobs:
           find store-web -type f -name '*.php' -print0 | xargs -0 -n1 php -l
           php -l scripts/verify-store.php
 
-      - name: Validate Store JSON data
+      - name: Validate Store JSON data and canonical package origin
         shell: bash
         run: |
           set -euo pipefail
           php -r 'foreach (glob("store-web/storage/data/*.json") as $file) { json_decode(file_get_contents($file), true, 64, JSON_THROW_ON_ERROR); echo "valid $file\n"; }'
+          php -r '
+            require "store-web/lib/store.php";
+            if (!store_valid_https_url("https://store.ghosium.com:443/packages/example.crx", "store.ghosium.com")) {
+              fwrite(STDERR, "Canonical HTTPS/443 Store origin was rejected.\n");
+              exit(1);
+            }
+            if (store_valid_https_url("https://store.ghosium.com:8443/packages/example.crx", "store.ghosium.com")) {
+              fwrite(STDERR, "Non-standard Store package port was accepted.\n");
+              exit(1);
+            }
+            if (store_valid_https_url("http://store.ghosium.com/packages/example.crx", "store.ghosium.com")) {
+              fwrite(STDERR, "Insecure Store package URL was accepted.\n");
+              exit(1);
+            }
+            echo "Canonical Store package HTTPS origin: OK\n";
+          '
 
       - name: Verify package trust and bundled manifests
         shell: bash
