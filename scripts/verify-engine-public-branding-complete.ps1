@@ -32,6 +32,19 @@ if ([int]$policy.schemaVersion -ne 1) {
   throw "Unsupported public-branding allowlist schema: $($policy.schemaVersion)"
 }
 
+# Narrow proper-name exception for distinct third-party/platform products.
+# This is deliberately not a generic Chrome allowlist: standalone Chrome or
+# Chromium browser branding in runtime copy remains forbidden.
+$preservedThirdPartyNamePattern = [regex]::new(
+  '(?i)\bChrome(?:book|box|base|bit|cast|OS|Vox|Driver)\p{L}*\b'
+)
+$forbiddenVisibleBrand = [regex]::new(
+  '(?i)(?:Google\s+Chrome|Google\s+Chromium|Chromium Browser|Chrome Web Store|\bChromium(?=\p{Ll}|\b)|\bChrome(?=\p{Ll}|\b))'
+)
+$forbiddenLiteralBrand = [regex]::new(
+  '(?i)(?:Google\s+Chrome|Google\s+Chromium|Chromium Browser|Chrome Web Store|\bChromium\b|\bChrome\b)'
+)
+
 function Test-ExcludedSourcePath {
   param([Parameter(Mandatory = $true)][string]$RelativePath)
 
@@ -108,10 +121,20 @@ function Test-LegalTranslation {
   return $false
 }
 
+function Get-BrandScanText {
+  param([Parameter(Mandatory = $true)][AllowEmptyString()][string]$Text)
+
+  return $preservedThirdPartyNamePattern.Replace($Text, '')
+}
+
 function Get-VisibleXmlText {
   param([Parameter(Mandatory = $true)][AllowEmptyString()][string]$Body)
 
-  $withoutTags = [regex]::Replace($Body, '<[^>]+>', '')
+  # GRIT <ex> content is translator metadata, not runtime UI. Removing it here
+  # prevents examples such as "$1 <ex>A Chrome app</ex>" from being reported as
+  # public product branding while the surrounding runtime text is still audited.
+  $withoutExamples = [regex]::Replace($Body, '(?s)<ex\b[^>]*>.*?</ex>', '')
+  $withoutTags = [regex]::Replace($withoutExamples, '<[^>]+>', '')
   return [System.Net.WebUtility]::HtmlDecode($withoutTags)
 }
 
@@ -151,12 +174,30 @@ function Add-Violation {
   })
 }
 
-$forbiddenVisibleBrand = [regex]::new(
-  '(?i)(?:Google\s+Chrome|Google\s+Chromium|Chromium Browser|Chrome Web Store|\bChromium(?=\p{Ll}|\b)|\bChrome(?=\p{Ll}|\b))'
-)
-$forbiddenLiteralBrand = [regex]::new(
-  '(?:Google\s+Chrome|Google\s+Chromium|Chromium Browser|Chrome Web Store|\bChromium\b|\bChrome\b)'
-)
+function Test-HumanReadableScriptLiteral {
+  param([Parameter(Mandatory = $true)][AllowEmptyString()][string]$Value)
+
+  if ([string]::IsNullOrWhiteSpace($Value)) {
+    return $false
+  }
+
+  $candidate = Get-BrandScanText -Text $Value
+  if (!$forbiddenLiteralBrand.IsMatch($candidate)) {
+    return $false
+  }
+
+  # Internal URL schemes, resource paths, DOM keys and source identifiers are
+  # technical compatibility tokens, not rendered product copy. Standalone
+  # Chrome/Chromium and natural-language literals remain subject to the gate.
+  if ($candidate -match '^(?i:Chrome|Chromium)$') {
+    return $true
+  }
+  if ($candidate -notmatch '\s' -and
+      $candidate -match '(?i)(?:^|[-_./:])(?:chrome|chromium)(?:[-_./:]|$)') {
+    return $false
+  }
+  return $true
+}
 
 $sparseValue = @(& git -C $sourceRootResolved config --bool core.sparseCheckout 2>$null)
 $isSparseCheckout = ($LASTEXITCODE -eq 0 -and ($sparseValue -join '').Trim() -eq 'true')
@@ -252,7 +293,8 @@ foreach ($relative in @($gritFiles | Sort-Object -Unique)) {
       }
 
       $visible = Get-VisibleXmlText -Body $match.Groups['body'].Value
-      if ($forbiddenVisibleBrand.IsMatch($visible)) {
+      $scanText = Get-BrandScanText -Text $visible
+      if ($forbiddenVisibleBrand.IsMatch($scanText)) {
         Add-Violation -Path $relative -Surface 'grit-message' -Identifier $messageId -Line (Get-LineNumber -Text $text -Offset $match.Index) -Text $visible
       }
     }
@@ -271,7 +313,8 @@ foreach ($relative in @($gritFiles | Sort-Object -Unique)) {
       }
 
       $visible = Get-VisibleXmlText -Body $match.Groups['body'].Value
-      if ($forbiddenVisibleBrand.IsMatch($visible)) {
+      $scanText = Get-BrandScanText -Text $visible
+      if ($forbiddenVisibleBrand.IsMatch($scanText)) {
         Add-Violation -Path $relative -Surface 'localized-translation' -Identifier $translationId -Line (Get-LineNumber -Text $text -Offset $match.Index) -Text $visible
       }
     }
@@ -310,6 +353,8 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 $scriptLiteralPattern = [regex]::new('(?s)(?<quote>["''`])(?<value>(?:\\.|(?!\k<quote>).)*?)\k<quote>')
+$markupTextPattern = [regex]::new('(?s)>(?<value>[^<]+)<')
+$markupAttributePattern = [regex]::new('(?is)\b(?:alt|title|placeholder|aria-label|aria-description)\s*=\s*(?<quote>["''])(?<value>.*?)\k<quote>')
 
 foreach ($relative in @($webUiFiles | Sort-Object -Unique)) {
   if ([string]::IsNullOrWhiteSpace($relative) -or (Test-ExcludedSourcePath -RelativePath $relative)) {
@@ -327,17 +372,19 @@ foreach ($relative in @($webUiFiles | Sort-Object -Unique)) {
   $extension = [IO.Path]::GetExtension($relative).ToLowerInvariant()
 
   if ($extension -in @('.html', '.htm', '.svg')) {
-    $lineOffset = 0
-    foreach ($line in ($withoutBlockComments -split "`n")) {
-      $trimmed = $line.Trim()
-      if ($trimmed.StartsWith('//')) {
-        $lineOffset += $line.Length + 1
-        continue
+    foreach ($match in $markupTextPattern.Matches($withoutBlockComments)) {
+      $value = [System.Net.WebUtility]::HtmlDecode($match.Groups['value'].Value)
+      $scanText = Get-BrandScanText -Text $value
+      if ($forbiddenVisibleBrand.IsMatch($scanText)) {
+        Add-Violation -Path $relative -Surface 'webui-markup-text' -Identifier '<text>' -Line (Get-LineNumber -Text $withoutBlockComments -Offset $match.Index) -Text $value
       }
-      if ($forbiddenLiteralBrand.IsMatch($line)) {
-        Add-Violation -Path $relative -Surface 'webui-markup' -Identifier '<literal>' -Line (Get-LineNumber -Text $withoutBlockComments -Offset $lineOffset) -Text $line
+    }
+    foreach ($match in $markupAttributePattern.Matches($withoutBlockComments)) {
+      $value = [System.Net.WebUtility]::HtmlDecode($match.Groups['value'].Value)
+      $scanText = Get-BrandScanText -Text $value
+      if ($forbiddenVisibleBrand.IsMatch($scanText)) {
+        Add-Violation -Path $relative -Surface 'webui-markup-attribute' -Identifier '<attribute>' -Line (Get-LineNumber -Text $withoutBlockComments -Offset $match.Index) -Text $value
       }
-      $lineOffset += $line.Length + 1
     }
     continue
   }
@@ -347,7 +394,7 @@ foreach ($relative in @($webUiFiles | Sort-Object -Unique)) {
   }) -join "`n"
   foreach ($literal in $scriptLiteralPattern.Matches($scriptScanText)) {
     $value = $literal.Groups['value'].Value
-    if ($forbiddenLiteralBrand.IsMatch($value)) {
+    if (Test-HumanReadableScriptLiteral -Value $value) {
       Add-Violation -Path $relative -Surface 'webui-literal' -Identifier '<literal>' -Line (Get-LineNumber -Text $scriptScanText -Offset $literal.Index) -Text $value
     }
   }
@@ -361,9 +408,14 @@ if (!$isSparseCheckout -and $scannedWebUiFiles -lt 1) {
 }
 
 $evidence = [ordered]@{
-  schemaVersion = 1
+  schemaVersion = 2
   sourceRevision = $actualRevision
   sparseCheckout = $isSparseCheckout
+  policy = [ordered]@{
+    legalAttributionIsExplicit = $true
+    translatorExamplesAreRuntimeExcluded = $true
+    preservedThirdPartyProperNames = @('Chromebook', 'Chromebox', 'Chromebase', 'Chromebit', 'Chromecast', 'ChromeOS', 'ChromeVox', 'ChromeDriver')
+  }
   scanned = [ordered]@{
     gritFiles = $scannedGritFiles
     webUiFiles = $scannedWebUiFiles
