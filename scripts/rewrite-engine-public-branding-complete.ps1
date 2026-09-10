@@ -32,10 +32,13 @@ if ([int]$policy.schemaVersion -ne 1) {
 function Test-ExcludedSourcePath {
   param([Parameter(Mandatory = $true)][string]$RelativePath)
 
-  if ($RelativePath -match '(^|/)(third_party|test|tests|testing|tools|android|ash|chromeos)(/|$)') {
+  if ($RelativePath -match '(^|/)(third_party|test|tests|testing|tools|android|ash|chromeos|ios)(/|$)') {
     return $true
   }
-  if ($RelativePath -match '(?i)(^|/)google_chrome[^/]*($|/)' -or
+
+  $fileName = [IO.Path]::GetFileName($RelativePath)
+  if ($fileName -match '(?i)chromeos' -or
+      $RelativePath -match '(?i)(^|/)google_chrome[^/]*($|/)' -or
       $RelativePath -match '(?i)(^|/)chrome_for_testing[^/]*($|/)') {
     return $true
   }
