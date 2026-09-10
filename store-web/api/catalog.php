@@ -3,6 +3,11 @@ declare(strict_types=1);
 
 require_once dirname(__DIR__) . '/lib/store.php';
 
+if (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'GET') {
+    header('Allow: GET');
+    store_json_response(['error' => 'method_not_allowed'], 405, 'no-store');
+}
+
 header('Access-Control-Allow-Origin: https://store.ghosium.com');
 header('Vary: Origin');
 
