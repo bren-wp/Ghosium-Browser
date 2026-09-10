@@ -16,25 +16,114 @@ param(
 
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
+$script:BenchmarkRootProcessIds = [System.Collections.Generic.HashSet[int]]::new()
 
-function Get-GhosiumProcesses {
-  @(Get-Process -ErrorAction SilentlyContinue | Where-Object {
-    $_.ProcessName -in @('Ghosium-Browser', 'Ghosium-Engine')
-  })
+if ($IdleSeconds -lt 1 -or $StartupTimeoutSeconds -lt 1) {
+  throw 'Benchmark idle/startup timeout values must be positive.'
 }
 
-function Stop-GhosiumProcesses {
-  $processes = @(Get-GhosiumProcesses)
-  foreach ($process in $processes) {
-    try {
-      Stop-Process -Id $process.Id -Force -ErrorAction Stop
-    } catch {
-      Write-Verbose "Process $($process.Id) already exited: $($_.Exception.Message)"
+function Get-GhosiumProcesses {
+  $result = [System.Collections.Generic.List[object]]::new()
+  foreach ($name in @('Ghosium-Browser', 'Ghosium-Engine')) {
+    foreach ($process in @(Get-Process -Name $name -ErrorAction SilentlyContinue)) {
+      $result.Add($process)
     }
   }
-  if ($processes.Count -gt 0) {
-    Start-Sleep -Milliseconds 750
+  @($result)
+}
+
+function Assert-NoPreExistingGhosium {
+  $existing = @(Get-GhosiumProcesses)
+  if ($existing.Count -gt 0) {
+    $details = ($existing | Sort-Object Id | ForEach-Object { "$($_.ProcessName):$($_.Id)" }) -join ', '
+    throw "Refusing to benchmark while a pre-existing Ghosium session is running: $details. The benchmark never terminates user-owned Ghosium processes."
   }
+}
+
+function Register-BenchmarkProcess {
+  param([Parameter(Mandatory = $true)][System.Diagnostics.Process]$Process)
+  [void]$script:BenchmarkRootProcessIds.Add([int]$Process.Id)
+}
+
+function Stop-BenchmarkOwnedProcesses {
+  if ($script:BenchmarkRootProcessIds.Count -eq 0) {
+    return
+  }
+
+  $roots = @($script:BenchmarkRootProcessIds)
+  try {
+    $snapshot = @(Get-CimInstance Win32_Process -ErrorAction Stop)
+    $children = @{}
+    foreach ($process in $snapshot) {
+      $parent = [int]$process.ParentProcessId
+      if (!$children.ContainsKey($parent)) {
+        $children[$parent] = [System.Collections.Generic.List[int]]::new()
+      }
+      $children[$parent].Add([int]$process.ProcessId)
+    }
+
+    $owned = [System.Collections.Generic.HashSet[int]]::new()
+    $stack = [System.Collections.Generic.Stack[int]]::new()
+    foreach ($root in $roots) { $stack.Push($root) }
+    while ($stack.Count -gt 0) {
+      $current = $stack.Pop()
+      if (!$owned.Add($current)) { continue }
+      if ($children.ContainsKey($current)) {
+        foreach ($child in $children[$current]) { $stack.Push($child) }
+      }
+    }
+
+    # Kill descendants before launch roots so child processes cannot survive a
+    # browser shutdown race. Scope is process-tree ownership, never image name.
+    $depth = @{}
+    foreach ($root in $roots) { $depth[$root] = 0 }
+    $queue = [System.Collections.Generic.Queue[int]]::new()
+    foreach ($root in $roots) { $queue.Enqueue($root) }
+    while ($queue.Count -gt 0) {
+      $current = $queue.Dequeue()
+      if (!$children.ContainsKey($current)) { continue }
+      foreach ($child in $children[$current]) {
+        if ($owned.Contains($child) -and !$depth.ContainsKey($child)) {
+          $depth[$child] = [int]$depth[$current] + 1
+          $queue.Enqueue($child)
+        }
+      }
+    }
+
+    foreach ($processId in @($owned) | Sort-Object { if ($depth.ContainsKey($_)) { $depth[$_] } else { 0 } } -Descending) {
+      try {
+        Stop-Process -Id $processId -Force -ErrorAction Stop
+      } catch {
+        Write-Verbose "Benchmark-owned process $processId already exited or could not be stopped: $($_.Exception.Message)"
+      }
+    }
+  } catch {
+    Write-Verbose "Unable to enumerate benchmark process tree; falling back to exact launcher PIDs only: $($_.Exception.Message)"
+    foreach ($processId in $roots) {
+      try {
+        Stop-Process -Id $processId -Force -ErrorAction Stop
+      } catch {
+        Write-Verbose "Benchmark launcher $processId already exited: $($_.Exception.Message)"
+      }
+    }
+  } finally {
+    $script:BenchmarkRootProcessIds.Clear()
+  }
+
+  Start-Sleep -Milliseconds 500
+}
+
+function Assert-GhosiumStopped {
+  $remaining = @(Get-GhosiumProcesses)
+  if ($remaining.Count -gt 0) {
+    $details = ($remaining | Sort-Object Id | ForEach-Object { "$($_.ProcessName):$($_.Id)" }) -join ', '
+    throw "Benchmark-owned Ghosium process tree did not terminate cleanly: $details"
+  }
+}
+
+function Reset-BenchmarkProcesses {
+  Stop-BenchmarkOwnedProcesses
+  Assert-GhosiumStopped
 }
 
 function Get-ProcessIoTotals {
@@ -64,6 +153,16 @@ function Get-ProcessIoTotals {
 function Get-NetworkSnapshot {
   param([int[]]$ProcessIds)
 
+  if ($ProcessIds.Count -eq 0) {
+    return [ordered]@{
+      available = $true
+      tcpConnections = 0
+      establishedTcpConnections = 0
+      tcpStates = [ordered]@{}
+      udpEndpoints = 0
+      uniqueRemoteAddressCount = 0
+    }
+  }
   if (!(Get-Command Get-NetTCPConnection -ErrorAction SilentlyContinue)) {
     return [ordered]@{
       available = $false
@@ -72,22 +171,22 @@ function Get-NetworkSnapshot {
   }
 
   try {
+    $pidSet = [System.Collections.Generic.HashSet[int]]::new()
+    foreach ($processId in $ProcessIds) { [void]$pidSet.Add($processId) }
     $tcp = @(Get-NetTCPConnection -ErrorAction Stop | Where-Object {
-      $ProcessIds -contains $_.OwningProcess
+      $pidSet.Contains([int]$_.OwningProcess)
     })
     $udp = @()
     if (Get-Command Get-NetUDPEndpoint -ErrorAction SilentlyContinue) {
       $udp = @(Get-NetUDPEndpoint -ErrorAction Stop | Where-Object {
-        $ProcessIds -contains $_.OwningProcess
+        $pidSet.Contains([int]$_.OwningProcess)
       })
     }
 
     $states = [ordered]@{}
     foreach ($connection in $tcp) {
       $state = [string]$connection.State
-      if (!$states.Contains($state)) {
-        $states[$state] = 0
-      }
+      if (!$states.Contains($state)) { $states[$state] = 0 }
       $states[$state] = [int]$states[$state] + 1
     }
 
@@ -116,6 +215,15 @@ function Get-NetworkSnapshot {
 function Get-GpuMemorySnapshot {
   param([int[]]$ProcessIds)
 
+  if ($ProcessIds.Count -eq 0) {
+    return [ordered]@{
+      available = $true
+      matchedSampleCount = 0
+      localUsageBytes = 0
+      nonLocalUsageBytes = 0
+      totalCommittedBytes = 0
+    }
+  }
   if (!(Get-Command Get-Counter -ErrorAction SilentlyContinue)) {
     return [ordered]@{
       available = $false
@@ -135,6 +243,8 @@ function Get-GpuMemorySnapshot {
       }
     }
 
+    $pidSet = [System.Collections.Generic.HashSet[int]]::new()
+    foreach ($processId in $ProcessIds) { [void]$pidSet.Add($processId) }
     $samples = @(Get-Counter -Counter $counterPaths -ErrorAction Stop).CounterSamples
     [uint64]$localUsage = 0
     [uint64]$nonLocalUsage = 0
@@ -146,13 +256,9 @@ function Get-GpuMemorySnapshot {
 
     foreach ($sample in $samples) {
       $match = [regex]::Match([string]$sample.InstanceName, '(?i)^pid_(\d+)_')
-      if (!$match.Success) {
-        continue
-      }
+      if (!$match.Success) { continue }
       $pidValue = [int]$match.Groups[1].Value
-      if ($ProcessIds -notcontains $pidValue) {
-        continue
-      }
+      if (!$pidSet.Contains($pidValue)) { continue }
 
       $matched++
       [uint64]$value = [uint64][math]::Max(0, [double]$sample.CookedValue)
@@ -254,8 +360,6 @@ function Start-Ghosium {
   $profileArgument = if ($ProfileMode -eq 'UserDataDir') {
     "--user-data-dir=$ProfilePath"
   } else {
-    # Historical pre-source-built Ghosium releases used the validated portable
-    # profile switch and intentionally rejected direct --user-data-dir input.
     "--ghosium-portable-profile=$ProfilePath"
   }
 
@@ -266,7 +370,9 @@ function Start-Ghosium {
     $Url
   )
 
-  Start-Process -FilePath $BrowserPath -ArgumentList $arguments -PassThru
+  $process = Start-Process -FilePath $BrowserPath -ArgumentList $arguments -PassThru
+  Register-BenchmarkProcess -Process $process
+  return $process
 }
 
 function Measure-Startup {
@@ -276,7 +382,7 @@ function Measure-Startup {
     [string]$Label
   )
 
-  Stop-GhosiumProcesses
+  Reset-BenchmarkProcesses
   if ($FreshProfile -and (Test-Path $ProfilePath)) {
     Remove-Item $ProfilePath -Recurse -Force
   }
@@ -307,7 +413,7 @@ function Measure-TabScenario {
     [bool]$MeasureOneMinuteIdle
   )
 
-  Stop-GhosiumProcesses
+  Reset-BenchmarkProcesses
   if (Test-Path $ProfilePath) {
     Remove-Item $ProfilePath -Recurse -Force
   }
@@ -348,50 +454,56 @@ if ($outputDirectory) {
   New-Item -ItemType Directory -Force -Path $outputDirectory | Out-Null
 }
 
-Stop-GhosiumProcesses
+Assert-NoPreExistingGhosium
 if (Test-Path $ProfileRoot) {
   Remove-Item $ProfileRoot -Recurse -Force
 }
 New-Item -ItemType Directory -Force -Path $ProfileRoot | Out-Null
 
-$startupProfile = Join-Path $ProfileRoot 'startup'
-$cold = Measure-Startup -ProfilePath $startupProfile -FreshProfile $true -Label 'cold'
-Stop-GhosiumProcesses
-$warm = Measure-Startup -ProfilePath $startupProfile -FreshProfile $false -Label 'warm'
+try {
+  $startupProfile = Join-Path $ProfileRoot 'startup'
+  $cold = Measure-Startup -ProfilePath $startupProfile -FreshProfile $true -Label 'cold'
+  Reset-BenchmarkProcesses
+  $warm = Measure-Startup -ProfilePath $startupProfile -FreshProfile $false -Label 'warm'
 
-$oneTab = Measure-TabScenario -ProfilePath (Join-Path $ProfileRoot 'tabs-1') -TabCount 1 -MeasureOneMinuteIdle $true
-$fiveTabs = Measure-TabScenario -ProfilePath (Join-Path $ProfileRoot 'tabs-5') -TabCount 5 -MeasureOneMinuteIdle $false
-$tenTabs = Measure-TabScenario -ProfilePath (Join-Path $ProfileRoot 'tabs-10') -TabCount 10 -MeasureOneMinuteIdle $false
+  $oneTab = Measure-TabScenario -ProfilePath (Join-Path $ProfileRoot 'tabs-1') -TabCount 1 -MeasureOneMinuteIdle $true
+  $fiveTabs = Measure-TabScenario -ProfilePath (Join-Path $ProfileRoot 'tabs-5') -TabCount 5 -MeasureOneMinuteIdle $false
+  $tenTabs = Measure-TabScenario -ProfilePath (Join-Path $ProfileRoot 'tabs-10') -TabCount 10 -MeasureOneMinuteIdle $false
 
-Stop-GhosiumProcesses
+  Reset-BenchmarkProcesses
 
-$result = [ordered]@{
-  schemaVersion = 2
-  capturedAtUtc = [DateTime]::UtcNow.ToString('o')
-  browserPath = $BrowserPath
-  profileMode = $ProfileMode
-  host = [ordered]@{
-    machineName = $env:COMPUTERNAME
-    os = [Environment]::OSVersion.VersionString
-    logicalProcessors = [Environment]::ProcessorCount
-    totalPhysicalMemoryBytes = [uint64](Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory
+  $result = [ordered]@{
+    schemaVersion = 2
+    capturedAtUtc = [DateTime]::UtcNow.ToString('o')
+    browserPath = $BrowserPath
+    profileMode = $ProfileMode
+    host = [ordered]@{
+      machineName = $env:COMPUTERNAME
+      os = [Environment]::OSVersion.VersionString
+      logicalProcessors = [Environment]::ProcessorCount
+      totalPhysicalMemoryBytes = [uint64](Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory
+    }
+    methodology = [ordered]@{
+      coldStartup = 'Fresh isolated profile and no running Ghosium processes. OS filesystem cache is not forcibly flushed.'
+      warmStartup = 'Same isolated profile reopened after benchmark-owned browser process-tree cleanup. OS filesystem cache is left intact.'
+      usableWindow = 'First Ghosium Browser or Ghosium Engine process exposing a non-zero MainWindowHandle.'
+      tabPages = $PageUrl
+      idleSeconds = $IdleSeconds
+      processIsolation = 'Benchmark refuses pre-existing Ghosium sessions and only terminates process trees rooted at launchers created by this run.'
+      gpuMemory = 'Best-effort per-process Windows GPU Process Memory counters. When the OS/driver does not expose a reliable mapping, available=false is recorded instead of zero.'
+      network = 'Best-effort Ghosium-owned TCP/UDP endpoint snapshots, including state and unique remote-address counts. This is connection activity, not byte-level packet attribution.'
+      processIo = 'ReadTransferCount/WriteTransferCount are process-wide I/O counters and are not presented as network-byte counters.'
+    }
+    startup = [ordered]@{
+      cold = $cold
+      warm = $warm
+    }
+    tabs = @($oneTab, $fiveTabs, $tenTabs)
   }
-  methodology = [ordered]@{
-    coldStartup = 'Fresh isolated profile and no running Ghosium processes. OS filesystem cache is not forcibly flushed.'
-    warmStartup = 'Same isolated profile reopened after browser process cleanup. OS filesystem cache is left intact.'
-    usableWindow = 'First Ghosium Browser or Ghosium Engine process exposing a non-zero MainWindowHandle.'
-    tabPages = $PageUrl
-    idleSeconds = $IdleSeconds
-    gpuMemory = 'Best-effort per-process Windows GPU Process Memory counters. When the OS/driver does not expose a reliable mapping, available=false is recorded instead of zero.'
-    network = 'Best-effort Ghosium-owned TCP/UDP endpoint snapshots, including state and unique remote-address counts. This is connection activity, not byte-level packet attribution.'
-    processIo = 'ReadTransferCount/WriteTransferCount are process-wide I/O counters and are not presented as network-byte counters.'
-  }
-  startup = [ordered]@{
-    cold = $cold
-    warm = $warm
-  }
-  tabs = @($oneTab, $fiveTabs, $tenTabs)
+
+  $result | ConvertTo-Json -Depth 16 | Set-Content $OutputPath -Encoding utf8
+  Write-Host "Ghosium benchmark written to $OutputPath"
+} finally {
+  Stop-BenchmarkOwnedProcesses
+  Remove-Item $ProfileRoot -Recurse -Force -ErrorAction SilentlyContinue
 }
-
-$result | ConvertTo-Json -Depth 16 | Set-Content $OutputPath -Encoding utf8
-Write-Host "Ghosium benchmark written to $OutputPath"
