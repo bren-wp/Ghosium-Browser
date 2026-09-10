@@ -31,33 +31,27 @@ foreach ($relative in $requiredFiles) {
 
 $tabStringsPath = Join-Path $sourceRootResolved 'components/new_or_sad_tab_strings.grdp'
 $tabStrings = [IO.File]::ReadAllText($tabStringsPath)
+try {
+  [xml]$tabDocument = $tabStrings
+} catch {
+  throw "Pinned tab/public GRIT is not valid XML: $($_.Exception.Message)"
+}
+
 $forbiddenBrand = [regex]::new(
   '(?i)(?:Google\s+Chrome|Google\s+Chromium|Chromium Browser|Chrome Web Store|\bChromium(?=\p{Ll}|\b)|\bChrome(?=\p{Ll}|\b))'
 )
 
-function Get-GritMessageBodies {
+function Get-GritMessageTexts {
   param(
-    [Parameter(Mandatory = $true)][string]$Text,
+    [Parameter(Mandatory = $true)][System.Xml.XmlDocument]$Document,
     [Parameter(Mandatory = $true)][string]$MessageId
   )
 
-  $escaped = [regex]::Escape($MessageId)
-  $matches = [regex]::Matches(
-    $Text,
-    '(?s)<message\b[^>]*name="' + $escaped + '"[^>]*>(?<body>.*?)</message>'
-  )
-  if ($matches.Count -lt 1) {
+  $nodes = @($Document.SelectNodes("//message[@name='$MessageId']"))
+  if ($nodes.Count -lt 1) {
     throw "Expected tab/public message is missing from pinned source: $MessageId"
   }
-  return @($matches | ForEach-Object { $_.Groups['body'].Value })
-}
-
-function Get-VisibleText {
-  param([Parameter(Mandatory = $true)][AllowEmptyString()][string]$Body)
-
-  return [System.Net.WebUtility]::HtmlDecode(
-    [regex]::Replace($Body, '<[^>]+>', '')
-  ).Trim()
+  return @($nodes | ForEach-Object { [string]$_.InnerText })
 }
 
 $titleIds = @(
@@ -74,14 +68,14 @@ $publicBrandIds = @(
 
 $evidenceMessages = [System.Collections.Generic.List[object]]::new()
 foreach ($messageId in @($titleIds + $publicBrandIds)) {
-  foreach ($body in Get-GritMessageBodies -Text $tabStrings -MessageId $messageId) {
-    $visible = Get-VisibleText -Body $body
+  foreach ($messageText in Get-GritMessageTexts -Document $tabDocument -MessageId $messageId) {
+    $visible = ([regex]::Replace($messageText, '\s+', ' ')).Trim()
     if ($forbiddenBrand.IsMatch($visible)) {
       throw "Public tab/crash/incognito branding leak remains in ${messageId}: $visible"
     }
     $evidenceMessages.Add([pscustomobject]@{
       id = $messageId
-      text = ([regex]::Replace($visible, '\s+', ' ')).Trim()
+      text = $visible
     })
   }
 }
