@@ -6,6 +6,10 @@ const defaults = Object.freeze({
   reduceEffects: false,
 });
 
+const settingKeys = Object.freeze(Object.keys(defaults));
+const body = document.body;
+const nav = document.querySelector('.product-nav');
+const status = document.querySelector('.status');
 let state = {...defaults};
 
 function normalize(settings) {
@@ -20,12 +24,10 @@ function normalize(settings) {
 
 function apply(settings) {
   state = normalize(settings);
-  document.body.dataset.accent = state.accent;
-  document.body.classList.toggle('compact-mode', state.compactMode);
-  document.body.classList.toggle('reduce-effects', state.reduceEffects);
+  body.dataset.accent = state.accent;
+  body.classList.toggle('compact-mode', state.compactMode);
+  body.classList.toggle('reduce-effects', state.reduceEffects);
 
-  const nav = document.querySelector('.product-nav');
-  const status = document.querySelector('.status');
   if (nav) nav.hidden = !state.showTopNav;
   if (status) status.hidden = !state.showStatus;
 }
@@ -41,11 +43,15 @@ async function initialize() {
 
 chrome.storage.onChanged.addListener((changes, areaName) => {
   if (areaName !== 'local') return;
+
   const next = {...state};
-  for (const key of Object.keys(defaults)) {
-    if (changes[key]) next[key] = changes[key].newValue;
+  let relevantChange = false;
+  for (const key of settingKeys) {
+    if (!Object.hasOwn(changes, key)) continue;
+    next[key] = changes[key].newValue;
+    relevantChange = true;
   }
-  apply(next);
+  if (relevantChange) apply(next);
 });
 
 void initialize();
