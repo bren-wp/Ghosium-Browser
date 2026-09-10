@@ -35,10 +35,13 @@ if ([int]$policy.schemaVersion -ne 1) {
 function Test-ExcludedSourcePath {
   param([Parameter(Mandatory = $true)][string]$RelativePath)
 
-  if ($RelativePath -match '(^|/)(third_party|test|tests|testing|tools|android|ash|chromeos)(/|$)') {
+  if ($RelativePath -match '(^|/)(third_party|test|tests|testing|tools|android|ash|chromeos|ios)(/|$)') {
     return $true
   }
-  if ($RelativePath -match '(?i)(^|/)google_chrome[^/]*($|/)' -or
+
+  $fileName = [IO.Path]::GetFileName($RelativePath)
+  if ($fileName -match '(?i)chromeos' -or
+      $RelativePath -match '(?i)(^|/)google_chrome[^/]*($|/)' -or
       $RelativePath -match '(?i)(^|/)chrome_for_testing[^/]*($|/)') {
     return $true
   }
@@ -306,9 +309,7 @@ if ($LASTEXITCODE -ne 0) {
   throw 'Unable to enumerate public WebUI resources during complete public-branding verification.'
 }
 
-$scriptLiteralPattern = [regex]::new(@'
-(?s)(?<quote>["'`])(?<value>(?:\\.|(?!\k<quote>).)*?)\k<quote>
-'@.Trim())
+$scriptLiteralPattern = [regex]::new('(?s)(?<quote>["''`])(?<value>(?:\\.|(?!\k<quote>).)*?)\k<quote>')
 
 foreach ($relative in @($webUiFiles | Sort-Object -Unique)) {
   if ([string]::IsNullOrWhiteSpace($relative) -or (Test-ExcludedSourcePath -RelativePath $relative)) {
@@ -341,10 +342,13 @@ foreach ($relative in @($webUiFiles | Sort-Object -Unique)) {
     continue
   }
 
-  foreach ($literal in $scriptLiteralPattern.Matches($withoutBlockComments)) {
+  $scriptScanText = (($withoutBlockComments -split "`n") | ForEach-Object {
+    if ($_.TrimStart().StartsWith('//')) { '' } else { $_ }
+  }) -join "`n"
+  foreach ($literal in $scriptLiteralPattern.Matches($scriptScanText)) {
     $value = $literal.Groups['value'].Value
     if ($forbiddenLiteralBrand.IsMatch($value)) {
-      Add-Violation -Path $relative -Surface 'webui-literal' -Identifier '<literal>' -Line (Get-LineNumber -Text $withoutBlockComments -Offset $literal.Index) -Text $value
+      Add-Violation -Path $relative -Surface 'webui-literal' -Identifier '<literal>' -Line (Get-LineNumber -Text $scriptScanText -Offset $literal.Index) -Text $value
     }
   }
 }
