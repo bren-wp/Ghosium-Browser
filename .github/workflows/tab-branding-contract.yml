@@ -1,0 +1,128 @@
+name: Ghosium Tab Branding Contract
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'ENGINE_SOURCE_REVISION'
+      - 'engine/branding/**'
+      - 'scripts/rewrite-engine-public-branding-complete.ps1'
+      - 'scripts/verify-engine-tab-branding.ps1'
+      - '.github/workflows/tab-branding-contract.yml'
+  push:
+    branches:
+      - main
+    paths:
+      - 'ENGINE_SOURCE_REVISION'
+      - 'engine/branding/**'
+      - 'scripts/rewrite-engine-public-branding-complete.ps1'
+      - 'scripts/verify-engine-tab-branding.ps1'
+      - '.github/workflows/tab-branding-contract.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  tab-branding:
+    name: Verify Ghosium tab crash and incognito branding
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout Ghosium tooling
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Validate tab-branding tooling
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          foreach ($path in @(
+            'scripts/rewrite-engine-public-branding-complete.ps1',
+            'scripts/verify-engine-tab-branding.ps1'
+          )) {
+            $tokens = $null
+            $errors = $null
+            [void][System.Management.Automation.Language.Parser]::ParseFile(
+              (Resolve-Path $path), [ref]$tokens, [ref]$errors)
+            if ($errors.Count -gt 0) {
+              $errors | ForEach-Object { Write-Error $_.Message }
+              throw "PowerShell parser errors found in $path"
+            }
+          }
+
+      - name: Sparse checkout pinned Chromium tab surfaces
+        shell: bash
+        run: |
+          set -euo pipefail
+          src="${RUNNER_TEMP}/ghosium-tab-branding-source"
+          revision="$(tr -d '\r\n ' < ENGINE_SOURCE_REVISION)"
+
+          git init "$src"
+          git -C "$src" remote add origin https://github.com/chromium/chromium.git
+          git -C "$src" config core.sparseCheckout true
+          mkdir -p "$src/.git/info"
+          cat > "$src/.git/info/sparse-checkout" <<'EOF'
+          /components/new_or_sad_tab_strings.grdp
+          /chrome/browser/ui/search/search_tab_helper.cc
+          /chrome/browser/ui/webui/ntp/new_tab_ui.cc
+          /chrome/browser/ui/webui/new_tab_page/new_tab_page_ui.cc
+          EOF
+
+          git -C "$src" fetch --depth=1 --filter=blob:none origin "$revision"
+          git -C "$src" checkout --detach FETCH_HEAD
+          test "$(git -C "$src" rev-parse HEAD)" = "$revision"
+          echo "TAB_ENGINE_SRC=$src" >> "$GITHUB_ENV"
+
+      - name: Prove pinned upstream leak anchors
+        shell: bash
+        run: |
+          set -euo pipefail
+          strings="$TAB_ENGINE_SRC/components/new_or_sad_tab_strings.grdp"
+          grep -F 'Restart Chromium' "$strings" >/dev/null
+          grep -F 'Chromium <ph name="BEGIN_EMPHASIS">' "$strings" >/dev/null
+          grep -F 'IDS_NEW_TAB_TITLE' "$strings" >/dev/null
+          grep -F 'IDS_NEW_INCOGNITO_TAB_TITLE' "$strings" >/dev/null
+          grep -F 'IDS_DOWNLOAD_TAB_TITLE' "$strings" >/dev/null
+          grep -F 'IDS_SAD_TAB_TITLE' "$strings" >/dev/null
+
+      - name: Apply Ghosium public-message branding twice
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          ./scripts/rewrite-engine-public-branding-complete.ps1 -SourceRoot $env:TAB_ENGINE_SRC
+          $firstDiff = (& git -C $env:TAB_ENGINE_SRC diff --binary) -join "`n"
+          ./scripts/rewrite-engine-public-branding-complete.ps1 -SourceRoot $env:TAB_ENGINE_SRC
+          $secondDiff = (& git -C $env:TAB_ENGINE_SRC diff --binary) -join "`n"
+          if ($firstDiff -ne $secondDiff) {
+            throw 'Complete public-branding rewrite is not idempotent on tab/crash/incognito surfaces.'
+          }
+          if ([string]::IsNullOrWhiteSpace($firstDiff)) {
+            throw 'Pinned tab-branding fixture unexpectedly required no Ghosium rewrite.'
+          }
+
+      - name: Verify tab titles and public branding
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          New-Item -ItemType Directory -Force -Path 'artifacts/tab-branding' | Out-Null
+          $evidence = Join-Path $PWD 'artifacts/tab-branding/GHOSIUM-TAB-BRANDING.json'
+          ./scripts/verify-engine-tab-branding.ps1 `
+            -SourceRoot $env:TAB_ENGINE_SRC `
+            -EvidencePath $evidence
+          Get-Content $evidence -Raw
+          git -C $env:TAB_ENGINE_SRC diff --check
+          if (git -C $env:TAB_ENGINE_SRC status --porcelain=v1 -- third_party) {
+            throw 'Tab-branding transform modified third_party source.'
+          }
+
+      - name: Upload tab-branding evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: ghosium-tab-branding-evidence
+          path: artifacts/tab-branding/GHOSIUM-TAB-BRANDING.json
+          if-no-files-found: error
