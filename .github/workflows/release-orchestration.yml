@@ -1,10 +1,9 @@
-name: Ghosium Release Orchestration
+name: Ghosium Production Release Promotion
 
 on:
   push:
     branches:
       - main
-      - 'ghosium/release/**'
     paths:
       - '.release/*.request'
 
@@ -14,73 +13,12 @@ permissions:
   pull-requests: read
 
 concurrency:
-  group: ghosium-release-orchestration-${{ github.ref }}
+  group: ghosium-production-release-${{ github.sha }}
   cancel-in-progress: false
 
 jobs:
-  dispatch-candidate:
-    name: Validate marker branch and dispatch exact candidate
-    if: startsWith(github.ref, 'refs/heads/ghosium/release/')
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-
-    steps:
-      - name: Checkout release marker branch
-        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
-        with:
-          persist-credentials: false
-          fetch-depth: 0
-
-      - name: Require exact marker-only release branch
-        shell: bash
-        run: |
-          set -euo pipefail
-          version="$(tr -d '\r\n ' < VERSION)"
-          [[ "$version" =~ ^0\.[0-9]+\.[0-9]+$ ]] || { echo "Invalid Ghosium VERSION: $version" >&2; exit 1; }
-
-          branch="ghosium/release/${version}"
-          tag="ghosium-v${version}"
-          marker=".release/${tag}.request"
-          [[ "$GITHUB_REF_NAME" == "$branch" ]] || { echo "Release branch must be $branch." >&2; exit 1; }
-          [[ -f "$marker" ]] || { echo "Required release marker is missing: $marker" >&2; exit 1; }
-          [[ "$(tr -d '\r\n ' < "$marker")" == "$tag" ]] || { echo 'Release marker content mismatch.' >&2; exit 1; }
-
-          git fetch --no-tags origin main
-          mapfile -t changed < <(git diff --name-only origin/main...HEAD | sed '/^$/d')
-          if (( ${#changed[@]} != 1 )) || [[ "${changed[0]}" != "$marker" ]]; then
-            echo 'Candidate release branch must differ from main by exactly one release marker.' >&2
-            printf 'changed: %s\n' "${changed[@]}" >&2
-            exit 1
-          fi
-
-          echo "GHOSIUM_VERSION=$version" >> "$GITHUB_ENV"
-          echo "GHOSIUM_RELEASE_BRANCH=$branch" >> "$GITHUB_ENV"
-          echo "GHOSIUM_TAG=$tag" >> "$GITHUB_ENV"
-
-      - name: Dispatch canonical full-source candidate
-        env:
-          GH_TOKEN: ${{ github.token }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          if gh release view "$GHOSIUM_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            echo "Immutable release $GHOSIUM_TAG already exists; refusing duplicate candidate." >&2
-            exit 1
-          fi
-
-          runs="$(gh api --method GET "/repos/${GITHUB_REPOSITORY}/actions/workflows/full-source-windows-build.yml/runs" -f branch="$GHOSIUM_RELEASE_BRANCH" -f event='workflow_dispatch' -f per_page='100')"
-          existing="$(jq -r --arg sha "$GITHUB_SHA" '[.workflow_runs[] | select(.head_sha == $sha) | select(.status == "queued" or .status == "in_progress" or (.status == "completed" and .conclusion == "success"))] | length' <<<"$runs")"
-          if [[ "$existing" != '0' ]]; then
-            echo "Canonical candidate already exists for exact head $GITHUB_SHA; no duplicate dispatch required."
-            exit 0
-          fi
-
-          gh workflow run full-source-windows-build.yml --ref "$GHOSIUM_RELEASE_BRANCH" --repo "$GITHUB_REPOSITORY"
-          echo "Dispatched canonical Ghosium $GHOSIUM_VERSION candidate for exact head $GITHUB_SHA."
-
   dispatch-production:
     name: Verify promoted candidate and dispatch production
-    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 20
 
@@ -168,5 +106,9 @@ jobs:
             exit 0
           fi
 
-          gh workflow run full-source-windows-build.yml --ref main --repo "$GITHUB_REPOSITORY"
+          gh api --method POST \
+            -H 'Accept: application/vnd.github+json' \
+            -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "/repos/${GITHUB_REPOSITORY}/actions/workflows/full-source-windows-build.yml/dispatches" \
+            -f ref='main'
           echo "Dispatched canonical GitHub production build for Ghosium $GHOSIUM_VERSION from exact main head $GITHUB_SHA."
