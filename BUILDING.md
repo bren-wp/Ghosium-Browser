@@ -2,11 +2,9 @@
 
 ## Current baseline
 
-The active product version is `0.0.3`. This is the only active version documented for the current Ghosium product line.
 
 Ghosium Browser's canonical production path is built from the exact pinned browser-engine source revision in `ENGINE_SOURCE_REVISION` with the exact `DEPOT_TOOLS_REVISION`. Production builds must not use floating branches, moving tags, precompiled browser snapshots or unreviewed local source edits.
 
-Earlier GitHub Preview artifacts remain a separate release class and do not establish canonical full-source production evidence.
 
 ## Canonical build chain
 
@@ -55,5 +53,3 @@ Ghosium-Browser-Portable.exe
 Upstream GN/Ninja target names and source identifiers may remain internally where required by the build graph. They are implementation details and must not become public product branding.
 
 ## Release rule
-
-Ghosium Browser 0.0.3 may be published as canonical production only after the exact intended source tree, full-source evidence, runtime/performance evidence, canonical Setup/Portable provenance and required signing validation have passed. GitHub publication must not be inferred from a candidate branch or earlier Preview artifact.

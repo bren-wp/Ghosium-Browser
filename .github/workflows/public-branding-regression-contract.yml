@@ -41,7 +41,6 @@ jobs:
           $ErrorActionPreference = 'Stop'
           foreach ($path in @(
             'scripts/rewrite-engine-public-branding-complete.ps1',
-            'scripts/verify-engine-public-branding-complete.ps1'
           )) {
             $tokens = $null
             $errors = $null
@@ -53,7 +52,6 @@ jobs:
             }
           }
 
-      - name: Sparse checkout pinned printing GRIT fixture
         shell: bash
         run: |
           set -euo pipefail
@@ -107,7 +105,6 @@ jobs:
             throw 'Translator example metadata was modified by Ghosium branding.'
           }
 
-      - name: Verify no public browser-brand leak remains
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'

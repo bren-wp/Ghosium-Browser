@@ -54,8 +54,6 @@ function Get-GritMessageTexts {
 
   # GRIT <ex> nodes are translator examples attached to placeholders. They are
   # authoring metadata and never render as product UI. Remove them from a clone
-  # before collecting InnerText so the verifier evaluates only runtime-visible
-  # message text and remains symmetric with the public-branding rewrite.
   $texts = [System.Collections.Generic.List[string]]::new()
   foreach ($node in $nodes) {
     $runtimeNode = $node.CloneNode($true)

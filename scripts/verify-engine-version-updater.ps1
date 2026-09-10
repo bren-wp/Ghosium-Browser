@@ -67,6 +67,9 @@ foreach ($required in @(
   'windows',
   'stable',
   'available_version.CompareTo(current_version) <= 0',
+  'base::GetSecureTempDirectory(&secure_temp_dir)',
+  'base::CreateTemporaryDirInDir(',
+  'FILE_PATH_LITERAL("session-")',
   'Ghosium-Browser-Setup.exe',
   'expected_size_',
   'crypto::hash::HashFile',
@@ -100,7 +103,9 @@ foreach ($forbidden in @(
   'curl.exe',
   'WINHTTP_ACCESS_TYPE_NO_PROXY',
   'false /* force_verify_in_dev_builds */',
-  'base::EndsWith(url.path_piece(), "/Ghosium-Browser-Setup.exe"'
+  'base::EndsWith(url.path_piece(), "/Ghosium-Browser-Setup.exe"',
+  'base::GetTempDir(&temp_dir)',
+  'update_dir_ = temp_dir.Append(FILE_PATH_LITERAL("Brendigo"))'
 )) {
   if ($source -match [regex]::Escape($forbidden)) {
     throw "Ghosium updater source contains a forbidden dependency or legacy/loose trust path: $forbidden"
@@ -117,16 +122,21 @@ if ($manifestRedirectHook -lt 0 -or $manifestDownload -lt 0 -or
   throw 'Ghosium updater must install redirect rejection before starting manifest and Setup downloads.'
 }
 
+$secureTemp = $source.IndexOf('base::GetSecureTempDirectory(&secure_temp_dir)')
+$sessionDir = $source.IndexOf('base::CreateTemporaryDirInDir(')
 $hashCheck = $source.IndexOf('crypto::hash::HashFile')
 $publisherCheck = $source.IndexOf('base::win::IsBinaryTrusted')
 $identityCheck = $source.IndexOf('FileVersionInfo::CreateFileVersionInfo(setup_path_)')
 $versionBinding = $source.IndexOf('setup_product_version != available_version_')
 $launch = $source.IndexOf('base::LaunchProcess')
-if ($hashCheck -lt 0 -or $publisherCheck -lt 0 -or $identityCheck -lt 0 -or
+if ($secureTemp -lt 0 -or $sessionDir -lt 0 -or $setupDownload -lt 0 -or
+    $hashCheck -lt 0 -or $publisherCheck -lt 0 -or $identityCheck -lt 0 -or
     $versionBinding -lt 0 -or $launch -lt 0 -or
-    $hashCheck -gt $launch -or $publisherCheck -gt $launch -or
-    $identityCheck -gt $launch -or $versionBinding -gt $launch) {
-  throw 'Ghosium updater must verify SHA-256, Authenticode publisher and signed Setup identity/version before launch.'
+    $secureTemp -gt $sessionDir -or $sessionDir -gt $setupDownload -or
+    $setupDownload -gt $hashCheck -or $hashCheck -gt $publisherCheck -or
+    $publisherCheck -gt $identityCheck -or $identityCheck -gt $versionBinding -or
+    $versionBinding -gt $launch) {
+  throw 'Ghosium updater must isolate secure staging before download, then verify SHA-256, Authenticode publisher and signed Setup identity/version before launch.'
 }
 
 $thirdPartyChanges = & git -C $sourceRootResolved status --porcelain=v1 -- third_party
@@ -137,4 +147,4 @@ if ($thirdPartyChanges) {
   throw 'Ghosium updater transformation modified third_party sources.'
 }
 
-Write-Host 'Ghosium native Windows VersionUpdater: exact host/path/port, no redirects, SHA-256, Authenticode and signed PE anti-rollback binding: OK'
+Write-Host 'Ghosium native Windows VersionUpdater: exact host/path/port, no redirects, isolated secure staging, SHA-256, Authenticode and signed PE anti-rollback binding: OK'

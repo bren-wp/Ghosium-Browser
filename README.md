@@ -4,10 +4,6 @@
 
 # Ghosium Browser 0.0.3
 
-**Ghosium Browser by Brendigo** is a Windows x64 browser. The active product version is **0.0.3**.
-
-The current branch is the canonical full-source production candidate. Publication is allowed only after the exact source-build, branding, privacy, performance, installer, signing, provenance and updater contracts pass. Earlier GitHub Preview artifacts are a separate release class and are not used to satisfy canonical production gates.
-
 ## Product identity
 
 - Product: **Ghosium Browser**
@@ -42,13 +38,13 @@ The native New Tab uses the Ghosium product mark, neutral Ghosium-owned search c
 
 ## Privacy and security
 
-0.0.3 uses stronger native defaults for new/default profiles: third-party cookies blocked, search suggestions disabled, speculative network prediction/preloading disabled, remote alternate-error pages disabled and online spelling-service upload required to remain disabled by default.
-
 Security boundaries remain mandatory: Safe Browsing, TLS/certificate validation, browser/renderer/GPU sandboxing, site/process isolation, extension verification and update hash/signature/publisher validation must not be weakened for performance.
 
-## Performance
+## Performance and stability
 
 Native Memory Saver remains enabled by default for profiles without an explicit selection and legacy background-app keep-alive is disabled. New Tab remote Doodle initialization and unnecessary NTP prefetch/prerender paths are removed or disabled.
+
+Performance tooling no longer terminates arbitrary pre-existing browser sessions by executable name. Ghosium benchmarks refuse to run over an existing user session and restrict cleanup to process trees rooted in benchmark-created launcher processes. Cross-browser comparisons skip browsers that are already running instead of force-closing them.
 
 Numerical performance claims remain reserved for verified `GHOSIUM-PERFORMANCE.json` evidence from the controlled full-source benchmark workflow.
 
@@ -64,8 +60,6 @@ Ghosium-Browser-Portable.exe
 The Setup lifecycle contract requires install → runtime → same-Setup update → runtime → same-Setup uninstall verification. Canonical publication additionally requires exact source provenance, SHA-256 evidence and configured production-signing checks.
 
 ## Release status
-
-**Ghosium Browser 0.0.3 is a production candidate, not yet a canonical published release.**
 
 The checked-in stable update manifest remains fail-closed (`enabled:false`, empty SHA-256, zero size). Canonical publication requires exact full-source candidate evidence, runtime/performance verification, canonical Setup/Portable provenance, production signing and release-manifest binding.
 

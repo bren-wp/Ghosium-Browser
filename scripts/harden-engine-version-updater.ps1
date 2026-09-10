@@ -150,6 +150,54 @@ if ($updated.Contains($privateAnchor)) {
   throw 'Ghosium updater class layout changed; cannot install redirect rejection handlers.'
 }
 
+$oldTempBlock = @'
+    base::FilePath temp_dir;
+    if (!base::GetTempDir(&temp_dir)) {
+      Fail(FAILED_DOWNLOAD,
+           u"Ghosium could not access the Windows temporary directory.");
+      return;
+    }
+    update_dir_ = temp_dir.Append(FILE_PATH_LITERAL("Brendigo"))
+                      .Append(FILE_PATH_LITERAL("Ghosium Browser Update"));
+    setup_path_ = update_dir_.Append(
+        FILE_PATH_LITERAL("Ghosium-Browser-Setup.exe"));
+    if (!base::CreateDirectory(update_dir_)) {
+      Fail(FAILED_DOWNLOAD,
+           u"Ghosium could not prepare the update directory.");
+      return;
+    }
+    base::DeleteFile(setup_path_);
+'@
+$secureTempBlock = @'
+    base::FilePath secure_temp_dir;
+    if (!base::GetSecureTempDirectory(&secure_temp_dir)) {
+      Fail(FAILED_DOWNLOAD,
+           u"Ghosium could not access a secure Windows temporary directory.");
+      return;
+    }
+    const base::FilePath update_parent =
+        secure_temp_dir.Append(FILE_PATH_LITERAL("Brendigo"))
+            .Append(FILE_PATH_LITERAL("Ghosium Browser Update"));
+    if (!base::CreateDirectory(update_parent)) {
+      Fail(FAILED_DOWNLOAD,
+           u"Ghosium could not prepare the update parent directory.");
+      return;
+    }
+    if (!base::CreateTemporaryDirInDir(
+            update_parent, FILE_PATH_LITERAL("session-"), &update_dir_)) {
+      Fail(FAILED_DOWNLOAD,
+           u"Ghosium could not create an isolated update session directory.");
+      return;
+    }
+    setup_path_ = update_dir_.Append(
+        FILE_PATH_LITERAL("Ghosium-Browser-Setup.exe"));
+'@
+if ($updated.Contains($oldTempBlock)) {
+  $updated = $updated.Replace($oldTempBlock, $secureTempBlock)
+} elseif (!$updated.Contains($secureTempBlock)) {
+  throw 'Ghosium updater temporary-directory layout changed; cannot install secure per-session staging.'
+}
+
 $oldComment = @'
     // IsBinaryTrusted validates Authenticode and, for production builds,
     // requires the downloaded Setup publisher subject to match the running
@@ -230,6 +278,9 @@ foreach ($required in @(
   'SetOnRedirectCallback',
   'OnManifestRedirect',
   'OnSetupRedirect',
+  'base::GetSecureTempDirectory(&secure_temp_dir)',
+  'base::CreateTemporaryDirInDir(',
+  'FILE_PATH_LITERAL("session-")',
   'base::win::IsBinaryTrusted(setup_path_, true,',
   'true /* force_verify_in_dev_builds */',
   'FileVersionInfo::CreateFileVersionInfo(setup_path_)',
@@ -247,14 +298,23 @@ if ($verify.Contains('false /* force_verify_in_dev_builds */')) {
 if ($verify.Contains('base::EndsWith(url.path_piece(), "/Ghosium-Browser-Setup.exe"')) {
   throw 'Ghosium updater still accepts arbitrary same-host Setup paths instead of the canonical Windows package path.'
 }
+if ($verify.Contains('base::GetTempDir(&temp_dir)') -or
+    $verify.Contains('update_dir_ = temp_dir.Append(FILE_PATH_LITERAL("Brendigo"))')) {
+  throw 'Ghosium updater still uses the shared generic temporary download path.'
+}
 
+$secureTempIndex = $verify.IndexOf('base::GetSecureTempDirectory(&secure_temp_dir)')
+$sessionDirIndex = $verify.IndexOf('base::CreateTemporaryDirInDir(')
+$downloadIndex = $verify.IndexOf('setup_loader_->DownloadToFile')
 $hashIndex = $verify.IndexOf('crypto::hash::HashFile')
 $trustIndex = $verify.IndexOf('base::win::IsBinaryTrusted(setup_path_, true,')
 $identityIndex = $verify.IndexOf('FileVersionInfo::CreateFileVersionInfo(setup_path_)')
 $launchIndex = $verify.IndexOf('base::LaunchProcess')
-if ($hashIndex -lt 0 -or $trustIndex -lt 0 -or $identityIndex -lt 0 -or $launchIndex -lt 0 -or
+if ($secureTempIndex -lt 0 -or $sessionDirIndex -lt 0 -or $downloadIndex -lt 0 -or
+    $hashIndex -lt 0 -or $trustIndex -lt 0 -or $identityIndex -lt 0 -or $launchIndex -lt 0 -or
+    $secureTempIndex -gt $downloadIndex -or $sessionDirIndex -gt $downloadIndex -or
     $hashIndex -gt $launchIndex -or $trustIndex -gt $launchIndex -or $identityIndex -gt $launchIndex) {
-  throw 'Ghosium updater must verify hash, Authenticode publisher and signed PE identity/version before launching Setup.'
+  throw 'Ghosium updater must create isolated secure staging before download and verify hash, publisher and signed identity before launch.'
 }
 
 $thirdPartyChanges = & git -C $sourceRootResolved status --porcelain=v1 -- third_party
@@ -265,4 +325,4 @@ if ($thirdPartyChanges) {
   throw 'Ghosium updater hardening modified third_party sources; refusing to continue.'
 }
 
-Write-Host 'Ghosium updater hardening: exact HTTPS package path, no redirects, mandatory Authenticode and signed PE identity/version binding.'
+Write-Host 'Ghosium updater hardening: exact HTTPS package path, no redirects, secure per-session staging, mandatory Authenticode and signed PE identity/version binding.'

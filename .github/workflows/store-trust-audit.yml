@@ -44,11 +44,27 @@ jobs:
           find store-web -type f -name '*.php' -print0 | xargs -0 -n1 php -l
           php -l scripts/verify-store.php
 
-      - name: Validate Store JSON data
+      - name: Validate Store JSON data and canonical package origin
         shell: bash
         run: |
           set -euo pipefail
           php -r 'foreach (glob("store-web/storage/data/*.json") as $file) { json_decode(file_get_contents($file), true, 64, JSON_THROW_ON_ERROR); echo "valid $file\n"; }'
+          php -r '
+            require "store-web/lib/store.php";
+            if (!store_valid_https_url("https://store.ghosium.com:443/packages/example.crx", "store.ghosium.com")) {
+              fwrite(STDERR, "Canonical HTTPS/443 Store origin was rejected.\n");
+              exit(1);
+            }
+            if (store_valid_https_url("https://store.ghosium.com:8443/packages/example.crx", "store.ghosium.com")) {
+              fwrite(STDERR, "Non-standard Store package port was accepted.\n");
+              exit(1);
+            }
+            if (store_valid_https_url("http://store.ghosium.com/packages/example.crx", "store.ghosium.com")) {
+              fwrite(STDERR, "Insecure Store package URL was accepted.\n");
+              exit(1);
+            }
+            echo "Canonical Store package HTTPS origin: OK\n";
+          '
 
       - name: Verify package trust and bundled manifests
         shell: bash
@@ -63,7 +79,7 @@ jobs:
           grep -Fq 'Options -Indexes' store-web/packages/.htaccess
           grep -Fq 'application/x-chrome-extension' store-web/packages/.htaccess
 
-      - name: Smoke test Store APIs
+      - name: Smoke test Store APIs and trust cache policy
         shell: bash
         run: |
           set -euo pipefail
@@ -73,11 +89,48 @@ jobs:
           sleep 1
 
           curl --fail --silent --show-error http://127.0.0.1:8100/ | grep -Fq 'Ghosium Store'
-          curl --fail --silent --show-error http://127.0.0.1:8100/api/catalog.php | grep -Fq '"schemaVersion":1'
-          curl --fail --silent --show-error 'http://127.0.0.1:8100/api/update.php?id=ghosium-privacy&version=0.1.6' | grep -Fq '"updateAvailable":false'
-          curl --fail --silent --show-error http://127.0.0.1:8100/api/revocations.php | grep -Fq '"revocations":[]'
-          curl --fail --silent --show-error http://127.0.0.1:8100/api/keys.php | grep -Fq '"keys":[]'
 
-          status=$(curl --silent --output /tmp/store-invalid.json --write-out '%{http_code}' 'http://127.0.0.1:8100/api/update.php?id=BAD%20ID&version=x')
+          curl --fail --silent --show-error \
+            --dump-header /tmp/catalog.headers.raw \
+            --output /tmp/catalog.json \
+            http://127.0.0.1:8100/api/catalog.php
+          tr -d '\r' < /tmp/catalog.headers.raw > /tmp/catalog.headers
+          grep -Fq '"schemaVersion":1' /tmp/catalog.json
+          grep -Fqi 'Cache-Control: public, max-age=60, must-revalidate' /tmp/catalog.headers
+          grep -Fqi 'X-Content-Type-Options: nosniff' /tmp/catalog.headers
+          grep -Fqi 'Access-Control-Allow-Origin: https://store.ghosium.com' /tmp/catalog.headers
+
+          curl --fail --silent --show-error \
+            --dump-header /tmp/revocations.headers.raw \
+            --output /tmp/revocations.json \
+            http://127.0.0.1:8100/api/revocations.php
+          tr -d '\r' < /tmp/revocations.headers.raw > /tmp/revocations.headers
+          grep -Fq '"revocations":[]' /tmp/revocations.json
+          grep -Fqi 'Cache-Control: public, max-age=60, must-revalidate' /tmp/revocations.headers
+
+          curl --fail --silent --show-error \
+            --dump-header /tmp/keys.headers.raw \
+            --output /tmp/keys.json \
+            http://127.0.0.1:8100/api/keys.php
+          tr -d '\r' < /tmp/keys.headers.raw > /tmp/keys.headers
+          grep -Fq '"keys":[]' /tmp/keys.json
+          grep -Fqi 'Cache-Control: public, max-age=60, must-revalidate' /tmp/keys.headers
+
+          curl --fail --silent --show-error \
+            'http://127.0.0.1:8100/api/update.php?id=ghosium-privacy&version=0.1.6' |
+            grep -Fq '"updateAvailable":false'
+
+          status=$(curl --silent --output /tmp/store-invalid.json --write-out '%{http_code}' \
+            'http://127.0.0.1:8100/api/update.php?id=BAD%20ID&version=x')
           test "$status" = '400'
           grep -Fq '"error":"invalid_request"' /tmp/store-invalid.json
+
+          for endpoint in catalog.php keys.php revocations.php update.php; do
+            url="http://127.0.0.1:8100/api/${endpoint}"
+            if [ "$endpoint" = 'update.php' ]; then
+              url="${url}?id=ghosium-privacy&version=0.0.3"
+            fi
+            status=$(curl --silent --request POST --output /tmp/store-method.json --write-out '%{http_code}' "$url")
+            test "$status" = '405'
+            grep -Fq '"error":"method_not_allowed"' /tmp/store-method.json
+          done

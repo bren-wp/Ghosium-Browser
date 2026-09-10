@@ -5,7 +5,7 @@
   --text: #f8fafc;
   --muted: rgba(226, 232, 240, .58);
   --line: rgba(255, 255, 255, .09);
-  --glass: rgba(255, 255, 255, .05);
+  --glass: rgba(24, 23, 31, .82);
   --aurora: #8af0c7;
   --neon: #62e7d5;
   --violet: #b58cff;
@@ -62,19 +62,6 @@ a { color: inherit; text-decoration: none; }
   background-size: 44px 44px;
   mask-image: radial-gradient(circle at 50% 44%, black, transparent 72%);
 }
-
-.aurora {
-  position: fixed;
-  width: 42rem;
-  height: 42rem;
-  border-radius: 999px;
-  pointer-events: none;
-  filter: blur(90px);
-  opacity: .11;
-  background: conic-gradient(from 210deg, var(--aurora), var(--neon), var(--violet), var(--aurora));
-}
-.aurora-a { left: -25rem; top: -28rem; }
-.aurora-b { right: -28rem; bottom: -30rem; }
 
 .product-nav,
 .legal-nav {
@@ -164,7 +151,6 @@ h1 span {
   border-radius: 18px;
   background: var(--glass);
   box-shadow: inset 0 1px rgba(255,255,255,.04), 0 28px 80px rgba(0,0,0,.28);
-  backdrop-filter: blur(20px);
 }
 .search:focus-within {
   border-color: color-mix(in srgb, var(--aurora) 48%, transparent);
@@ -230,11 +216,6 @@ h1 span {
 .compact-mode .search { min-height: 50px; }
 .compact-mode .status { margin-top: 10px; }
 
-.reduce-effects,
-.reduce-effects .search {
-  backdrop-filter: none;
-}
-.reduce-effects .aurora,
 .reduce-effects .shell::before {
   display: none;
 }

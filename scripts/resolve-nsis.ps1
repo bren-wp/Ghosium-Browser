@@ -88,22 +88,69 @@ function Test-Makensis {
   }
 }
 
-function Find-Makensis {
-  $command = Get-Command makensis.exe -ErrorAction SilentlyContinue
-  if ($command -and (Test-Makensis -Path $command.Source)) {
-    return $command.Source
+function Test-TrustedProgramFilesPath {
+  param([Parameter(Mandatory = $true)][string]$Path)
+
+  try {
+    $resolved = [IO.Path]::GetFullPath($Path)
+  } catch {
+    return $false
   }
 
+  $trustedRoots = @(
+    $env:ProgramFiles,
+    ${env:ProgramFiles(x86)}
+  ) | Where-Object { ![string]::IsNullOrWhiteSpace($_) } | ForEach-Object {
+    [IO.Path]::GetFullPath($_).TrimEnd('\') + '\'
+  } | Sort-Object -Unique
+
+  foreach ($root in $trustedRoots) {
+    if ($resolved.StartsWith($root, [StringComparison]::OrdinalIgnoreCase)) {
+      return $true
+    }
+  }
+  return $false
+}
+
+function Find-Makensis {
+  # Prefer canonical machine-wide NSIS locations. A PATH entry is accepted only
+  # when it resolves underneath Program Files; arbitrary user-writable PATH
+  # entries must never become part of the release toolchain trust boundary.
   foreach ($candidate in @(
     'C:\Program Files (x86)\NSIS\makensis.exe',
     'C:\Program Files\NSIS\makensis.exe'
   )) {
-    if (Test-Makensis -Path $candidate) {
-      return $candidate
+    if ((Test-TrustedProgramFilesPath -Path $candidate) -and
+        (Test-Makensis -Path $candidate)) {
+      return (Resolve-Path $candidate).Path
     }
   }
 
+  $command = Get-Command makensis.exe -ErrorAction SilentlyContinue
+  if ($command) {
+    $commandPath = [IO.Path]::GetFullPath($command.Source)
+    if ((Test-TrustedProgramFilesPath -Path $commandPath) -and
+        (Test-Makensis -Path $commandPath)) {
+      return $commandPath
+    }
+    Write-Host "Ignoring PATH makensis outside trusted Program Files roots: $commandPath"
+  }
+
   return $null
+}
+
+function Test-PinnedArchive {
+  param([Parameter(Mandatory = $true)][string]$Path)
+
+  if (!(Test-Path $Path -PathType Leaf)) {
+    return $false
+  }
+  $item = Get-Item $Path
+  if ($item.Length -lt 1MB -or $item.Length -gt 10MB) {
+    return $false
+  }
+  $actual = (Get-FileHash $Path -Algorithm SHA256).Hash.ToLowerInvariant()
+  return [string]::Equals($actual, $archiveSha256, [StringComparison]::Ordinal)
 }
 
 # Setup and Portable must always consume an icon generated from the single
@@ -127,9 +174,29 @@ if (Test-Path $extractRoot) {
   Remove-Item $extractRoot -Recurse -Force
 }
 
-& curl.exe --fail --silent --show-error --location --retry 5 --retry-all-errors --retry-delay 3 --connect-timeout 20 $archiveUrl --output $archive
-if ($LASTEXITCODE -ne 0 -or !(Test-Path $archive -PathType Leaf)) {
-  throw 'Unable to download the official NSIS 3.12 portable archive.'
+if (Test-PinnedArchive -Path $archive) {
+  Write-Host 'Reusing existing NSIS archive after exact size and SHA-256 verification.'
+} else {
+  if (Test-Path $archive) {
+    Remove-Item $archive -Force
+  }
+  & curl.exe `
+    --fail `
+    --silent `
+    --show-error `
+    --location `
+    --proto '=https' `
+    --proto-redir '=https' `
+    --retry 5 `
+    --retry-all-errors `
+    --retry-delay 3 `
+    --connect-timeout 20 `
+    --max-time 300 `
+    $archiveUrl `
+    --output $archive
+  if ($LASTEXITCODE -ne 0 -or !(Test-Path $archive -PathType Leaf)) {
+    throw 'Unable to download the official NSIS 3.12 portable archive.'
+  }
 }
 
 $archiveItem = Get-Item $archive

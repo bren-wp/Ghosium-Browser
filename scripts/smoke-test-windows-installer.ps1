@@ -53,7 +53,8 @@ $license = Join-Path $root 'LICENSE'
 $thirdPartyNotices = Join-Path $root 'THIRD_PARTY_NOTICES.md'
 $uninstallKeyPath = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\GhosiumBrowser'
 $updateDir = Join-Path $env:TEMP 'Brendigo\Ghosium Browser Update'
-$updateSetup = Join-Path $updateDir 'Ghosium-Browser-Setup.exe'
+$updateSession = Join-Path $updateDir "session-smoke-$PID"
+$updateSetup = Join-Path $updateSession 'Ghosium-Browser-Setup.exe'
 $cleanupDir = Join-Path $env:TEMP 'Brendigo\Ghosium Browser Cleanup'
 $profileSentinel = Join-Path $profile 'ghosium-update-profile-sentinel.txt'
 
@@ -229,6 +230,7 @@ if ($preexistingInstall -or $preexistingRegistration) {
 $installCompleted = $false
 $updateCompleted = $false
 $updateCleanupCompleted = $false
+$updateSessionCleanupCompleted = $false
 $runtimeBeforeUpdate = $false
 $runtimeAfterUpdate = $false
 $profilePreservedAcrossUpdate = $false
@@ -263,7 +265,10 @@ try {
   New-Item -ItemType Directory -Force -Path $profile | Out-Null
   [IO.File]::WriteAllText($profileSentinel, 'preserve-across-ghosium-update', [Text.UTF8Encoding]::new($false))
 
-  New-Item -ItemType Directory -Force -Path $updateDir | Out-Null
+  # Mirror the production updater's unique session-* staging layout rather than
+  # the historical fixed Setup path. The installed maintenance copy validates
+  # this exact directory shape before deleting the downloaded package.
+  New-Item -ItemType Directory -Force -Path $updateSession | Out-Null
   Copy-Item $setup $updateSetup -Force
   if ((Get-FileHash $updateSetup -Algorithm SHA256).Hash.ToLowerInvariant() -ne $setupHash) {
     throw 'Staged browser-update Setup hash differs from the canonical package.'
@@ -281,6 +286,12 @@ try {
     -TimeoutSeconds 60 `
     -Description 'downloaded Ghosium update Setup cleanup'
   $updateCleanupCompleted = $true
+
+  Wait-ForCondition `
+    -Condition { !(Test-Path $updateSession -PathType Container) } `
+    -TimeoutSeconds 60 `
+    -Description 'Ghosium update session directory cleanup'
+  $updateSessionCleanupCompleted = $true
 
   Assert-InstalledPayload
   [void](Assert-RegisteredInstallation)
@@ -343,6 +354,8 @@ try {
       completed = $updateCompleted
       browserUpdaterSwitches = @('/S', '/UPDATE', '/DELETESELF')
       downloadedSetupCleanupCompleted = $updateCleanupCompleted
+      sessionDirectoryCleanupCompleted = $updateSessionCleanupCompleted
+      secureSessionStaging = $true
       installedSetupRefreshed = $true
       languagePreserved = ($languageBeforeUpdate -eq $languageAfterUpdate)
       profilePreserved = $profilePreservedAcrossUpdate
