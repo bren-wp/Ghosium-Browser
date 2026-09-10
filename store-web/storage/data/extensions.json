@@ -5,7 +5,7 @@
     {
       "id": "ghosium-privacy",
       "name": "Ghosium Privacy",
-      "version": "0.0.3",
+      "version": "0.0.2",
       "manifestVersion": 3,
       "status": "built_in",
       "description": "Built-in declarative tracker protection, Ghosium new-tab experience and local customization.",
