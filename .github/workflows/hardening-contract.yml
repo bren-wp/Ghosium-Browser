@@ -5,21 +5,33 @@ on:
     branches: [main]
     paths:
       - 'installer/ghosium.nsi'
+      - 'extension/newtab.html'
+      - 'extension/newtab.css'
+      - 'extension/newtab.js'
       - 'scripts/benchmark-ghosium-windows.ps1'
       - 'scripts/benchmark-browser-comparison-windows.ps1'
       - 'scripts/resolve-nsis.ps1'
       - 'scripts/harden-engine-version-updater.ps1'
       - 'scripts/verify-engine-version-updater.ps1'
+      - 'scripts/generate-update-manifest.ps1'
+      - 'scripts/smoke-test-windows-installer.ps1'
+      - 'scripts/smoke-test-installer-contract-fixture.ps1'
       - '.github/workflows/hardening-contract.yml'
   push:
     branches: [main]
     paths:
       - 'installer/ghosium.nsi'
+      - 'extension/newtab.html'
+      - 'extension/newtab.css'
+      - 'extension/newtab.js'
       - 'scripts/benchmark-ghosium-windows.ps1'
       - 'scripts/benchmark-browser-comparison-windows.ps1'
       - 'scripts/resolve-nsis.ps1'
       - 'scripts/harden-engine-version-updater.ps1'
       - 'scripts/verify-engine-version-updater.ps1'
+      - 'scripts/generate-update-manifest.ps1'
+      - 'scripts/smoke-test-windows-installer.ps1'
+      - 'scripts/smoke-test-installer-contract-fixture.ps1'
       - '.github/workflows/hardening-contract.yml'
   workflow_dispatch:
 
@@ -48,7 +60,10 @@ jobs:
             'scripts/benchmark-browser-comparison-windows.ps1',
             'scripts/resolve-nsis.ps1',
             'scripts/harden-engine-version-updater.ps1',
-            'scripts/verify-engine-version-updater.ps1'
+            'scripts/verify-engine-version-updater.ps1',
+            'scripts/generate-update-manifest.ps1',
+            'scripts/smoke-test-windows-installer.ps1',
+            'scripts/smoke-test-installer-contract-fixture.ps1'
           )) {
             $tokens = $null
             $errors = $null
@@ -182,3 +197,70 @@ jobs:
           if 'RMDir /r' in dynamic_region:
               raise SystemExit('Dynamic update cleanup must never recursively delete a session directory.')
           print('Native updater secure staging, installer cleanup validation and trust order: OK')
+
+      - name: Verify atomic manifest and installer fixture hardening
+        shell: python
+        run: |
+          from pathlib import Path
+
+          manifest = Path('scripts/generate-update-manifest.ps1').read_text(encoding='utf-8')
+          for required in (
+              '$allowedProductVersions = @($Version, "$Version.0")',
+              "[IO.File]::GetRandomFileName()",
+              '[IO.File]::Move($tempOutput, $outputFullPath, $true)',
+              'Assert-ManifestContent -Path $tempOutput',
+              'Assert-ManifestContent -Path $outputFullPath',
+              '$finalSha256 = (Get-FileHash $resolvedSetup -Algorithm SHA256).Hash.ToLowerInvariant()',
+              'Setup changed while the update manifest was being generated',
+          ):
+              if required not in manifest:
+                  raise SystemExit(f'Atomic update-manifest invariant missing: {required}')
+          if '-notlike "$Version*"' in manifest:
+              raise SystemExit('Update manifest generator returned to wildcard PE ProductVersion matching.')
+
+          smoke = Path('scripts/smoke-test-windows-installer.ps1').read_text(encoding='utf-8')
+          for required in (
+              '$updateSession = Join-Path $updateDir "session-smoke-$PID"',
+              'sessionDirectoryCleanupCompleted = $updateSessionCleanupCompleted',
+              'secureSessionStaging = $true',
+          ):
+              if required not in smoke:
+                  raise SystemExit(f'Canonical Setup secure-session smoke invariant missing: {required}')
+
+          fixture = Path('scripts/smoke-test-installer-contract-fixture.ps1').read_text(encoding='utf-8')
+          for required in (
+              'function Test-GhosiumProductVersion',
+              '$portableProcess.WaitForExit(60000)',
+              '$smoke.update.secureSessionStaging',
+              '$smoke.update.sessionDirectoryCleanupCompleted',
+              'Remove-Item $work -Recurse -Force -ErrorAction SilentlyContinue',
+          ):
+              if required not in fixture:
+                  raise SystemExit(f'Installer fixture stability invariant missing: {required}')
+          if '-notlike "$version*"' in fixture:
+              raise SystemExit('Installer fixture returned to wildcard PE ProductVersion matching.')
+          print('Atomic manifest and installer fixture hardening: OK')
+
+      - name: Verify low-overhead New Tab rendering
+        shell: python
+        run: |
+          from pathlib import Path
+
+          html = Path('extension/newtab.html').read_text(encoding='utf-8')
+          css = Path('extension/newtab.css').read_text(encoding='utf-8')
+          js = Path('extension/newtab.js').read_text(encoding='utf-8')
+
+          if 'class="aurora ' in html:
+              raise SystemExit('Redundant fixed New Tab aurora blur layers returned.')
+          if 'backdrop-filter:' in css or 'filter: blur(' in css:
+              raise SystemExit('New Tab must not depend on full-surface blur/backdrop compositing.')
+          for required in (
+              'const settingKeys = Object.freeze(Object.keys(defaults));',
+              "const nav = document.querySelector('.product-nav');",
+              "const status = document.querySelector('.status');",
+              'Object.hasOwn(changes, key)',
+              'if (relevantChange) apply(next);',
+          ):
+              if required not in js:
+                  raise SystemExit(f'New Tab low-overhead JS invariant missing: {required}')
+          print('Low-overhead New Tab rendering/state updates: OK')
