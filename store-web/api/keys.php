@@ -10,7 +10,9 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'GET') {
 
 try {
     $trustedKeys = store_load_trusted_keys();
-    store_json_response($trustedKeys, 200, 'public, max-age=300');
+    // Key status is security-critical revocation metadata. Keep intermediary
+    // caching short and require revalidation instead of retaining stale trust.
+    store_json_response($trustedKeys, 200, 'public, max-age=60, must-revalidate');
 } catch (Throwable) {
     store_public_error();
 }

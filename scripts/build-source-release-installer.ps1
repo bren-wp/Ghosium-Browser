@@ -31,6 +31,13 @@ if ($version -notmatch '^0\.\d+\.\d+$') {
   throw "Ghosium product VERSION is invalid: '$version'"
 }
 
+function Test-GhosiumProductVersion {
+  param([Parameter(Mandatory = $true)][string]$Value)
+
+  $normalized = $Value.Trim()
+  return $normalized -eq $version -or $normalized -eq "$version.0"
+}
+
 $toolchainContractPath = Join-Path $repoRoot 'engine/build/windows-toolchain.json'
 if (!(Test-Path $toolchainContractPath -PathType Leaf)) {
   throw 'Pinned Windows toolchain contract is missing: engine/build/windows-toolchain.json'
@@ -277,20 +284,9 @@ foreach ($metadata in @(
   if ([string]$metadata.Info.FileDescription -ne $metadata.ExpectedDescription) {
     throw "$($metadata.Label) FileDescription mismatch: '$($metadata.Info.FileDescription)'"
   }
-  if ([string]$metadata.Info.ProductVersion -notlike "$version*") {
-    throw "$($metadata.Label) ProductVersion mismatch: '$($metadata.Info.ProductVersion)' expected '$version'"
+  if (!(Test-GhosiumProductVersion -Value ([string]$metadata.Info.ProductVersion))) {
+    throw "$($metadata.Label) ProductVersion mismatch: '$($metadata.Info.ProductVersion)' expected '$version' or '$version.0'"
   }
-}
-
-$setupInfo = (Get-Item $setupPath).VersionInfo
-if ([string]$setupInfo.ProductName -ne 'Ghosium Browser') {
-  throw "Canonical Setup ProductName mismatch: '$($setupInfo.ProductName)'"
-}
-if ([string]$setupInfo.CompanyName -ne 'Brendigo') {
-  throw "Canonical Setup CompanyName mismatch: '$($setupInfo.CompanyName)'"
-}
-if ([string]$setupInfo.ProductVersion -notlike "$version*") {
-  throw "Canonical Setup ProductVersion mismatch: '$($setupInfo.ProductVersion)' expected '$version'"
 }
 
 if ($RequireSigning) {
@@ -328,12 +324,28 @@ foreach ($requiredContract in @(
   '${GetOptions} $R0 "/UPDATE" $R1',
   '${GetOptions} $R0 "/UNINSTALL" $R1',
   '${GetOptions} $R0 "/DELETESELF" $R1',
-  '${GetOptions} $R0 "/CLEANUPDATE" $R1',
+  'Var GhosiumUpdateCleanupPath',
+  '${GetOptions} $R0 "/CLEANUPDATE=" $R1',
+  'GetFullPathName $R5 $GhosiumUpdateCleanupPath',
+  'StrCmp $R6 "Ghosium-Browser-Setup.exe" 0 update_cleanup_invalid',
+  'StrCmp $R7 $R8 update_cleanup_parent_verified update_cleanup_invalid',
+  'StrCmp $R7 "session-" update_cleanup_dynamic_verified update_cleanup_invalid',
+  '/S /CLEANUPDATE="$EXEPATH"',
   '!define INSTALLED_SETUP "Installer\Ghosium-Browser-Setup.exe"'
 )) {
   if (!$nsiText.Contains($requiredContract)) {
     throw "Canonical Setup lost required maintenance interface: $requiredContract"
   }
+}
+
+$dynamicCleanupStart = $nsiText.IndexOf('update_cleanup_dynamic:')
+$dynamicCleanupEnd = $nsiText.IndexOf('update_cleanup_invalid:')
+if ($dynamicCleanupStart -lt 0 -or $dynamicCleanupEnd -le $dynamicCleanupStart) {
+  throw 'Canonical Setup secure dynamic update-cleanup region is missing.'
+}
+$dynamicCleanup = $nsiText.Substring($dynamicCleanupStart, $dynamicCleanupEnd - $dynamicCleanupStart)
+if ($dynamicCleanup.Contains('RMDir /r')) {
+  throw 'Canonical Setup dynamic update cleanup must never recursively delete its session directory.'
 }
 
 $stage = Get-Content $stageReport -Raw | ConvertFrom-Json
@@ -376,7 +388,9 @@ $report = [ordered]@{
     install = $true
     updateSwitch = '/UPDATE'
     uninstallSwitch = '/UNINSTALL'
-    downloadedUpdateCleanupSwitch = '/CLEANUPDATE'
+    downloadedUpdateCleanupSwitch = '/CLEANUPDATE=<validated downloaded Setup path>'
+    sessionScopedUpdateCleanup = $true
+    recursiveDynamicCleanup = $false
     standaloneUpdaterExecutable = $false
     standaloneUninstallerExecutable = $false
   }
