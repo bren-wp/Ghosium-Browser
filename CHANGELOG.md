@@ -1,8 +1,8 @@
 # Changelog
 
-## 0.0.3 — hardening candidate
+## 0.0.2 — hardening candidate
 
-- Advanced the active development baseline to **0.0.3** without changing the exact pinned Chromium source revision.
+- Advanced the active development baseline to **0.0.2** without changing the exact pinned Chromium source revision.
 - Isolated native updater downloads into unique per-session directories under the secure Windows temporary directory.
 - Preserved exact updater host/path/port restrictions, redirect rejection, bounded downloads, SHA-256 verification, same-publisher Authenticode validation and signed PE product/company/version binding.
 - Hardened NSIS toolchain discovery so arbitrary user-writable `PATH` entries cannot become trusted release compilers.
@@ -17,4 +17,4 @@
 - Kept the checked-in stable update manifest fail-closed until canonical release evidence and signing gates succeed.
 - Kept canonical Setup + Portable packaging, exact-source provenance, runtime/performance evidence and production signing as mandatory publication gates.
 
-> Publication status: **0.0.3 is a hardening candidate.** It must not be represented as the canonical GitHub production release until the full release workflow succeeds and immutable release assets are present.
+> Publication status: **0.0.2 is a hardening candidate.** It must not be represented as the canonical GitHub production release until the full release workflow succeeds and immutable release assets are present.
