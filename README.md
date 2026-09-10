@@ -75,4 +75,4 @@ Ghosium 0.0.3 defines **38 supported product locales**. English (`en-US`) is the
 
 Ghosium Browser is distributed under the **Brendigo Proprietary Commercial Software License Agreement** in `LICENSE`. Public repository visibility does not by itself grant an open-source license to Brendigo-authored proprietary material.
 
-The upstream browser engine and every other third-party or open-source component remain governed by their own licenses. Required notices and attribution are preserved in `THIRD_PARTY_NOTICES.md` and applicable bundled legal material.
+The upstream Chromium browser engine and every other third-party or open-source component remain governed by their own licenses. Required notices and attribution are preserved in `THIRD_PARTY_NOTICES.md` and applicable bundled legal material.
