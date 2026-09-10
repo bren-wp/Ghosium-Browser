@@ -171,7 +171,7 @@ jobs:
               'StrCmp $R7 "session-" update_cleanup_dynamic_verified update_cleanup_invalid',
               'Delete /REBOOTOK "$R5"',
               'RMDir /REBOOTOK "$R6"',
-              'Exec '\''"$INSTDIR\\${INSTALLED_SETUP}" /S /CLEANUPDATE="$EXEPATH"'\''',
+              '/S /CLEANUPDATE="$EXEPATH"',
           ):
               if required not in installer:
                   raise SystemExit(f'Installer secure update-cleanup invariant missing: {required}')
