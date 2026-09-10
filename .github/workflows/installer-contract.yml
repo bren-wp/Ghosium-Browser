@@ -70,6 +70,7 @@ jobs:
             'scripts/assemble-source-release-stage.ps1',
             'scripts/build-source-release-installer.ps1',
             'scripts/smoke-test-windows-installer.ps1',
+            'scripts/smoke-test-installer-contract-fixture.ps1',
             'scripts/smoke-test-source-windows-installer.ps1',
             'scripts/generate-update-manifest.ps1'
           )) {
@@ -315,3 +316,22 @@ jobs:
         run: |
           set -euo pipefail
           git diff --check
+
+  installer-lifecycle-smoke:
+    name: Compile and verify same-Setup lifecycle
+    needs: installer-contract
+    runs-on: windows-2025
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Compile Setup and Portable and verify lifecycle
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          ./scripts/smoke-test-installer-contract-fixture.ps1

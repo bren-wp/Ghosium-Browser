@@ -3,6 +3,7 @@
 /staging/
 /out/
 /.vs/
+ghosium.ico
 *.obj
 *.pdb
 *.ilk
