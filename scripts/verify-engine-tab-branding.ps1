@@ -51,7 +51,20 @@ function Get-GritMessageTexts {
   if ($nodes.Count -lt 1) {
     throw "Expected tab/public message is missing from pinned source: $MessageId"
   }
-  return @($nodes | ForEach-Object { [string]$_.InnerText })
+
+  # GRIT <ex> nodes are translator examples attached to placeholders. They are
+  # authoring metadata and never render as product UI. Remove them from a clone
+  # before collecting InnerText so the verifier evaluates only runtime-visible
+  # message text and remains symmetric with the public-branding rewrite.
+  $texts = [System.Collections.Generic.List[string]]::new()
+  foreach ($node in $nodes) {
+    $runtimeNode = $node.CloneNode($true)
+    foreach ($example in @($runtimeNode.SelectNodes('.//ex'))) {
+      [void]$example.ParentNode.RemoveChild($example)
+    }
+    $texts.Add([string]$runtimeNode.InnerText)
+  }
+  return @($texts)
 }
 
 $titleIds = @(
@@ -117,6 +130,9 @@ $evidence = [ordered]@{
     legacyNtpUsesLocalizedNormalAndIncognitoTitles = $true
     modernNtpUsesLocalizedNewTabTitle = $true
   }
+  gritRuntimeText = [ordered]@{
+    translatorExamplesExcluded = $true
+  }
   checkedMessages = @($evidenceMessages)
   forbiddenPublicBrandOccurrences = 0
 }
@@ -135,4 +151,4 @@ if ($EvidencePath) {
   Write-Host "Ghosium tab-brand evidence: $fullEvidencePath"
 }
 
-Write-Host "Ghosium tab-brand contract passed: $($evidenceMessages.Count) title/crash/incognito message variant(s) verified and New Tab title generation remains localized, with no public Chrome/Chromium product branding."
+Write-Host "Ghosium tab-brand contract passed: $($evidenceMessages.Count) title/crash/incognito runtime message variant(s) verified, translator examples excluded, and New Tab title generation remains localized with no public Chrome/Chromium product branding."
