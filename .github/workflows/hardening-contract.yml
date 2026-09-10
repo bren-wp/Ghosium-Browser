@@ -4,6 +4,7 @@ on:
   pull_request:
     branches: [main]
     paths:
+      - 'installer/ghosium.nsi'
       - 'scripts/benchmark-ghosium-windows.ps1'
       - 'scripts/benchmark-browser-comparison-windows.ps1'
       - 'scripts/resolve-nsis.ps1'
@@ -13,6 +14,7 @@ on:
   push:
     branches: [main]
     paths:
+      - 'installer/ghosium.nsi'
       - 'scripts/benchmark-ghosium-windows.ps1'
       - 'scripts/benchmark-browser-comparison-windows.ps1'
       - 'scripts/resolve-nsis.ps1'
@@ -26,7 +28,7 @@ permissions:
 
 jobs:
   hardening-contract:
-    name: Verify updater, toolchain and benchmark isolation
+    name: Verify updater, installer, toolchain and benchmark isolation
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
@@ -53,7 +55,7 @@ jobs:
             [void][System.Management.Automation.Language.Parser]::ParseFile(
               (Resolve-Path $path), [ref]$tokens, [ref]$errors)
             if ($errors.Count -gt 0) {
-              $errors | ForEach-Object { Write-Error "$path: $($_.Message)" }
+              $errors | ForEach-Object { Write-Error "${path}: $($_.Message)" }
               throw "PowerShell parser errors found in $path"
             }
           }
@@ -140,6 +142,8 @@ jobs:
 
           harden = Path('scripts/harden-engine-version-updater.ps1').read_text(encoding='utf-8')
           verify = Path('scripts/verify-engine-version-updater.ps1').read_text(encoding='utf-8')
+          installer = Path('installer/ghosium.nsi').read_text(encoding='utf-8')
+
           for text, label in ((harden, 'hardener'), (verify, 'verifier')):
               for required in (
                   'base::GetSecureTempDirectory(&secure_temp_dir)',
@@ -155,4 +159,26 @@ jobs:
           for required in ('secureTemp', 'sessionDir', 'setupDownload', 'hashCheck', 'publisherCheck', 'identityCheck', 'versionBinding', 'launch'):
               if required not in verify:
                   raise SystemExit(f'Updater trust-order verifier missing index: {required}')
-          print('Native updater secure staging and trust order: OK')
+
+          for required in (
+              'Var GhosiumUpdateCleanupPath',
+              '${GetOptions} $R0 "/CLEANUPDATE=" $R1',
+              'GetFullPathName $R5 $GhosiumUpdateCleanupPath',
+              '${GetFileName} "$R5" $R6',
+              '${GetParent} "$R5" $R6',
+              '${GetParent} "$R6" $R7',
+              'GetFullPathName $R8 "${UPDATE_DIR}"',
+              'StrCmp $R7 "session-" update_cleanup_dynamic_verified update_cleanup_invalid',
+              'Delete /REBOOTOK "$R5"',
+              'RMDir /REBOOTOK "$R6"',
+              'Exec '\''"$INSTDIR\\${INSTALLED_SETUP}" /S /CLEANUPDATE="$EXEPATH"'\''',
+          ):
+              if required not in installer:
+                  raise SystemExit(f'Installer secure update-cleanup invariant missing: {required}')
+
+          dynamic_start = installer.index('update_cleanup_dynamic:')
+          dynamic_end = installer.index('update_cleanup_invalid:')
+          dynamic_region = installer[dynamic_start:dynamic_end]
+          if 'RMDir /r' in dynamic_region:
+              raise SystemExit('Dynamic update cleanup must never recursively delete a session directory.')
+          print('Native updater secure staging, installer cleanup validation and trust order: OK')
