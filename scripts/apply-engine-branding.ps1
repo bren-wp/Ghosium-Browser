@@ -253,6 +253,14 @@ if ($LASTEXITCODE -ne 0) {
   throw 'Ghosium public-surface branding failed.'
 }
 
+# Sweep every materialized first-party GRIT/XTB message body after the targeted
+# transforms. Only visible text segments are changed; XML tags/placeholders,
+# source identifiers, build targets and the explicit legal allowlist are kept.
+& (Join-Path $PSScriptRoot 'rewrite-engine-public-branding-complete.ps1') -SourceRoot $sourceRootResolved
+if ($LASTEXITCODE -ne 0) {
+  throw 'Ghosium complete first-party public-string branding failed.'
+}
+
 # Enable only reviewed native low-overhead defaults. Security process
 # isolation, sandboxing and explicit user preferences stay intact.
 & (Join-Path $PSScriptRoot 'rewrite-engine-performance-defaults.ps1') -SourceRoot $sourceRootResolved
@@ -265,6 +273,16 @@ if ($LASTEXITCODE -ne 0) {
 & (Join-Path $PSScriptRoot 'rewrite-engine-internal-scheme.ps1') -SourceRoot $sourceRootResolved
 if ($LASTEXITCODE -ne 0) {
   throw 'Ghosium ghost:// internal UI rebranding failed.'
+}
+
+# Fail closed on public Chrome/Chromium regressions after every branding layer
+# has run. Full source checkouts require all high-risk UI roots; sparse CI
+# checkouts verify every materialized surface without pretending absent files
+# were audited. Technical/build identifiers outside public message/literal
+# surfaces remain untouched by design.
+& (Join-Path $PSScriptRoot 'verify-engine-public-branding-complete.ps1') -SourceRoot $sourceRootResolved
+if ($LASTEXITCODE -ne 0) {
+  throw 'Ghosium complete public-branding audit failed.'
 }
 
 $thirdPartyChanges = & git -C $sourceRootResolved status --porcelain=v1 -- third_party
@@ -283,4 +301,4 @@ if ($LASTEXITCODE -ne 0) {
   throw 'Ghosium full-source verification failed after branding.'
 }
 
-Write-Host 'Source-level Ghosium branding, product version, Search, Windows identity, first-party links, locales, product icons and ghost:// internal UI routing applied and verified successfully.'
+Write-Host 'Source-level Ghosium branding, complete public-surface audit, product version, Search, Windows identity, first-party links, locales, product icons and ghost:// internal UI routing applied and verified successfully.'
