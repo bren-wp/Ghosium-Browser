@@ -1,0 +1,11 @@
+# Keep source-transformation scripts byte-stable across Windows and Linux runners.
+# Chromium source checkouts use LF; forcing LF here prevents CRLF-sensitive
+# multiline anchors from producing false failures in PowerShell rewrite scripts.
+*.ps1 text eol=lf
+*.py text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.json text eol=lf
+*.md text eol=lf
+*.gn text eol=lf
+*.gni text eol=lf
