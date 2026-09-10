@@ -51,8 +51,11 @@ if ($runningOnWindows) {
   if ([string]$versionInfo.CompanyName -ne 'Brendigo') {
     throw "Update Setup CompanyName must be Brendigo; found '$($versionInfo.CompanyName)'."
   }
-  if ([string]$versionInfo.ProductVersion -notlike "$Version*") {
-    throw "Update Setup ProductVersion '$($versionInfo.ProductVersion)' does not match release version '$Version'."
+
+  $setupProductVersion = ([string]$versionInfo.ProductVersion).Trim()
+  $allowedProductVersions = @($Version, "$Version.0")
+  if ($allowedProductVersions -notcontains $setupProductVersion) {
+    throw "Update Setup ProductVersion '$setupProductVersion' does not exactly match release version '$Version'."
   }
 }
 
@@ -91,23 +94,57 @@ $manifest = [ordered]@{
   release_notes = "https://ghosium.com/release-notes/$Version"
 }
 
-$outputDirectory = Split-Path -Parent $OutputPath
+$outputFullPath = [IO.Path]::GetFullPath($OutputPath)
+$outputDirectory = Split-Path -Parent $outputFullPath
 if ($outputDirectory -and !(Test-Path $outputDirectory -PathType Container)) {
   New-Item -ItemType Directory -Force -Path $outputDirectory | Out-Null
 }
+if (!$outputDirectory) {
+  throw "Unable to resolve update manifest output directory for '$OutputPath'."
+}
+
+function Assert-ManifestContent {
+  param(
+    [Parameter(Mandatory = $true)][string]$Path
+  )
+
+  $verify = Get-Content $Path -Raw | ConvertFrom-Json
+  if ($verify.schema -ne 1 -or !$verify.enabled -or
+      $verify.product -ne 'Ghosium Browser' -or
+      $verify.platform -ne 'windows' -or
+      $verify.channel -ne 'stable' -or
+      $verify.version -ne $Version -or
+      $verify.url -ne 'https://updates.ghosium.com/windows/Ghosium-Browser-Setup.exe' -or
+      $verify.sha256 -ne $sha256 -or
+      [int64]$verify.size -ne [int64]$setupItem.Length -or
+      $verify.release_notes -ne "https://ghosium.com/release-notes/$Version") {
+    throw "Generated Ghosium update manifest failed verification: $Path"
+  }
+}
 
 $json = $manifest | ConvertTo-Json -Depth 4
-[IO.File]::WriteAllText($OutputPath, $json + "`n", [Text.UTF8Encoding]::new($false))
+$tempOutput = Join-Path $outputDirectory ('.ghosium-manifest-' + [IO.Path]::GetRandomFileName())
+try {
+  [IO.File]::WriteAllText($tempOutput, $json + "`n", [Text.UTF8Encoding]::new($false))
+  Assert-ManifestContent -Path $tempOutput
 
-$verify = Get-Content $OutputPath -Raw | ConvertFrom-Json
-if ($verify.schema -ne 1 -or !$verify.enabled -or
-    $verify.product -ne 'Ghosium Browser' -or
-    $verify.platform -ne 'windows' -or
-    $verify.channel -ne 'stable' -or
-    $verify.version -ne $Version -or
-    $verify.sha256 -ne $sha256 -or
-    [int64]$verify.size -ne [int64]$setupItem.Length) {
-  throw 'Generated Ghosium update manifest failed its post-write contract.'
+  # Publish only a fully written and independently parsed manifest. The temp
+  # file lives beside the destination so the final rename remains on one volume
+  # and consumers never observe a partially written stable.json/evidence file.
+  [IO.File]::Move($tempOutput, $outputFullPath, $true)
+  Assert-ManifestContent -Path $outputFullPath
+} finally {
+  if (Test-Path $tempOutput -PathType Leaf) {
+    Remove-Item $tempOutput -Force -ErrorAction SilentlyContinue
+  }
+}
+
+# Detect a Setup mutation during manifest generation. A changed package must be
+# rebuilt/re-signed rather than publishing metadata for bytes no longer present.
+$finalSetupItem = Get-Item $resolvedSetup
+$finalSha256 = (Get-FileHash $resolvedSetup -Algorithm SHA256).Hash.ToLowerInvariant()
+if ([int64]$finalSetupItem.Length -ne [int64]$setupItem.Length -or $finalSha256 -ne $sha256) {
+  throw 'Ghosium Setup changed while the update manifest was being generated; refusing publication.'
 }
 
 Write-Host "Generated stable Ghosium update manifest for $Version ($($setupItem.Length) bytes, SHA-256 $sha256)."
