@@ -74,6 +74,13 @@ function store_valid_https_url(string $url, ?string $requiredHost = null): bool
         return false;
     }
 
+    // A URL constrained to a first-party Store host must stay on the canonical
+    // HTTPS origin. Do not let metadata silently move package retrieval to an
+    // alternate service bound to the same hostname on a non-standard port.
+    if ($requiredHost !== null && isset($parts['port']) && (int)$parts['port'] !== 443) {
+        return false;
+    }
+
     return true;
 }
 
@@ -213,7 +220,7 @@ function store_validate_signed_distribution(array $extension, array $trustedKeys
 
     $downloadUrl = (string)($distribution['downloadUrl'] ?? '');
     if (!store_valid_https_url($downloadUrl, 'store.ghosium.com')) {
-        throw new RuntimeException('Approved extension downloadUrl must use store.ghosium.com HTTPS.');
+        throw new RuntimeException('Approved extension downloadUrl must use the canonical store.ghosium.com HTTPS origin.');
     }
     $urlParts = parse_url($downloadUrl);
     if (
@@ -485,8 +492,11 @@ function store_json_response(array $payload, int $status = 200, string $cacheCon
     header('Cache-Control: ' . $cacheControl);
     header('Referrer-Policy: no-referrer');
     header('X-Content-Type-Options: nosniff');
-    header('X-Robots-Tag: noindex, nofollow');
-    header("Content-Security-Policy: default-src 'none'; frame-ancestors 'none'");
+    header('X-Frame-Options: DENY');
+    header('Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=(), usb=()');
+    header('Cross-Origin-Resource-Policy: same-site');
+    header('X-Robots-Tag: noindex, nofollow, noarchive');
+    header("Content-Security-Policy: default-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'");
     echo json_encode($payload, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
     exit;
 }
