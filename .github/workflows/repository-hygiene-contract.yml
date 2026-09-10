@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   repository-hygiene:
-    name: Verify clean 0.0.1 baseline and fail-closed repository state
+    name: Verify active Ghosium baseline and fail-closed repository state
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -86,10 +86,16 @@ jobs:
         run: |
           from pathlib import Path
           dispatcher = Path('.github/workflows/release-request-dispatch.yml').read_text(encoding='utf-8')
+          production = Path('.github/workflows/release-orchestration.yml').read_text(encoding='utf-8')
           full_source = Path('.github/workflows/full-source-windows-build.yml').read_text(encoding='utf-8')
           for required in ("'ghosium/release/**'", "'.release/*.request'", 'expected_ref="refs/heads/ghosium/release/${version}"', 'Exactly one active Ghosium release request marker is required'):
               if required not in dispatcher:
                   raise SystemExit(f'Candidate dispatcher invariant missing: {required}')
+          for required in ('branches:', '- main', "'.release/*.request'", 'GHOSIUM_CANDIDATE_SHA', 'Verify release-marker-only promotion and candidate evidence', 'full-source-windows-build.yml/dispatches', "-f ref='main'"):
+              if required not in production:
+                  raise SystemExit(f'Production release orchestration invariant missing: {required}')
+          if "'ghosium/release/**'" in production:
+              raise SystemExit('Production release orchestration must not duplicate candidate-branch dispatch.')
           for required in ('ghosium-source-builder', '$params.RequireSigning = $true', "if: github.ref == 'refs/heads/main'", 'GHOSIUM-PUBLIC-SETUP.json', 'GHOSIUM-UPDATE-MANIFEST.json', 'SHA256SUMS.txt'):
               if required not in full_source:
                   raise SystemExit(f'Canonical full-source invariant missing: {required}')
