@@ -28,6 +28,7 @@ if ([string]::IsNullOrWhiteSpace($ArtifactsDir)) {
 }
 $artifacts = [IO.Path]::GetFullPath($ArtifactsDir)
 $report = Join-Path $artifacts 'GHOSIUM-INSTALLER-CONTRACT-SMOKE.json'
+$portableReport = Join-Path $artifacts 'GHOSIUM-PORTABLE-CONTRACT-SMOKE.json'
 
 if (Test-Path $work) {
   Remove-Item $work -Recurse -Force
@@ -148,10 +149,68 @@ public static class Program {
     throw 'Ghosium installer fixture evidence failed the same-Setup lifecycle contract.'
   }
 
+  # Execute the real Portable wrapper as well. Use a caller-supplied profile
+  # switch intentionally; ghosium-portable.nsi appends its fixed adjacent
+  # --user-data-dir last and prepares that directory before launching runtime.
+  $portableWork = Join-Path $work 'portable-run'
+  New-Item -ItemType Directory -Force -Path $portableWork | Out-Null
+  $portableRun = Join-Path $portableWork 'Ghosium-Browser-Portable.exe'
+  Copy-Item $portablePath $portableRun -Force
+  $callerProfile = Join-Path $work 'caller-controlled-profile'
+
+  $portableProcess = Start-Process -FilePath $portableRun -ArgumentList @(
+    '--disable-gpu',
+    "--user-data-dir=$callerProfile"
+  ) -Wait -PassThru
+  if ($portableProcess.ExitCode -ne 0) {
+    throw "Ghosium Portable runtime returned exit code $($portableProcess.ExitCode)."
+  }
+
+  $portableRuntime = Join-Path $portableWork ".ghosium-portable-runtime\$version"
+  $portableProfile = Join-Path $portableWork 'Ghosium-Portable-Data'
+  foreach ($required in @(
+    (Join-Path $portableRuntime 'Ghosium-Browser.exe'),
+    (Join-Path $portableRuntime 'LICENSE'),
+    (Join-Path $portableRuntime 'THIRD_PARTY_NOTICES.md')
+  )) {
+    if (!(Test-Path $required -PathType Leaf)) {
+      throw "Portable runtime contract is missing: $required"
+    }
+  }
+  if (!(Test-Path $portableProfile -PathType Container)) {
+    throw 'Portable adjacent profile directory was not created.'
+  }
+
+  $uninstallRegistration = Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\GhosiumBrowser' -ErrorAction SilentlyContinue
+  if ($null -ne $uninstallRegistration) {
+    throw 'Portable mode created an uninstall registration entry.'
+  }
+  $desktopShortcut = Join-Path ([Environment]::GetFolderPath('Desktop')) 'Ghosium Browser.lnk'
+  if (Test-Path $desktopShortcut) {
+    throw 'Portable mode created a desktop shortcut.'
+  }
+
+  $portableEvidence = [ordered]@{
+    schemaVersion = 1
+    product = 'Ghosium Browser'
+    version = $version
+    package = 'Ghosium-Browser-Portable.exe'
+    runtimeExecuted = $true
+    runtimeExitCode = $portableProcess.ExitCode
+    adjacentRuntime = $true
+    adjacentProfile = $true
+    legalPayload = $true
+    uninstallRegistration = $false
+    desktopShortcut = $false
+    fixedProfileSwitch = '--user-data-dir'
+  }
+  $portableEvidence | ConvertTo-Json -Depth 5 | Set-Content $portableReport -Encoding utf8
+
   Write-Host "Ghosium Windows installer contract: PASS ($version)"
   Write-Host "Setup: $setupPath"
   Write-Host "Portable: $portablePath"
-  Write-Host "Evidence: $report"
+  Write-Host "Setup evidence: $report"
+  Write-Host "Portable evidence: $portableReport"
 } finally {
   # The lifecycle smoke owns and removes its installation root. Keep the build
   # artifacts only for the duration of this ephemeral CI job; always remove the
