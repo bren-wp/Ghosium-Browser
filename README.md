@@ -2,11 +2,11 @@
   <img src="engine/branding/ghosium-mark.svg" width="112" alt="Ghosium Browser icon">
 </p>
 
-# Ghosium Browser 0.0.2
+# Ghosium Browser 0.0.3
 
-**Ghosium Browser by Brendigo** is a Windows x64 browser. The active product version is **0.0.2**.
+**Ghosium Browser by Brendigo** is a Windows x64 browser. The active development product version is **0.0.3**.
 
-The current branch is the canonical full-source production candidate. Publication is allowed only after the exact source-build, branding, privacy, performance, installer, signing, provenance and updater contracts pass. A previously published GitHub Preview remains separate from canonical production evidence and is not used to satisfy these gates.
+The current development branch hardens the canonical full-source release path. Publication is allowed only after the exact source-build, branding, privacy, performance, installer, signing, provenance and updater contracts pass. Previously published or candidate releases remain separate from 0.0.3 evidence and cannot satisfy these gates.
 
 ## Product identity
 
@@ -42,13 +42,19 @@ The native New Tab uses the Ghosium product mark, neutral Ghosium-owned search c
 
 ## Privacy and security
 
-0.0.2 uses stronger native defaults for new/default profiles: third-party cookies blocked, search suggestions disabled, speculative network prediction/preloading disabled, remote alternate-error pages disabled and online spelling-service upload required to remain disabled by default.
+0.0.3 retains stronger native defaults for new/default profiles: third-party cookies blocked, search suggestions disabled, speculative network prediction/preloading disabled, remote alternate-error pages disabled and online spelling-service upload required to remain disabled by default.
+
+The native Windows updater requires the exact first-party HTTPS host, port and Setup path, rejects redirects, validates size and SHA-256, requires the Setup Authenticode publisher to match the running signed browser, binds signed PE product/company/version metadata to the manifest and stages every download in a unique directory under the Windows secure temporary directory.
+
+The installer toolchain prefers machine-wide NSIS under trusted Program Files roots. Fallback NSIS is downloaded over HTTPS-only redirects, bounded by transfer time and accepted only after the pinned archive SHA-256 matches.
 
 Security boundaries remain mandatory: Safe Browsing, TLS/certificate validation, browser/renderer/GPU sandboxing, site/process isolation, extension verification and update hash/signature/publisher validation must not be weakened for performance.
 
-## Performance
+## Performance and stability
 
 Native Memory Saver remains enabled by default for profiles without an explicit selection and legacy background-app keep-alive is disabled. New Tab remote Doodle initialization and unnecessary NTP prefetch/prerender paths are removed or disabled.
+
+Performance tooling no longer terminates arbitrary pre-existing browser sessions by executable name. Ghosium benchmarks refuse to run over an existing user session and restrict cleanup to process trees rooted in benchmark-created launcher processes. Cross-browser comparisons skip browsers that are already running instead of force-closing them.
 
 Numerical performance claims remain reserved for verified `GHOSIUM-PERFORMANCE.json` evidence from the controlled full-source benchmark workflow.
 
@@ -65,11 +71,11 @@ The Setup lifecycle contract requires install → runtime → same-Setup update 
 
 ## Release status
 
-**Ghosium Browser 0.0.2 is a production candidate, not yet a canonical published release.**
+**Ghosium Browser 0.0.3 is an active hardening/development candidate, not a canonical published release.**
 
 The checked-in stable update manifest remains fail-closed (`enabled:false`, empty SHA-256, zero size). Canonical publication requires exact full-source candidate evidence, runtime/performance verification, canonical Setup/Portable provenance, production signing and release-manifest binding.
 
-Ghosium 0.0.2 defines **38 supported product locales**. English (`en-US`) is the default language and Croatian (`hr`) is required.
+Ghosium 0.0.3 defines **38 supported product locales**. English (`en-US`) is the default language and Croatian (`hr`) is required.
 
 ## License and third-party rights
 
