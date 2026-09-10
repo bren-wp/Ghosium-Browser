@@ -30,6 +30,7 @@ Unicode true
 
 Var GhosiumUpdateMode
 Var GhosiumDeleteSelf
+Var GhosiumUpdateCleanupPath
 
 Name "${PRODUCT_NAME} ${GHOSIUM_VERSION}"
 OutFile "${GHOSIUM_ARTIFACTS}\Ghosium-Browser-Setup.exe"
@@ -244,29 +245,55 @@ update_requires_new_setup:
 FunctionEnd
 
 Function CleanupDownloadedUpdate
-  ; Only the installed copy of the standard Setup package may perform this
-  ; maintenance cleanup. The path to delete is fixed and never taken from a
-  ; command-line value, so /CLEANUPDATE cannot be abused as an arbitrary file
-  ; deletion primitive.
+  ; Only the installed standard Setup may delete a downloaded update package.
+  ; Dynamic cleanup paths are normalized and constrained to an immediate child
+  ; directory of the fixed Ghosium update parent, with the exact Setup filename.
+  ; The legacy fixed path remains accepted for maintenance compatibility.
   ReadRegStr $R2 HKCU "${UNINSTALL_KEY}" "InstallLocation"
   StrCmp $R2 "" update_cleanup_invalid
   GetFullPathName $R2 $R2
   GetFullPathName $R3 "$R2\${INSTALLED_SETUP}"
   GetFullPathName $R4 "$EXEPATH"
-  StrCmp $R4 $R3 update_cleanup_verified update_cleanup_invalid
+  StrCmp $R4 $R3 update_cleanup_caller_verified update_cleanup_invalid
 
-update_cleanup_invalid:
-  SetErrorLevel 7
-  Quit
+update_cleanup_caller_verified:
+  StrCmp $GhosiumUpdateCleanupPath "" update_cleanup_legacy update_cleanup_dynamic
 
-update_cleanup_verified:
-  ; Wait for the browser-downloaded Setup process to release its image before
-  ; deleting the fixed update package. This is still the same standard Setup
-  ; executable, not a separately built updater helper.
+update_cleanup_legacy:
+  ; Compatibility path used by older update staging and the lifecycle fixture.
   Sleep 1200
   Delete /REBOOTOK "${UPDATE_SETUP}"
   RMDir /REBOOTOK "${UPDATE_DIR}"
   SetErrorLevel 0
+  Quit
+
+update_cleanup_dynamic:
+  GetFullPathName $R5 $GhosiumUpdateCleanupPath
+  ${GetFileName} "$R5" $R6
+  StrCmp $R6 "Ghosium-Browser-Setup.exe" 0 update_cleanup_invalid
+
+  ; The candidate must be exactly one directory below UPDATE_DIR. This permits
+  ; secure session-* staging without turning /CLEANUPDATE into arbitrary delete.
+  ${GetParent} "$R5" $R6
+  ${GetParent} "$R6" $R7
+  GetFullPathName $R8 "${UPDATE_DIR}"
+  StrCmp $R7 $R8 update_cleanup_parent_verified update_cleanup_invalid
+
+update_cleanup_parent_verified:
+  ${GetFileName} "$R6" $R9
+  StrCpy $R7 $R9 8
+  StrCmp $R7 "session-" update_cleanup_dynamic_verified update_cleanup_invalid
+
+update_cleanup_dynamic_verified:
+  Sleep 1200
+  Delete /REBOOTOK "$R5"
+  ; Non-recursive removal is intentional: never delete unrelated session data.
+  RMDir /REBOOTOK "$R6"
+  SetErrorLevel 0
+  Quit
+
+update_cleanup_invalid:
+  SetErrorLevel 7
   Quit
 FunctionEnd
 
@@ -333,6 +360,7 @@ Function .onInit
   ${GetParameters} $R0
   StrCpy $GhosiumUpdateMode "0"
   StrCpy $GhosiumDeleteSelf "0"
+  StrCpy $GhosiumUpdateCleanupPath ""
 
   ; /DELETESELF is only meaningful for a browser-downloaded /UPDATE package.
   ; It is recorded first, then the normal maintenance-mode dispatch continues.
@@ -342,6 +370,16 @@ Function .onInit
   StrCpy $GhosiumDeleteSelf "1"
 delete_self_checked:
 
+  ; New updater builds pass the exact downloaded Setup path. Legacy /CLEANUPDATE
+  ; without a value remains accepted only for the fixed historical update path.
+  ClearErrors
+  ${GetOptions} $R0 "/CLEANUPDATE=" $R1
+  IfErrors check_legacy_update_cleanup
+  StrCpy $GhosiumUpdateCleanupPath $R1
+  Call CleanupDownloadedUpdate
+  Quit
+
+check_legacy_update_cleanup:
   ClearErrors
   ${GetOptions} $R0 "/CLEANUPDATE" $R1
   IfErrors check_cleanup
@@ -473,18 +511,17 @@ update_complete:
 
 launch_update_cleanup:
   ; The downloaded Setup cannot remove its own running image. Ask the freshly
-  ; installed copy of that exact same Setup product to delete the fixed browser
-  ; update path after this process exits. This is not a separate updater binary.
+  ; installed copy of the same Setup product to validate and delete this exact
+  ; update path after the current process exits.
   ClearErrors
-  Exec '"$INSTDIR\${INSTALLED_SETUP}" /S /CLEANUPDATE'
+  Exec '"$INSTDIR\${INSTALLED_SETUP}" /S /CLEANUPDATE="$EXEPATH"'
   IfErrors update_cleanup_fallback section_done
 
 update_cleanup_fallback:
-  ; If the installed maintenance copy could not start, at least schedule the
-  ; browser-downloaded package for Windows cleanup rather than leaving it
-  ; permanently in the temporary directory.
+  ; Never remove a dynamic parent directory on fallback. Only schedule this
+  ; exact running Setup image for cleanup; validated parent removal belongs to
+  ; the installed maintenance copy.
   Delete /REBOOTOK "$EXEPATH"
-  RMDir /REBOOTOK "${UPDATE_DIR}"
 
 section_done:
 SectionEnd
