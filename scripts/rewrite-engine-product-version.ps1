@@ -98,6 +98,15 @@ if (!$verifyHeader.Contains("kProductVersion[] = `"$productVersion`"")) {
   throw 'Generated Ghosium product version header does not match repository VERSION.'
 }
 
+# Prepare the exact pinned Windows GN fallback using a newline-tolerant anchor.
+# Chromium is synced by depot_tools with LF while repository PowerShell files may
+# be materialized with CRLF on Windows. Keeping this as a narrow preflight avoids
+# weakening the existing updater generator's fail-closed/idempotent checks.
+& (Join-Path $PSScriptRoot 'prepare-engine-version-updater-build.ps1') -SourceRoot $sourceRootResolved
+if ($LASTEXITCODE -ne 0) {
+  throw 'Ghosium native Windows VersionUpdater BUILD.gn preparation failed.'
+}
+
 & (Join-Path $PSScriptRoot 'rewrite-engine-version-updater.ps1') -SourceRoot $sourceRootResolved
 if ($LASTEXITCODE -ne 0) {
   throw 'Ghosium native Windows VersionUpdater integration failed.'
