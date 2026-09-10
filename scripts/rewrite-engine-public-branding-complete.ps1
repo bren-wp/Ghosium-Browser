@@ -29,6 +29,15 @@ if ([int]$policy.schemaVersion -ne 1) {
   throw "Unsupported public-branding allowlist schema: $($policy.schemaVersion)"
 }
 
+# These are distinct third-party/platform product names, not Chromium browser
+# branding. Protect the narrow, known compounds so a stem replacement can still
+# handle localized Chromium/Chrome inflections without creating names such as
+# "Ghosium Browserbook". Chrome Web Store is intentionally not protected: it is
+# a browser-owned destination and is rewritten to Ghosium Store.
+$preservedThirdPartyNamePattern = [regex]::new(
+  '(?i)\bChrome(?:book|box|base|bit|cast|OS|Vox|Driver)\p{L}*\b'
+)
+
 function Test-ExcludedSourcePath {
   param([Parameter(Mandatory = $true)][string]$RelativePath)
 
@@ -109,6 +118,15 @@ function Rewrite-ProductText {
   param([Parameter(Mandatory = $true)][AllowEmptyString()][string]$Text)
 
   $updated = $Text
+  $protected = [System.Collections.Generic.List[object]]::new()
+  $properNames = @($preservedThirdPartyNamePattern.Matches($updated) | ForEach-Object { $_.Value } | Select-Object -Unique)
+  for ($index = 0; $index -lt $properNames.Count; $index++) {
+    $name = [string]$properNames[$index]
+    $token = "__GHOSIUM_PRESERVE_PRODUCT_${index}__"
+    $protected.Add([pscustomobject]@{ token = $token; value = $name })
+    $updated = $updated.Replace($name, $token)
+  }
+
   $updated = $updated.Replace('Chrome Web Store', 'Ghosium Store')
   $updated = $updated.Replace('Google Chrome for Testing', 'Ghosium Browser')
   $updated = $updated.Replace('Chrome for Testing', 'Ghosium Browser')
@@ -119,18 +137,33 @@ function Rewrite-ProductText {
   $updated = [regex]::Replace($updated, '\bChrome(?=\p{Ll}|\b)', 'Ghosium Browser')
   $updated = $updated.Replace('Ghosium Browser Browser', 'Ghosium Browser')
   $updated = $updated.Replace('Ghosium Browser browser', 'Ghosium Browser')
+
+  foreach ($entry in $protected) {
+    $updated = $updated.Replace([string]$entry.token, [string]$entry.value)
+  }
   return $updated
 }
 
 function Rewrite-VisibleXmlText {
   param([Parameter(Mandatory = $true)][AllowEmptyString()][string]$Body)
 
+  # <ex> nodes are translator examples embedded in placeholders. They are not
+  # runtime UI and must not be treated as browser-branding copy.
   $parts = [regex]::Split($Body, '(<[^>]+>)')
+  $insideExample = $false
   for ($index = 0; $index -lt $parts.Count; $index++) {
-    if ($parts[$index].StartsWith('<')) {
+    $part = $parts[$index]
+    if ($part.StartsWith('<')) {
+      if ($part -match '^<ex(?:\s|>)') {
+        $insideExample = $true
+      } elseif ($part -match '^</ex\s*>') {
+        $insideExample = $false
+      }
       continue
     }
-    $parts[$index] = Rewrite-ProductText -Text $parts[$index]
+    if (!$insideExample) {
+      $parts[$index] = Rewrite-ProductText -Text $part
+    }
   }
   return ($parts -join '')
 }
