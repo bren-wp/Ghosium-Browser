@@ -63,7 +63,7 @@ jobs:
           grep -Fq 'Options -Indexes' store-web/packages/.htaccess
           grep -Fq 'application/x-chrome-extension' store-web/packages/.htaccess
 
-      - name: Smoke test Store APIs
+      - name: Smoke test Store APIs and trust cache policy
         shell: bash
         run: |
           set -euo pipefail
@@ -73,11 +73,45 @@ jobs:
           sleep 1
 
           curl --fail --silent --show-error http://127.0.0.1:8100/ | grep -Fq 'Ghosium Store'
-          curl --fail --silent --show-error http://127.0.0.1:8100/api/catalog.php | grep -Fq '"schemaVersion":1'
-          curl --fail --silent --show-error 'http://127.0.0.1:8100/api/update.php?id=ghosium-privacy&version=0.1.6' | grep -Fq '"updateAvailable":false'
-          curl --fail --silent --show-error http://127.0.0.1:8100/api/revocations.php | grep -Fq '"revocations":[]'
-          curl --fail --silent --show-error http://127.0.0.1:8100/api/keys.php | grep -Fq '"keys":[]'
 
-          status=$(curl --silent --output /tmp/store-invalid.json --write-out '%{http_code}' 'http://127.0.0.1:8100/api/update.php?id=BAD%20ID&version=x')
+          curl --fail --silent --show-error \
+            --dump-header /tmp/catalog.headers \
+            --output /tmp/catalog.json \
+            http://127.0.0.1:8100/api/catalog.php
+          grep -Fq '"schemaVersion":1' /tmp/catalog.json
+          grep -Eqi '^Cache-Control: public, max-age=60, must-revalidate\r?$' /tmp/catalog.headers
+          grep -Eqi '^X-Content-Type-Options: nosniff\r?$' /tmp/catalog.headers
+          grep -Eqi '^Access-Control-Allow-Origin: https://store\.ghosium\.com\r?$' /tmp/catalog.headers
+
+          curl --fail --silent --show-error \
+            --dump-header /tmp/revocations.headers \
+            --output /tmp/revocations.json \
+            http://127.0.0.1:8100/api/revocations.php
+          grep -Fq '"revocations":[]' /tmp/revocations.json
+          grep -Eqi '^Cache-Control: public, max-age=60, must-revalidate\r?$' /tmp/revocations.headers
+
+          curl --fail --silent --show-error \
+            --dump-header /tmp/keys.headers \
+            --output /tmp/keys.json \
+            http://127.0.0.1:8100/api/keys.php
+          grep -Fq '"keys":[]' /tmp/keys.json
+          grep -Eqi '^Cache-Control: public, max-age=60, must-revalidate\r?$' /tmp/keys.headers
+
+          curl --fail --silent --show-error \
+            'http://127.0.0.1:8100/api/update.php?id=ghosium-privacy&version=0.1.6' |
+            grep -Fq '"updateAvailable":false'
+
+          status=$(curl --silent --output /tmp/store-invalid.json --write-out '%{http_code}' \
+            'http://127.0.0.1:8100/api/update.php?id=BAD%20ID&version=x')
           test "$status" = '400'
           grep -Fq '"error":"invalid_request"' /tmp/store-invalid.json
+
+          for endpoint in catalog.php keys.php revocations.php update.php; do
+            url="http://127.0.0.1:8100/api/${endpoint}"
+            if [ "$endpoint" = 'update.php' ]; then
+              url="${url}?id=ghosium-privacy&version=0.0.3"
+            fi
+            status=$(curl --silent --request POST --output /tmp/store-method.json --write-out '%{http_code}' "$url")
+            test "$status" = '405'
+            grep -Fq '"error":"method_not_allowed"' /tmp/store-method.json
+          done
