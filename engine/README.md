@@ -1,8 +1,8 @@
 # Ghosium source-engine integration
 
-The active product baseline is `0.0.3`.
+The active product baseline is `0.0.2`.
 
-The current development target is **Ghosium Browser 0.0.3** (`ghosium-v0.0.3`). Earlier releases and candidates remain historical evidence only and are not canonical 0.0.3 full-source production evidence.
+The current development target is **Ghosium Browser 0.0.2** (`ghosium-v0.0.2`). Earlier releases and candidates remain historical evidence only and are not canonical 0.0.2 full-source production evidence.
 
 This directory contains Ghosium-owned source transforms, brand assets, localization, Windows identity and deterministic build configuration for the exact Chromium source revision in `ENGINE_SOURCE_REVISION`.
 
@@ -14,7 +14,7 @@ External services and upstream implementation identifiers are not falsely rename
 
 ## New Tab and privacy
 
-0.0.3 applies the Ghosium mark to the native New Tab source, removes remote Doodle initialization and disables provider-owned NTP cloud/promo surfaces. Privacy defaults block third-party cookies and disable search suggestions, speculative network prediction/preloading, remote alternate-error pages and online spelling upload for new/default profiles.
+0.0.2 applies the Ghosium mark to the native New Tab source, removes remote Doodle initialization and disables provider-owned NTP cloud/promo surfaces. Privacy defaults block third-party cookies and disable search suggestions, speculative network prediction/preloading, remote alternate-error pages and online spelling upload for new/default profiles.
 
 ## Security invariants
 
@@ -28,4 +28,4 @@ Windows x64 keeps `is_debug = false`, `is_component_build = false`, `is_chrome_b
 
 NSIS is resolved only from trusted machine-wide Program Files locations or from the exact hash-pinned official portable archive downloaded over HTTPS-only redirects. Benchmark tooling refuses pre-existing browser sessions and scopes cleanup to benchmark-owned process trees.
 
-The canonical build flow is documented in `../BUILDING.md`. Canonical 0.0.3 production requires exact-SHA source compile, runtime, benchmark, package, provenance, production-signing evidence and the complete install -> runtime -> same-Setup update -> runtime -> uninstall lifecycle before canonical publication.
+The canonical build flow is documented in `../BUILDING.md`. Canonical 0.0.2 production requires exact-SHA source compile, runtime, benchmark, package, provenance, production-signing evidence and the complete install -> runtime -> same-Setup update -> runtime -> uninstall lifecycle before canonical publication.
