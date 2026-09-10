@@ -16,6 +16,13 @@ if ($version -notmatch '^0\.\d+\.\d+$') {
   throw "Ghosium VERSION is invalid: '$version'"
 }
 
+function Test-GhosiumProductVersion {
+  param([Parameter(Mandatory = $true)][string]$Value)
+
+  $normalized = $Value.Trim()
+  return $normalized -eq $version -or $normalized -eq "$version.0"
+}
+
 $tempBase = if (![string]::IsNullOrWhiteSpace($env:RUNNER_TEMP)) {
   $env:RUNNER_TEMP
 } else {
@@ -78,7 +85,7 @@ public static class Program {
   $browserInfo = (Get-Item $browserPath).VersionInfo
   if ([string]$browserInfo.ProductName -ne 'Ghosium Browser' -or
       [string]$browserInfo.CompanyName -ne 'Brendigo' -or
-      [string]$browserInfo.ProductVersion -notlike "$version*") {
+      !(Test-GhosiumProductVersion -Value ([string]$browserInfo.ProductVersion))) {
     throw 'Fixture executable metadata does not satisfy the public Ghosium identity contract.'
   }
 
@@ -116,14 +123,14 @@ public static class Program {
   if ([string]$setupInfo.ProductName -ne 'Ghosium Browser' -or
       [string]$setupInfo.CompanyName -ne 'Brendigo' -or
       [string]$setupInfo.FileDescription -ne 'Ghosium Browser Setup' -or
-      [string]$setupInfo.ProductVersion -notlike "$version*") {
+      !(Test-GhosiumProductVersion -Value ([string]$setupInfo.ProductVersion))) {
     throw 'Compiled Setup metadata failed the Ghosium contract.'
   }
   $portableInfo = (Get-Item $portablePath).VersionInfo
   if ([string]$portableInfo.ProductName -ne 'Ghosium Browser' -or
       [string]$portableInfo.CompanyName -ne 'Brendigo' -or
       [string]$portableInfo.FileDescription -ne 'Ghosium Browser Portable' -or
-      [string]$portableInfo.ProductVersion -notlike "$version*") {
+      !(Test-GhosiumProductVersion -Value ([string]$portableInfo.ProductVersion))) {
     throw 'Compiled Portable metadata failed the Ghosium contract.'
   }
 
@@ -141,12 +148,14 @@ public static class Program {
       $smoke.version -ne $version -or
       !$smoke.install.completed -or
       !$smoke.update.completed -or
+      !$smoke.update.secureSessionStaging -or
+      !$smoke.update.sessionDirectoryCleanupCompleted -or
       !$smoke.runtime.beforeUpdate -or
       !$smoke.runtime.afterUpdate -or
       !$smoke.uninstall.sameSetupExecutable -or
       !$smoke.uninstall.completed -or
       $smoke.forbiddenStandaloneMaintenanceExecutables) {
-    throw 'Ghosium installer fixture evidence failed the same-Setup lifecycle contract.'
+    throw 'Ghosium installer fixture evidence failed the secure same-Setup lifecycle contract.'
   }
 
   # Execute the real Portable wrapper as well. Use a caller-supplied profile
@@ -161,7 +170,12 @@ public static class Program {
   $portableProcess = Start-Process -FilePath $portableRun -ArgumentList @(
     '--disable-gpu',
     "--user-data-dir=$callerProfile"
-  ) -Wait -PassThru
+  ) -PassThru
+  if (!$portableProcess.WaitForExit(60000)) {
+    Stop-Process -Id $portableProcess.Id -Force -ErrorAction SilentlyContinue
+    throw 'Ghosium Portable runtime fixture timed out after 60 seconds.'
+  }
+  $portableProcess.Refresh()
   if ($portableProcess.ExitCode -ne 0) {
     throw "Ghosium Portable runtime returned exit code $($portableProcess.ExitCode)."
   }
@@ -212,10 +226,10 @@ public static class Program {
   Write-Host "Setup evidence: $report"
   Write-Host "Portable evidence: $portableReport"
 } finally {
-  # The lifecycle smoke owns and removes its installation root. Keep the build
-  # artifacts only for the duration of this ephemeral CI job; always remove the
-  # source fixture and any compiler scratch data.
-  if (Test-Path $sourcePath -ErrorAction SilentlyContinue) {
-    Remove-Item $sourcePath -Force -ErrorAction SilentlyContinue
+  # Always remove fixture source/runtime scratch state. Caller-supplied artifact
+  # directories outside $work are preserved; default ephemeral artifacts live
+  # inside $work and intentionally disappear with the rest of the fixture.
+  if (Test-Path $work -PathType Container) {
+    Remove-Item $work -Recurse -Force -ErrorAction SilentlyContinue
   }
 }
