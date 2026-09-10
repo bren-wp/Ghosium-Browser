@@ -10,7 +10,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'GET') {
 
 try {
     $revocations = store_load_revocations();
-    store_json_response($revocations, 200, 'public, max-age=60');
+    store_json_response($revocations, 200, 'public, max-age=60, must-revalidate');
 } catch (Throwable) {
     store_public_error();
 }
