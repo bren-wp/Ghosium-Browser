@@ -1,0 +1,172 @@
+name: Ghosium Release Orchestration
+
+on:
+  push:
+    branches:
+      - main
+      - 'ghosium/release/**'
+    paths:
+      - '.release/*.request'
+
+permissions:
+  actions: write
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: ghosium-release-orchestration-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  dispatch-candidate:
+    name: Validate marker branch and dispatch exact candidate
+    if: startsWith(github.ref, 'refs/heads/ghosium/release/')
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout release marker branch
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Require exact marker-only release branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$(tr -d '\r\n ' < VERSION)"
+          [[ "$version" =~ ^0\.[0-9]+\.[0-9]+$ ]] || { echo "Invalid Ghosium VERSION: $version" >&2; exit 1; }
+
+          branch="ghosium/release/${version}"
+          tag="ghosium-v${version}"
+          marker=".release/${tag}.request"
+          [[ "$GITHUB_REF_NAME" == "$branch" ]] || { echo "Release branch must be $branch." >&2; exit 1; }
+          [[ -f "$marker" ]] || { echo "Required release marker is missing: $marker" >&2; exit 1; }
+          [[ "$(tr -d '\r\n ' < "$marker")" == "$tag" ]] || { echo 'Release marker content mismatch.' >&2; exit 1; }
+
+          git fetch --no-tags origin main
+          mapfile -t changed < <(git diff --name-only origin/main...HEAD | sed '/^$/d')
+          if (( ${#changed[@]} != 1 )) || [[ "${changed[0]}" != "$marker" ]]; then
+            echo 'Candidate release branch must differ from main by exactly one release marker.' >&2
+            printf 'changed: %s\n' "${changed[@]}" >&2
+            exit 1
+          fi
+
+          echo "GHOSIUM_VERSION=$version" >> "$GITHUB_ENV"
+          echo "GHOSIUM_RELEASE_BRANCH=$branch" >> "$GITHUB_ENV"
+          echo "GHOSIUM_TAG=$tag" >> "$GITHUB_ENV"
+
+      - name: Dispatch canonical full-source candidate
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if gh release view "$GHOSIUM_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Immutable release $GHOSIUM_TAG already exists; refusing duplicate candidate." >&2
+            exit 1
+          fi
+
+          runs="$(gh api --method GET "/repos/${GITHUB_REPOSITORY}/actions/workflows/full-source-windows-build.yml/runs" -f branch="$GHOSIUM_RELEASE_BRANCH" -f event='workflow_dispatch' -f per_page='100')"
+          existing="$(jq -r --arg sha "$GITHUB_SHA" '[.workflow_runs[] | select(.head_sha == $sha) | select(.status == "queued" or .status == "in_progress" or (.status == "completed" and .conclusion == "success"))] | length' <<<"$runs")"
+          if [[ "$existing" != '0' ]]; then
+            echo "Canonical candidate already exists for exact head $GITHUB_SHA; no duplicate dispatch required."
+            exit 0
+          fi
+
+          gh workflow run full-source-windows-build.yml --ref "$GHOSIUM_RELEASE_BRANCH" --repo "$GITHUB_REPOSITORY"
+          echo "Dispatched canonical Ghosium $GHOSIUM_VERSION candidate for exact head $GITHUB_SHA."
+
+  dispatch-production:
+    name: Verify promoted candidate and dispatch production
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout promoted main
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Resolve exact promoted marker PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$(tr -d '\r\n ' < VERSION)"
+          [[ "$version" =~ ^0\.[0-9]+\.[0-9]+$ ]] || { echo "Invalid Ghosium VERSION: $version" >&2; exit 1; }
+
+          branch="ghosium/release/${version}"
+          tag="ghosium-v${version}"
+          marker=".release/${tag}.request"
+          [[ -f "$marker" ]] || { echo "Promoted release marker is missing: $marker" >&2; exit 1; }
+          [[ "$(tr -d '\r\n ' < "$marker")" == "$tag" ]] || { echo 'Promoted release marker content mismatch.' >&2; exit 1; }
+
+          pulls="$(gh api --method GET "/repos/${GITHUB_REPOSITORY}/pulls" -f state='closed' -f base='main' -f head="${GITHUB_REPOSITORY_OWNER}:${branch}" -f per_page='100')"
+          pr_number="$(jq -r --arg merge "$GITHUB_SHA" '[.[] | select(.merged_at != null) | select(.merge_commit_sha == $merge)] | .[0].number // empty' <<<"$pulls")"
+          [[ -n "$pr_number" ]] || { echo 'Current main commit is not the merge commit of the expected release-marker PR.' >&2; exit 1; }
+
+          pr_json="$(gh api --method GET "/repos/${GITHUB_REPOSITORY}/pulls/${pr_number}")"
+          candidate_sha="$(jq -r '.head.sha // empty' <<<"$pr_json")"
+          [[ -n "$candidate_sha" ]] || { echo 'Unable to resolve promoted candidate SHA.' >&2; exit 1; }
+          [[ "$(jq -r '.base.ref' <<<"$pr_json")" == 'main' ]] || { echo 'Release-marker PR base mismatch.' >&2; exit 1; }
+          [[ "$(jq -r '.head.ref' <<<"$pr_json")" == "$branch" ]] || { echo 'Release-marker PR branch mismatch.' >&2; exit 1; }
+          [[ "$(jq -r '.changed_files' <<<"$pr_json")" == '1' ]] || { echo 'Release-marker PR was not marker-only.' >&2; exit 1; }
+
+          files="$(gh api --method GET "/repos/${GITHUB_REPOSITORY}/pulls/${pr_number}/files" -f per_page='100')"
+          [[ "$(jq -r 'length' <<<"$files")" == '1' ]] || { echo 'Release-marker PR file list is not singular.' >&2; exit 1; }
+          [[ "$(jq -r '.[0].filename' <<<"$files")" == "$marker" ]] || { echo 'Release-marker PR changed an unexpected file.' >&2; exit 1; }
+          [[ "$(jq -r '.[0].status' <<<"$files")" == 'added' ]] || { echo 'Release marker was not added by the promotion PR.' >&2; exit 1; }
+
+          echo "GHOSIUM_VERSION=$version" >> "$GITHUB_ENV"
+          echo "GHOSIUM_RELEASE_BRANCH=$branch" >> "$GITHUB_ENV"
+          echo "GHOSIUM_TAG=$tag" >> "$GITHUB_ENV"
+          echo "GHOSIUM_CANDIDATE_SHA=$candidate_sha" >> "$GITHUB_ENV"
+          echo "GHOSIUM_RELEASE_PR=$pr_number" >> "$GITHUB_ENV"
+
+      - name: Require successful release contracts and exact candidate
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          checks="$(gh api --method GET "/repos/${GITHUB_REPOSITORY}/commits/${GHOSIUM_CANDIDATE_SHA}/check-runs" -f per_page='100')"
+          for required in 'version-contract' 'Verify release-marker-only promotion and candidate evidence'; do
+            ok="$(jq -r --arg name "$required" '[.check_runs[] | select(.name == $name) | select(.status == "completed") | select(.conclusion == "success")] | length' <<<"$checks")"
+            [[ "$ok" != '0' ]] || { echo "Required candidate check did not pass: $required" >&2; exit 1; }
+          done
+
+          runs="$(gh api --method GET "/repos/${GITHUB_REPOSITORY}/actions/workflows/full-source-windows-build.yml/runs" -f branch="$GHOSIUM_RELEASE_BRANCH" -f event='workflow_dispatch' -f per_page='100')"
+          candidate_run="$(jq -r --arg sha "$GHOSIUM_CANDIDATE_SHA" '[.workflow_runs[] | select(.head_sha == $sha) | select(.status == "completed") | select(.conclusion == "success")] | sort_by(.created_at) | last | .id // empty' <<<"$runs")"
+          [[ -n "$candidate_run" ]] || { echo 'No successful canonical full-source run exists for the exact promoted candidate.' >&2; exit 1; }
+
+          artifacts="$(gh api --method GET "/repos/${GITHUB_REPOSITORY}/actions/runs/${candidate_run}/artifacts" -f per_page='100')"
+          artifact_name="ghosium-full-source-windows-x64-${GHOSIUM_VERSION}"
+          artifact_count="$(jq -r --arg name "$artifact_name" '[.artifacts[] | select(.name == $name) | select(.expired == false)] | length' <<<"$artifacts")"
+          [[ "$artifact_count" != '0' ]] || { echo "Verified candidate artifact is missing: $artifact_name" >&2; exit 1; }
+
+          if gh release view "$GHOSIUM_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Immutable release $GHOSIUM_TAG already exists; refusing duplicate production dispatch." >&2
+            exit 1
+          fi
+
+      - name: Dispatch canonical main production build
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          runs="$(gh api --method GET "/repos/${GITHUB_REPOSITORY}/actions/workflows/full-source-windows-build.yml/runs" -f branch='main' -f event='workflow_dispatch' -f per_page='100')"
+          existing="$(jq -r --arg sha "$GITHUB_SHA" '[.workflow_runs[] | select(.head_sha == $sha) | select(.status == "queued" or .status == "in_progress" or (.status == "completed" and .conclusion == "success"))] | length' <<<"$runs")"
+          if [[ "$existing" != '0' ]]; then
+            echo "Canonical production run already exists for exact main head $GITHUB_SHA; no duplicate dispatch required."
+            exit 0
+          fi
+
+          gh workflow run full-source-windows-build.yml --ref main --repo "$GITHUB_REPOSITORY"
+          echo "Dispatched canonical GitHub production build for Ghosium $GHOSIUM_VERSION from exact main head $GITHUB_SHA."
