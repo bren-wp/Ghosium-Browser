@@ -1,9 +1,5 @@
 # Ghosium source-engine integration
 
-The active product baseline is `0.0.3`.
-
-Ghosium Browser 0.0.3 is the current canonical production candidate. Earlier Preview artifacts are separate from canonical full-source production evidence and do not satisfy current release gates.
-
 This directory contains Ghosium-owned source transforms, brand assets, localization, Windows identity and deterministic build configuration for the exact upstream engine revision in `ENGINE_SOURCE_REVISION`.
 
 ## Product source contract
@@ -14,7 +10,6 @@ External services and upstream implementation identifiers are not falsely rename
 
 ## New Tab and privacy
 
-0.0.3 applies the Ghosium mark to native New Tab source, removes remote Doodle initialization and disables provider-owned NTP cloud/promo surfaces. Privacy defaults block third-party cookies and disable search suggestions, speculative network prediction/preloading, remote alternate-error pages and online spelling upload for new/default profiles.
 
 ## Security invariants
 
@@ -24,4 +19,3 @@ Browser/renderer/GPU sandboxing, site/process isolation, Safe Browsing, TLS/cert
 
 Windows x64 keeps `is_debug = false`, `is_component_build = false`, `is_chrome_branded = false`, `target_cpu = "x64"`, `enable_background_mode = false` and `use_remoteexec = false`. Production builds do not inject proprietary third-party API credentials.
 
-The canonical build flow is documented in `../BUILDING.md`. Canonical 0.0.3 production requires exact-SHA source compile, runtime, benchmark, package, provenance and production-signing evidence before GitHub publication.
