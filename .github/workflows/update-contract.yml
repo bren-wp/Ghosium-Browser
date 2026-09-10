@@ -13,11 +13,10 @@ on:
       - 'scripts/harden-engine-version-updater.ps1'
       - 'scripts/verify-engine-version-updater.ps1'
       - 'scripts/generate-update-manifest.ps1'
+      - 'scripts/smoke-test-windows-installer.ps1'
       - '.github/workflows/update-contract.yml'
   push:
-    branches:
-      - main
-      - ghosium/0.1.1-public-branding
+    branches: [main]
     paths:
       - 'VERSION'
       - 'ENGINE_SOURCE_REVISION'
@@ -28,6 +27,7 @@ on:
       - 'scripts/harden-engine-version-updater.ps1'
       - 'scripts/verify-engine-version-updater.ps1'
       - 'scripts/generate-update-manifest.ps1'
+      - 'scripts/smoke-test-windows-installer.ps1'
       - '.github/workflows/update-contract.yml'
   workflow_dispatch:
 
@@ -56,7 +56,8 @@ jobs:
             'scripts/rewrite-engine-version-updater.ps1',
             'scripts/harden-engine-version-updater.ps1',
             'scripts/verify-engine-version-updater.ps1',
-            'scripts/generate-update-manifest.ps1'
+            'scripts/generate-update-manifest.ps1',
+            'scripts/smoke-test-windows-installer.ps1'
           )) {
             $tokens = $null
             $errors = $null
@@ -91,6 +92,10 @@ jobs:
           PY
           grep -Fq 'Options -Indexes' updates-web/.htaccess
           grep -Fq 'AddType application/json .json' updates-web/.htaccess
+          grep -Fq '<Files "stable.json">' updates-web/.htaccess
+          grep -Fq 'Header always set Cache-Control "no-store, no-cache, must-revalidate, max-age=0"' updates-web/.htaccess
+          grep -Fq 'Header always set Pragma "no-cache"' updates-web/.htaccess
+          grep -Fq 'Header always set Expires "0"' updates-web/.htaccess
           grep -Fq 'Disallow: /' updates-web/robots.txt
 
       - name: Verify deterministic release manifest generation
@@ -112,7 +117,7 @@ jobs:
             throw 'Generated update manifest failed deterministic verification.'
           }
 
-      - name: Reject standalone maintenance executables
+      - name: Reject standalone maintenance executables and unsafe cleanup
         shell: bash
         run: |
           set -euo pipefail
@@ -127,20 +132,76 @@ jobs:
             echo 'Ghosium must use Ghosium-Browser-Setup.exe for maintenance; standalone updater/uninstaller binaries are forbidden.' >&2
             exit 1
           fi
-          grep -Fq '${GetOptions} $R0 "/UPDATE" $R1' installer/ghosium.nsi
-          grep -Fq '${GetOptions} $R0 "/UNINSTALL" $R1' installer/ghosium.nsi
-          grep -Fq '${GetOptions} $R0 "/DELETESELF" $R1' installer/ghosium.nsi
-          grep -Fq '${GetOptions} $R0 "/CLEANUPDATE" $R1' installer/ghosium.nsi
-          grep -Fq '!define UPDATE_SETUP "$TEMP\Brendigo\Ghosium Browser Update\Ghosium-Browser-Setup.exe"' installer/ghosium.nsi
-          grep -Fq 'Exec '\''"$INSTDIR\${INSTALLED_SETUP}" /S /CLEANUPDATE'\''' installer/ghosium.nsi
-          grep -Fq 'Delete /REBOOTOK "${UPDATE_SETUP}"' installer/ghosium.nsi
-          grep -Fq 'RMDir /REBOOTOK "${UPDATE_DIR}"' installer/ghosium.nsi
-          grep -Fq 'Ghosium-Browser-Setup.exe' installer/ghosium.nsi
 
           if grep -Eqi '(^|[^A-Za-z])(powershell|cmd|curl)(\.exe)?' installer/ghosium.nsi; then
             echo 'Installer update cleanup must not depend on a shell or curl helper.' >&2
             exit 1
           fi
+
+          python3 - <<'PY'
+          from pathlib import Path
+
+          text = Path('installer/ghosium.nsi').read_text(encoding='utf-8')
+          required = (
+              '${GetOptions} $R0 "/UPDATE" $R1',
+              '${GetOptions} $R0 "/UNINSTALL" $R1',
+              '${GetOptions} $R0 "/DELETESELF" $R1',
+              'Var GhosiumUpdateCleanupPath',
+              '${GetOptions} $R0 "/CLEANUPDATE=" $R1',
+              'GetFullPathName $R5 $GhosiumUpdateCleanupPath',
+              '${GetFileName} "$R5" $R6',
+              'StrCmp $R6 "Ghosium-Browser-Setup.exe" 0 update_cleanup_invalid',
+              '${GetParent} "$R5" $R6',
+              '${GetParent} "$R6" $R7',
+              'GetFullPathName $R8 "${UPDATE_DIR}"',
+              'StrCmp $R7 $R8 update_cleanup_parent_verified update_cleanup_invalid',
+              '${GetFileName} "$R6" $R9',
+              'StrCmp $R7 "session-" update_cleanup_dynamic_verified update_cleanup_invalid',
+              'Delete /REBOOTOK "$R5"',
+              'RMDir /REBOOTOK "$R6"',
+              'Exec \'"$INSTDIR\\${INSTALLED_SETUP}" /S /CLEANUPDATE="$EXEPATH"\'',
+          )
+          missing = [item for item in required if item not in text]
+          if missing:
+              raise SystemExit('Secure same-Setup update cleanup contract is missing:\n' + '\n'.join(missing))
+
+          dynamic = text[text.index('update_cleanup_dynamic:'):text.index('update_cleanup_invalid:')]
+          if 'RMDir /r' in dynamic:
+              raise SystemExit('Dynamic update cleanup must never recursively remove a session directory.')
+
+          fallback = text[text.index('update_cleanup_fallback:'):text.index('section_done:')]
+          if 'Delete /REBOOTOK "$EXEPATH"' not in fallback or 'RMDir' in fallback:
+              raise SystemExit('Update cleanup fallback may schedule only the running Setup image, never a parent directory.')
+
+          legacy = text[text.index('update_cleanup_legacy:'):text.index('update_cleanup_dynamic:')]
+          for required_legacy in (
+              'Delete /REBOOTOK "${UPDATE_SETUP}"',
+              'RMDir /REBOOTOK "${UPDATE_DIR}"',
+          ):
+              if required_legacy not in legacy:
+                  raise SystemExit(f'Legacy fixed-path compatibility cleanup changed unexpectedly: {required_legacy}')
+
+          print('Secure session-scoped same-Setup cleanup contract: OK')
+          PY
+
+      - name: Verify canonical smoke mirrors secure session staging
+        shell: python
+        run: |
+          from pathlib import Path
+
+          smoke = Path('scripts/smoke-test-windows-installer.ps1').read_text(encoding='utf-8')
+          required = (
+              '$updateSession = Join-Path $updateDir "session-smoke-$PID"',
+              "$updateSetup = Join-Path $updateSession 'Ghosium-Browser-Setup.exe'",
+              'New-Item -ItemType Directory -Force -Path $updateSession',
+              'Ghosium update session directory cleanup',
+              'sessionDirectoryCleanupCompleted = $updateSessionCleanupCompleted',
+              'secureSessionStaging = $true',
+          )
+          missing = [item for item in required if item not in smoke]
+          if missing:
+              raise SystemExit('Canonical installer smoke does not mirror secure updater session staging:\n' + '\n'.join(missing))
+          print('Canonical installer smoke secure-session staging: OK')
 
       - name: Sparse checkout pinned Chromium update surface
         shell: bash
@@ -182,9 +243,14 @@ jobs:
           grep -Fq '#include <algorithm>' "$updater"
           grep -Fq 'CredentialsMode::kOmit' "$updater"
           grep -Fq 'https://updates.ghosium.com/windows/stable.json' "$updater"
+          grep -Fq 'base::GetSecureTempDirectory(&secure_temp_dir)' "$updater"
+          grep -Fq 'base::CreateTemporaryDirInDir(' "$updater"
+          grep -Fq 'FILE_PATH_LITERAL("session-")' "$updater"
           grep -Fq 'crypto::hash::HashFile' "$updater"
           grep -Fq 'base::win::IsBinaryTrusted' "$updater"
           grep -Fq 'true /* force_verify_in_dev_builds */' "$updater"
+          grep -Fq 'FileVersionInfo::CreateFileVersionInfo(setup_path_)' "$updater"
+          grep -Fq 'setup_product_version != available_version_' "$updater"
           grep -Fq 'AppendArgNative(L"/S")' "$updater"
           grep -Fq 'AppendArgNative(L"/UPDATE")' "$updater"
           grep -Fq 'AppendArgNative(L"/DELETESELF")' "$updater"
@@ -200,4 +266,4 @@ jobs:
             exit 1
           fi
 
-          echo 'Ghosium update contract: first-party HTTPS manifest, exact version/size/hash validation, mandatory Authenticode publisher verification, same-Setup /UPDATE maintenance, and same-Setup temporary package cleanup.'
+          echo 'Ghosium update contract: secure session staging, exact first-party HTTPS manifest, size/hash validation, mandatory same-publisher Authenticode, signed PE anti-rollback identity, and same-Setup cleanup.'
