@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "legalGritMessages": [
+    {
+      "path": "components/components_chromium_strings.grd",
+      "id": "IDS_VERSION_UI_LICENSE",
+      "reason": "Required Chromium/open-source attribution on the dedicated legal surface."
+    },
+    {
+      "path": "components/components_chromium_strings.grd",
+      "id": "IDS_VERSION_UI_LICENSE_CHROMIUM",
+      "reason": "Required Chromium project attribution on the dedicated legal surface."
+    }
+  ],
+  "legalTranslations": [
+    {
+      "pathGlob": "components/strings/components_chromium_strings_*.xtb",
+      "id": "4365115785552740256",
+      "reason": "Localized Chromium/open-source legal attribution."
+    },
+    {
+      "pathGlob": "components/strings/components_chromium_strings_*.xtb",
+      "id": "7681937895330411637",
+      "reason": "Localized Chromium project legal attribution."
+    }
+  ]
+}

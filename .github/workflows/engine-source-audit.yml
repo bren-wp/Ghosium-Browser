@@ -58,6 +58,8 @@ jobs:
             'scripts/rewrite-engine-product-version.ps1',
             'scripts/rewrite-engine-version-updater.ps1',
             'scripts/rewrite-engine-public-surfaces.ps1',
+            'scripts/rewrite-engine-public-branding-complete.ps1',
+            'scripts/verify-engine-public-branding-complete.ps1',
             'scripts/verify-engine-public-surfaces.ps1',
             'scripts/harden-engine-version-updater.ps1',
             'scripts/verify-engine-version-updater.ps1',
@@ -243,9 +245,17 @@ jobs:
           /chrome/installer/util/util_constants.h
           /chrome/browser/browser_about_handler.cc
           /chrome/browser/extensions/extension_ui_util.cc
-          /chrome/browser/resources/settings/settings_menu/settings_menu.html
-          /chrome/browser/resources/settings/settings_menu/settings_menu.ts
-          /chrome/browser/resources/settings/route.ts
+          /chrome/browser/resources/settings/
+          /chrome/browser/resources/new_tab_page/
+          /chrome/browser/resources/history/
+          /chrome/browser/resources/bookmarks/
+          /chrome/browser/resources/downloads/
+          /chrome/browser/resources/extensions/
+          /chrome/browser/resources/password_manager/
+          /chrome/browser/resources/print_preview/
+          /chrome/browser/resources/pdf/
+          /chrome/browser/resources/signin/
+          /chrome/browser/resources/contextual_tasks/top_toolbar_logo.html.ts
           /chrome/browser/ui/chrome_pages.cc
           /chrome/browser/ui/webui/settings/settings_ui.cc
           /chrome/browser/ui/webui/version/version_ui.cc
@@ -257,18 +267,17 @@ jobs:
           /chrome/browser/ui/webui/password_manager/password_manager_ui.cc
           /chrome/browser/ui/webui/signin/profile_picker_ui.h
           /chrome/browser/ui/webui/signin/profile_picker_ui.cc
-          /chrome/browser/resources/settings/about_page/about_page.ts
-          /chrome/browser/resources/signin/managed_user_profile_notice/managed_user_profile_notice_value_prop.html.ts
-          /chrome/browser/resources/contextual_tasks/top_toolbar_logo.html.ts
           /components/components_chromium_strings.grd
           /components/password_manager/content/common/web_ui_constants.h
           /components/performance_manager/user_tuning/prefs.cc
           /components/search_engines/template_url_prepopulate_data.cc
+          /components/security_interstitials/
+          /components/error_page/
           /components/strings/
           /components/vector_icons/chromium/
           /content/public/common/url_constants.h
           /extensions/strings/
-          /ui/webui/resources/images/chrome_logo_dark.svg
+          /ui/webui/resources/
           EOF
 
           git -C "$src" fetch --depth=1 --filter=blob:none origin "$revision"
@@ -286,6 +295,9 @@ jobs:
           ./scripts/verify-engine-fork.ps1 -SourceRoot $env:ENGINE_SRC
           ./scripts/verify-engine-windows-executable.ps1 -SourceRoot $env:ENGINE_SRC
           ./scripts/verify-engine-version-updater.ps1 -SourceRoot $env:ENGINE_SRC
+          $brandingEvidence = Join-Path $env:RUNNER_TEMP 'ghosium-public-branding-audit.json'
+          ./scripts/verify-engine-public-branding-complete.ps1 -SourceRoot $env:ENGINE_SRC -EvidencePath $brandingEvidence
+          Get-Content $brandingEvidence -Raw
 
       - name: Validate Ghosium updater performance and public source identity
         shell: bash
