@@ -1,0 +1,158 @@
+name: Ghosium Security and Stability Hardening Contract
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'scripts/benchmark-ghosium-windows.ps1'
+      - 'scripts/benchmark-browser-comparison-windows.ps1'
+      - 'scripts/resolve-nsis.ps1'
+      - 'scripts/harden-engine-version-updater.ps1'
+      - 'scripts/verify-engine-version-updater.ps1'
+      - '.github/workflows/hardening-contract.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/benchmark-ghosium-windows.ps1'
+      - 'scripts/benchmark-browser-comparison-windows.ps1'
+      - 'scripts/resolve-nsis.ps1'
+      - 'scripts/harden-engine-version-updater.ps1'
+      - 'scripts/verify-engine-version-updater.ps1'
+      - '.github/workflows/hardening-contract.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  hardening-contract:
+    name: Verify updater, toolchain and benchmark isolation
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Parse hardened PowerShell tooling
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          foreach ($path in @(
+            'scripts/benchmark-ghosium-windows.ps1',
+            'scripts/benchmark-browser-comparison-windows.ps1',
+            'scripts/resolve-nsis.ps1',
+            'scripts/harden-engine-version-updater.ps1',
+            'scripts/verify-engine-version-updater.ps1'
+          )) {
+            $tokens = $null
+            $errors = $null
+            [void][System.Management.Automation.Language.Parser]::ParseFile(
+              (Resolve-Path $path), [ref]$tokens, [ref]$errors)
+            if ($errors.Count -gt 0) {
+              $errors | ForEach-Object { Write-Error "$path: $($_.Message)" }
+              throw "PowerShell parser errors found in $path"
+            }
+          }
+
+      - name: Verify benchmark process ownership boundaries
+        shell: python
+        run: |
+          from pathlib import Path
+
+          ghosium = Path('scripts/benchmark-ghosium-windows.ps1').read_text(encoding='utf-8')
+          comparison = Path('scripts/benchmark-browser-comparison-windows.ps1').read_text(encoding='utf-8')
+
+          for required in (
+              'BenchmarkRootProcessIds',
+              'Get-Process -Name $name',
+              'Assert-NoPreExistingGhosium',
+              'Stop-BenchmarkOwnedProcesses',
+              'Get-CimInstance Win32_Process',
+              'Stop-Process -Id $processId',
+              'The benchmark never terminates user-owned Ghosium processes.',
+          ):
+              if required not in ghosium:
+                  raise SystemExit(f'Ghosium benchmark ownership invariant missing: {required}')
+
+          for forbidden in (
+              'Get-Process -ErrorAction SilentlyContinue | Where-Object',
+              'Stop-Process -Force -ErrorAction SilentlyContinue',
+          ):
+              if forbidden in ghosium:
+                  raise SystemExit(f'Unsafe broad Ghosium benchmark process handling returned: {forbidden}')
+
+          for required in (
+              'Get-Process -Name $ProcessName',
+              'Assert-BrowserIdle',
+              'Stop-OwnedProcessTree',
+              'Get-CimInstance Win32_Process',
+              'Stop-Process -Id $processId',
+              'Existing user browser processes are never terminated by this benchmark.',
+              'Skipped because an existing user session is running',
+          ):
+              if required not in comparison:
+                  raise SystemExit(f'Cross-browser benchmark ownership invariant missing: {required}')
+
+          for forbidden in (
+              'function Stop-Browser {',
+              'Get-Process -Name $Browser.process | Stop-Process',
+          ):
+              if forbidden in comparison:
+                  raise SystemExit(f'Unsafe broad cross-browser cleanup returned: {forbidden}')
+
+          print('Benchmark process ownership boundaries: OK')
+
+      - name: Verify NSIS supply-chain restrictions
+        shell: python
+        run: |
+          from pathlib import Path
+
+          text = Path('scripts/resolve-nsis.ps1').read_text(encoding='utf-8')
+          for required in (
+              "https://downloads.sourceforge.net/project/nsis/NSIS%203/3.12/nsis-3.12.zip",
+              "56581f90db321581c5381193d796fffcf2d24b2f8fed2160a6c6a3baa67f2c4f",
+              'Test-TrustedProgramFilesPath',
+              'Test-PinnedArchive',
+              "--proto '=https'",
+              "--proto-redir '=https'",
+              '--max-time 300',
+              'Get-FileHash $archive -Algorithm SHA256',
+          ):
+              if required not in text:
+                  raise SystemExit(f'NSIS supply-chain invariant missing: {required}')
+
+          program_files_probe = text.index("'C:\\Program Files (x86)\\NSIS\\makensis.exe'")
+          path_probe = text.index('Get-Command makensis.exe')
+          if program_files_probe > path_probe:
+              raise SystemExit('NSIS PATH lookup must not precede canonical Program Files locations.')
+          if 'Ignoring PATH makensis outside trusted Program Files roots' not in text:
+              raise SystemExit('NSIS resolver must explicitly reject untrusted PATH locations.')
+          print('NSIS supply-chain restrictions: OK')
+
+      - name: Verify native updater staging and trust order
+        shell: python
+        run: |
+          from pathlib import Path
+
+          harden = Path('scripts/harden-engine-version-updater.ps1').read_text(encoding='utf-8')
+          verify = Path('scripts/verify-engine-version-updater.ps1').read_text(encoding='utf-8')
+          for text, label in ((harden, 'hardener'), (verify, 'verifier')):
+              for required in (
+                  'base::GetSecureTempDirectory(&secure_temp_dir)',
+                  'base::CreateTemporaryDirInDir(',
+                  'FILE_PATH_LITERAL("session-")',
+                  'base::win::IsBinaryTrusted',
+                  'FileVersionInfo::CreateFileVersionInfo(setup_path_)',
+              ):
+                  if required not in text:
+                      raise SystemExit(f'Updater {label} invariant missing: {required}')
+          if "base::GetTempDir(&temp_dir)')" not in harden:
+              raise SystemExit('Updater hardener must explicitly reject the legacy generic temp path.')
+          for required in ('secureTemp', 'sessionDir', 'setupDownload', 'hashCheck', 'publisherCheck', 'identityCheck', 'versionBinding', 'launch'):
+              if required not in verify:
+                  raise SystemExit(f'Updater trust-order verifier missing index: {required}')
+          print('Native updater secure staging and trust order: OK')
