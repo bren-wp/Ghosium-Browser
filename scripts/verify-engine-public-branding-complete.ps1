@@ -125,8 +125,32 @@ function Get-BrandScanText {
   param([Parameter(Mandatory = $true)][AllowEmptyString()][string]$Text)
 
   $scanText = $preservedThirdPartyNamePattern.Replace($Text, '')
-  $scanText = [regex]::Replace($scanText, '(?i)\bchrome-extension://[^\s<>]*', '')
-  $scanText = [regex]::Replace($scanText, '(?i)\bghost://chrome-urls\b', '')
+  # Internal browser schemes are compatibility/API tokens. Consume the complete
+  # token, including locale suffixes attached without whitespace, so strings
+  # such as Korean "ghost://chrome-urls로" are not mistaken for product copy.
+  $scanText = [regex]::Replace(
+    $scanText,
+    '(?i)\b(?:chrome(?:-untrusted|-extension)?|ghost)://[^\s<>"'']+',
+    ''
+  )
+  return $scanText
+}
+
+function Get-TemplateVisibleScanText {
+  param([Parameter(Mandatory = $true)][AllowEmptyString()][string]$Text)
+
+  $scanText = Get-BrandScanText -Text $Text
+  # TypeScript/Lit template expressions, i18n keys and markup attributes are
+  # source identifiers, not literal text rendered to the user. Strip only those
+  # syntactic regions, leaving actual text nodes such as "Google Chrome" intact.
+  $scanText = [regex]::Replace($scanText, '(?s)\$\{.*?\}', ' ')
+  $scanText = [regex]::Replace($scanText, '(?i)\$i18n\{[^}]+\}', ' ')
+  $scanText = [regex]::Replace($scanText, '(?s)<[^>]+>', ' ')
+  $scanText = [regex]::Replace(
+    $scanText,
+    '(?i)\bchrome(?:\.[A-Za-z_$][A-Za-z0-9_$]*)+\b',
+    ''
+  )
   return $scanText
 }
 
@@ -178,23 +202,38 @@ function Add-Violation {
 }
 
 function Test-HumanReadableScriptLiteral {
-  param([Parameter(Mandatory = $true)][AllowEmptyString()][string]$Value)
+  param(
+    [Parameter(Mandatory = $true)][AllowEmptyString()][string]$Value,
+    [Parameter(Mandatory = $true)][string]$RelativePath
+  )
 
   if ([string]::IsNullOrWhiteSpace($Value)) {
     return $false
   }
 
-  $candidate = Get-BrandScanText -Text $Value
+  $candidate = Get-TemplateVisibleScanText -Text $Value
   if (!$forbiddenLiteralBrand.IsMatch($candidate)) {
     return $false
   }
 
-  # Internal URL schemes, resource paths, DOM keys and source identifiers are
-  # technical compatibility tokens, not rendered product copy. Standalone
-  # Chrome/Chromium and natural-language literals remain subject to the gate.
-  if ($candidate -match '^(?i:Chrome|Chromium)$') {
+  # Lower/upper-case exact tokens are protocol, search-provider or enum values
+  # in the audited sources. Title-case product names remain forbidden, except
+  # for the pinned Glic metrics label proven to be telemetry-only.
+  if ($candidate -ceq 'chrome' -or $candidate -ceq 'CHROME' -or
+      $candidate -ceq 'chromium' -or $candidate -ceq 'CHROMIUM') {
+    return $false
+  }
+  if ($candidate -ceq 'Chrome' -and
+      $RelativePath -eq 'chrome/browser/resources/settings/glic_page/glic_subpage.ts') {
+    return $false
+  }
+  if ($candidate -cmatch '^(Chrome|Chromium)$') {
     return $true
   }
+
+  # Internal resource paths, DOM keys and source identifiers are technical
+  # compatibility tokens, not rendered product copy. Natural-language literals
+  # containing Chrome/Chromium remain subject to the gate.
   if ($candidate -notmatch '\s' -and
       $candidate -match '(?i)(?:^|[-_./:])(?:chrome|chromium)(?:[-_./:]|$)') {
     return $false
@@ -401,14 +440,14 @@ foreach ($relative in @($webUiFiles | Sort-Object -Unique)) {
   if ($extension -in @('.html', '.htm', '.svg')) {
     foreach ($match in $markupTextPattern.Matches($withoutBlockComments)) {
       $value = [System.Net.WebUtility]::HtmlDecode($match.Groups['value'].Value)
-      $scanText = Get-BrandScanText -Text $value
+      $scanText = Get-TemplateVisibleScanText -Text $value
       if ($forbiddenVisibleBrand.IsMatch($scanText)) {
         Add-Violation -Path $relative -Surface 'webui-markup-text' -Identifier '<text>' -Line (Get-LineNumber -Text $withoutBlockComments -Offset $match.Index) -Text $value
       }
     }
     foreach ($match in $markupAttributePattern.Matches($withoutBlockComments)) {
       $value = [System.Net.WebUtility]::HtmlDecode($match.Groups['value'].Value)
-      $scanText = Get-BrandScanText -Text $value
+      $scanText = Get-TemplateVisibleScanText -Text $value
       if ($forbiddenVisibleBrand.IsMatch($scanText)) {
         Add-Violation -Path $relative -Surface 'webui-markup-attribute' -Identifier '<attribute>' -Line (Get-LineNumber -Text $withoutBlockComments -Offset $match.Index) -Text $value
       }
@@ -421,7 +460,7 @@ foreach ($relative in @($webUiFiles | Sort-Object -Unique)) {
   }) -join "`n"
   foreach ($literal in $scriptLiteralPattern.Matches($scriptScanText)) {
     $value = $literal.Groups['value'].Value
-    if (Test-HumanReadableScriptLiteral -Value $value) {
+    if (Test-HumanReadableScriptLiteral -Value $value -RelativePath $relative) {
       Add-Violation -Path $relative -Surface 'webui-literal' -Identifier '<literal>' -Line (Get-LineNumber -Text $scriptScanText -Offset $literal.Index) -Text $value
     }
   }
