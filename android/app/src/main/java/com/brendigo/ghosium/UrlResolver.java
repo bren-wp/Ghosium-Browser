@@ -22,11 +22,14 @@ final class UrlResolver {
         if (lower.startsWith("http://") || lower.startsWith("https://")) {
             return value;
         }
-        if (SCHEME.matcher(value).matches()) {
-            return value;
-        }
+        // A host with an explicit port (for example localhost:8443) must be
+        // classified before the generic URI-scheme rule. Otherwise the host
+        // prefix is incorrectly interpreted as a custom scheme.
         if (looksLikeHost(value)) {
             return "https://" + value;
+        }
+        if (SCHEME.matcher(value).matches()) {
+            return value;
         }
         return "https://www.google.com/search?q=" +
                 URLEncoder.encode(value, StandardCharsets.UTF_8);
@@ -57,6 +60,15 @@ final class UrlResolver {
         if (colon > 0 && hostPart.indexOf(':') == colon) {
             String port = hostPart.substring(colon + 1);
             if (!port.matches("\\d{1,5}")) {
+                return false;
+            }
+            int portValue;
+            try {
+                portValue = Integer.parseInt(port);
+            } catch (NumberFormatException error) {
+                return false;
+            }
+            if (portValue < 1 || portValue > 65535) {
                 return false;
             }
             hostPart = hostPart.substring(0, colon);
