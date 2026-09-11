@@ -52,7 +52,7 @@ jobs:
               raise SystemExit('Portable must not bypass the hardened launcher profile contract.')
 
           android_build = Path('android/app/build.gradle').read_text(encoding='utf-8')
-          for token in ("versionName '0.0.3'", 'versionCode 3', 'compileSdk 37', 'targetSdk 37', 'minSdk 29'):
+          for token in ("versionName '0.0.3'", 'versionCode 3', 'compileSdk 36', 'targetSdk 36', 'minSdk 29', "'OldTargetApi'"):
               if token not in android_build:
                   raise SystemExit(f'Android build contract missing: {token}')
           android_manifest = Path('android/app/src/main/AndroidManifest.xml').read_text(encoding='utf-8')
@@ -93,14 +93,14 @@ jobs:
           sdkmanager_bin="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
           test -x "$sdkmanager_bin"
           set +o pipefail
-          yes | "$sdkmanager_bin" 'platforms;android-37' 'build-tools;36.0.0' >/dev/null
+          yes | "$sdkmanager_bin" 'platforms;android-36' 'build-tools;36.0.0' >/dev/null
           sdk_status=${PIPESTATUS[1]}
           set -o pipefail
           if [ "$sdk_status" -ne 0 ]; then
             echo "sdkmanager failed with exit code $sdk_status" >&2
             exit "$sdk_status"
           fi
-          test -f "$ANDROID_HOME/platforms/android-37/android.jar"
+          test -f "$ANDROID_HOME/platforms/android-36/android.jar"
           test -x "$ANDROID_HOME/build-tools/36.0.0/apksigner"
       - name: Download and verify Gradle 8.13
         shell: bash
