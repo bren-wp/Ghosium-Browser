@@ -111,7 +111,19 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          set +e
           gradle --no-daemon -p android testDebugUnitTest lintDebug assembleDebug
+          gradle_status=$?
+          set -e
+          if [ "$gradle_status" -ne 0 ]; then
+            lint_report='android/app/build/intermediates/lint_intermediate_text_report/debug/lintReportDebug/lint-results-debug.txt'
+            if [ -f "$lint_report" ]; then
+              echo '----- Android lint report -----'
+              cat "$lint_report"
+              echo '----- End Android lint report -----'
+            fi
+            exit "$gradle_status"
+          fi
           apk='android/app/build/outputs/apk/debug/app-debug.apk'
           test -s "$apk"
           "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose --print-certs "$apk"
@@ -190,7 +202,8 @@ jobs:
           $artifacts = (Resolve-Path 'qa-artifacts').Path
           $icon = (Resolve-Path 'ghosium.ico').Path
           foreach ($script in @('installer/ghosium.nsi','installer/ghosium-portable.nsi')) {
-            & $makensis '/DGHOSIUM_VERSION=0.0.3' "/DGHOSIUM_STAGE=$stage" "/DGHOSIUM_ARTIFACTS=$artifacts" "/DGHOSIUM_ICON=$icon" $script
+            $scriptPath = (Resolve-Path $script).Path
+            & $makensis '/DGHOSIUM_VERSION=0.0.3' "/DGHOSIUM_STAGE=$stage" "/DGHOSIUM_ARTIFACTS=$artifacts" "/DGHOSIUM_ICON=$icon" $scriptPath
             if ($LASTEXITCODE -ne 0) { throw "NSIS compile failed: $script" }
           }
           foreach ($artifact in @('Ghosium-Browser-Setup.exe','Ghosium-Browser-Portable.exe')) {
