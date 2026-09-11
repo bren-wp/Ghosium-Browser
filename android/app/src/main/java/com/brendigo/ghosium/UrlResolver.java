@@ -1,7 +1,7 @@
 package com.brendigo.ghosium;
 
+import java.io.UnsupportedEncodingException;
 import java.net.URLEncoder;
-import java.nio.charset.StandardCharsets;
 import java.util.Locale;
 import java.util.regex.Pattern;
 
@@ -31,8 +31,7 @@ final class UrlResolver {
         if (SCHEME.matcher(value).matches()) {
             return value;
         }
-        return "https://www.google.com/search?q=" +
-                URLEncoder.encode(value, StandardCharsets.UTF_8);
+        return "https://www.google.com/search?q=" + encodeQuery(value);
     }
 
     static boolean isHttpOrHttps(String value) {
@@ -45,6 +44,17 @@ final class UrlResolver {
 
     static boolean isNewTab(String value) {
         return NEW_TAB_URL.equals(value);
+    }
+
+    private static String encodeQuery(String value) {
+        try {
+            // String/String overload works on every supported Android API.
+            return URLEncoder.encode(value, "UTF-8");
+        } catch (UnsupportedEncodingException impossible) {
+            // UTF-8 is required by every Android runtime. Fail closed rather
+            // than leaking an unescaped query if a non-conforming runtime is used.
+            throw new IllegalStateException("UTF-8 is unavailable", impossible);
+        }
     }
 
     private static boolean looksLikeHost(String value) {
