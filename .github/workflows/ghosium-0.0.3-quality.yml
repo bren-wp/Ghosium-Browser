@@ -147,21 +147,36 @@ jobs:
           & ./compat-preview/vendor/build-native-launcher.ps1 -Version '0.0.3' -OutputPath 'qa-stage/Ghosium-Browser.exe'
           if ($LASTEXITCODE -ne 0) { throw 'Launcher build failed.' }
 
-          $stub = @'
-          using System;
-          using System.IO;
-          public static class GhosiumEngineStub {
-              public static int Main(string[] args) {
-                  try {
-                      File.WriteAllLines(Path.Combine(AppContext.BaseDirectory, "engine-args.txt"), args);
-                      return 0;
-                  } catch { return 91; }
-              }
+          @'
+          #include <windows.h>
+          #include <filesystem>
+          #include <fstream>
+          #include <string>
+
+          int wmain(int argc, wchar_t** argv) {
+            wchar_t module[32768]{};
+            const DWORD length = GetModuleFileNameW(nullptr, module, 32768);
+            if (length == 0 || length >= 32768) return 91;
+            std::filesystem::path outputPath = std::filesystem::path(std::wstring(module, length)).parent_path() / L"engine-args.txt";
+            std::wofstream output{outputPath};
+            if (!output.good()) return 92;
+            for (int index = 1; index < argc; ++index) {
+              output << argv[index] << L'\n';
+            }
+            return 0;
           }
-          '@
+          '@ | Set-Content 'qa-engine.cpp' -Encoding utf8
+
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          if (!(Test-Path $vswhere -PathType Leaf)) { throw 'vswhere.exe was not found.' }
+          $vsPath = (& $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath | Select-Object -First 1)
+          if (!$vsPath) { throw 'Visual Studio C++ toolchain was not found.' }
+          $devCmd = Join-Path $vsPath 'Common7\Tools\VsDevCmd.bat'
           $enginePath = Join-Path (Resolve-Path 'qa-stage/runtime').Path 'Ghosium-Engine.exe'
-          Add-Type -TypeDefinition $stub -Language CSharp -OutputAssembly $enginePath -OutputType ConsoleApplication
-          if (!(Test-Path $enginePath -PathType Leaf)) { throw 'Deterministic test engine was not produced.' }
+          $compile = "call `"$devCmd`" -arch=x64 -host_arch=x64 && cl.exe /nologo /std:c++20 /O2 /W4 /EHsc /MT qa-engine.cpp /Fe:`"$enginePath`" /link /SUBSYSTEM:CONSOLE /DYNAMICBASE /NXCOMPAT"
+          & cmd.exe /d /s /c $compile
+          if ($LASTEXITCODE -ne 0 -or !(Test-Path $enginePath -PathType Leaf)) { throw 'Native deterministic test engine build failed.' }
+
           $self = Start-Process -FilePath (Resolve-Path 'qa-stage/Ghosium-Browser.exe') -ArgumentList '--ghosium-self-test' -Wait -PassThru
           if ($self.ExitCode -ne 0) { throw "Launcher self-test failed: $($self.ExitCode)" }
       - name: Compile Setup and Portable with warnings as errors
