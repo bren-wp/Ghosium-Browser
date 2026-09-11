@@ -196,6 +196,18 @@ $changedTranslations = 0
 $legalPreserved = 0
 $scannedFiles = 0
 
+# Chromium's three public tab-title messages are intentionally generic upstream
+# (for example, "New Tab") and therefore contain no Chrome/Chromium token for
+# Rewrite-ProductText to replace. The runtime contract requires those titles to
+# carry the Ghosium product identity, so brand only these exact public message
+# IDs in their owning GRIT resource. Keeping this transform here makes the
+# rewrite deterministic and idempotent without weakening the verifier.
+$publicTabTitleText = @{
+  'IDS_NEW_TAB_TITLE' = 'New Tab - Ghosium Browser'
+  'IDS_NEW_INCOGNITO_TAB_TITLE' = 'New Incognito Tab - Ghosium Browser'
+  'IDS_NEW_GUEST_TAB_TITLE' = 'New Guest Tab - Ghosium Browser'
+}
+
 foreach ($relative in @($tracked | Sort-Object -Unique)) {
   if ([string]::IsNullOrWhiteSpace($relative) -or
       (Test-ExcludedSourcePath -RelativePath $relative) -or
@@ -231,7 +243,11 @@ foreach ($relative in @($tracked | Sort-Object -Unique)) {
       }
 
       $body = $match.Groups['body'].Value
-      $rewrittenBody = Rewrite-VisibleXmlText -Body $body
+      if ($relative -eq 'components/new_or_sad_tab_strings.grdp' -and $publicTabTitleText.ContainsKey($messageId)) {
+        $rewrittenBody = [string]$publicTabTitleText[$messageId]
+      } else {
+        $rewrittenBody = Rewrite-VisibleXmlText -Body $body
+      }
       if ($rewrittenBody -ne $body) {
         $script:changedMessages++
       }
