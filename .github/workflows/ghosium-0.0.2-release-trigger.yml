@@ -1,11 +1,11 @@
-name: Ghosium 0.0.3 Production Release Trigger
+name: Ghosium 0.0.2 Production Release Trigger
 
 on:
   push:
     branches:
       - main
     paths:
-      - '.github/workflows/ghosium-0.0.3-release-trigger.yml'
+      - '.release/ghosium-v0.0.2.request'
 
 permissions:
   actions: write

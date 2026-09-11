@@ -352,7 +352,10 @@ if ($LASTEXITCODE -ne 0) {
   throw 'Unable to enumerate public WebUI resources during complete public-branding verification.'
 }
 
-$scriptLiteralPattern = [regex]::new('(?s)(?<quote>["''`])(?<value>(?:\\.|(?!\k<quote>).)*?)\k<quote>')
+# Use quote-specific character classes instead of a backreference plus a
+# per-character negative lookahead. This keeps the same literal coverage while
+# avoiding pathological regex backtracking on large generated WebUI sources.
+$scriptLiteralPattern = [regex]::new('(?s)(?:"(?<value>(?:\\.|[^"\\])*)"|''(?<value>(?:\\.|[^''\\])*)''|`(?<value>(?:\\.|[^`\\])*)`)')
 $markupTextPattern = [regex]::new('(?s)>(?<value>[^<]+)<')
 $markupAttributePattern = [regex]::new('(?is)\b(?:alt|title|placeholder|aria-label|aria-description)\s*=\s*(?<quote>["''])(?<value>.*?)\k<quote>')
 

@@ -128,7 +128,7 @@ jobs:
           for endpoint in catalog.php keys.php revocations.php update.php; do
             url="http://127.0.0.1:8100/api/${endpoint}"
             if [ "$endpoint" = 'update.php' ]; then
-              url="${url}?id=ghosium-privacy&version=0.0.3"
+              url="${url}?id=ghosium-privacy&version=0.0.2"
             fi
             status=$(curl --silent --request POST --output /tmp/store-method.json --write-out '%{http_code}' "$url")
             test "$status" = '405'

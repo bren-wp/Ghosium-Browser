@@ -2,11 +2,11 @@
   <img src="engine/branding/ghosium-mark.svg" width="112" alt="Ghosium Browser icon">
 </p>
 
-# Ghosium Browser 0.0.3
+# Ghosium Browser 0.0.2
 
-**Ghosium Browser by Brendigo** is a Windows x64 browser. The active development product version is **0.0.3**.
+**Ghosium Browser by Brendigo** is a Windows x64 browser. The active development product version is **0.0.2**.
 
-The current development branch hardens the canonical full-source release path. Publication is allowed only after the exact source-build, branding, privacy, performance, installer, signing, provenance and updater contracts pass. Previously published or candidate releases remain separate from 0.0.3 evidence and cannot satisfy these gates.
+The current development branch hardens the canonical full-source release path. Publication is allowed only after the exact source-build, branding, privacy, performance, installer, signing, provenance and updater contracts pass. Previously published or candidate releases remain separate from 0.0.2 evidence and cannot satisfy these gates.
 
 ## Product identity
 
@@ -42,7 +42,7 @@ The native New Tab uses the Ghosium product mark, neutral Ghosium-owned search c
 
 ## Privacy and security
 
-0.0.3 retains stronger native defaults for new/default profiles: third-party cookies blocked, search suggestions disabled, speculative network prediction/preloading disabled, remote alternate-error pages disabled and online spelling-service upload required to remain disabled by default.
+0.0.2 retains stronger native defaults for new/default profiles: third-party cookies blocked, search suggestions disabled, speculative network prediction/preloading disabled, remote alternate-error pages disabled and online spelling-service upload required to remain disabled by default.
 
 The native Windows updater requires the exact first-party HTTPS host, port and Setup path, rejects redirects, validates size and SHA-256, requires the Setup Authenticode publisher to match the running signed browser, binds signed PE product/company/version metadata to the manifest and stages every download in a unique directory under the Windows secure temporary directory.
 
@@ -71,11 +71,11 @@ The Setup lifecycle contract requires install → runtime → same-Setup update 
 
 ## Release status
 
-**Ghosium Browser 0.0.3 is an active hardening/development candidate, not a canonical published release.**
+**Ghosium Browser 0.0.2 is an active hardening/development candidate, not a canonical published release.**
 
 The checked-in stable update manifest remains fail-closed (`enabled:false`, empty SHA-256, zero size). Canonical publication requires exact full-source candidate evidence, runtime/performance verification, canonical Setup/Portable provenance, production signing and release-manifest binding.
 
-Ghosium 0.0.3 defines **38 supported product locales**. English (`en-US`) is the default language and Croatian (`hr`) is required.
+Ghosium 0.0.2 defines **38 supported product locales**. English (`en-US`) is the default language and Croatian (`hr`) is required.
 
 ## License and third-party rights
 
