@@ -36,7 +36,7 @@ if ([int]$policy.schemaVersion -ne 1) {
 # This is deliberately not a generic Chrome allowlist: standalone Chrome or
 # Chromium browser branding in runtime copy remains forbidden.
 $preservedThirdPartyNamePattern = [regex]::new(
-  '(?i)\bChrome(?:book|box|base|bit|cast|OS|Vox|Driver)\p{L}*\b'
+  '(?i)\b(?:Chrome(?:book|box|base|bit|cast|OS|Vox|Driver)\p{L}*|ChromiumOS\p{L}*)\b'
 )
 $forbiddenVisibleBrand = [regex]::new(
   '(?i)(?:Google\s+Chrome|Google\s+Chromium|Chromium Browser|Chrome Web Store|\bChromium(?=\p{Ll}|\b)|\bChrome(?!://)(?=\p{Ll}|\b))'
@@ -438,7 +438,7 @@ $evidence = [ordered]@{
   policy = [ordered]@{
     legalAttributionIsExplicit = $true
     translatorExamplesAreRuntimeExcluded = $true
-    preservedThirdPartyProperNames = @('Chromebook', 'Chromebox', 'Chromebase', 'Chromebit', 'Chromecast', 'ChromeOS', 'ChromeVox', 'ChromeDriver')
+    preservedThirdPartyProperNames = @('Chromebook', 'Chromebox', 'Chromebase', 'Chromebit', 'Chromecast', 'ChromeOS', 'ChromiumOS', 'ChromeVox', 'ChromeDriver')
   }
   scanned = [ordered]@{
     gritFiles = $scannedGritFiles
