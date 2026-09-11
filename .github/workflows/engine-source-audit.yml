@@ -198,7 +198,7 @@ jobs:
     name: Apply Ghosium transform to pinned source
     needs: source-contract
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 90
 
     steps:
       - name: Checkout Ghosium fork tooling

@@ -36,10 +36,10 @@ if ([int]$policy.schemaVersion -ne 1) {
 # This is deliberately not a generic Chrome allowlist: standalone Chrome or
 # Chromium browser branding in runtime copy remains forbidden.
 $preservedThirdPartyNamePattern = [regex]::new(
-  '(?i)\bChrome(?:book|box|base|bit|cast|OS|Vox|Driver)\p{L}*\b'
+  '(?i)\b(?:Chrome(?:book|box|base|bit|cast|OS|Vox|Driver)\p{L}*|ChromeVoks\p{L}*|ChromiumOS\p{L}*)\b'
 )
 $forbiddenVisibleBrand = [regex]::new(
-  '(?i)(?:Google\s+Chrome|Google\s+Chromium|Chromium Browser|Chrome Web Store|\bChromium(?=\p{Ll}|\b)|\bChrome(?=\p{Ll}|\b))'
+  '(?i)(?:Google\s+Chrome|Google\s+Chromium|Chromium Browser|Chrome Web Store|\bChromium(?=\p{Ll}|\b)|\bChrome(?!://)(?=\p{Ll}|\b))'
 )
 $forbiddenLiteralBrand = [regex]::new(
   '(?i)(?:Google\s+Chrome|Google\s+Chromium|Chromium Browser|Chrome Web Store|\bChromium\b|\bChrome\b)'
@@ -124,7 +124,34 @@ function Test-LegalTranslation {
 function Get-BrandScanText {
   param([Parameter(Mandatory = $true)][AllowEmptyString()][string]$Text)
 
-  return $preservedThirdPartyNamePattern.Replace($Text, '')
+  $scanText = $preservedThirdPartyNamePattern.Replace($Text, '')
+  # Internal browser schemes are compatibility/API tokens. Consume the complete
+  # token, including locale suffixes attached without whitespace, so strings
+  # such as Korean "ghost://chrome-urls로" are not mistaken for product copy.
+  $scanText = [regex]::Replace(
+    $scanText,
+    '(?i)\b(?:chrome(?:-untrusted|-extension)?|ghost)://[^\s<>"'']+',
+    ''
+  )
+  return $scanText
+}
+
+function Get-TemplateVisibleScanText {
+  param([Parameter(Mandatory = $true)][AllowEmptyString()][string]$Text)
+
+  $scanText = Get-BrandScanText -Text $Text
+  # TypeScript/Lit template expressions, i18n keys and markup attributes are
+  # source identifiers, not literal text rendered to the user. Strip only those
+  # syntactic regions, leaving actual text nodes such as "Google Chrome" intact.
+  $scanText = [regex]::Replace($scanText, '(?s)\$\{.*?\}', ' ')
+  $scanText = [regex]::Replace($scanText, '(?i)\$i18n\{[^}]+\}', ' ')
+  $scanText = [regex]::Replace($scanText, '(?s)<[^>]+>', ' ')
+  $scanText = [regex]::Replace(
+    $scanText,
+    '(?i)\bchrome(?:\.[A-Za-z_$][A-Za-z0-9_$]*)+\b',
+    ''
+  )
+  return $scanText
 }
 
 function Get-VisibleXmlText {
@@ -175,23 +202,38 @@ function Add-Violation {
 }
 
 function Test-HumanReadableScriptLiteral {
-  param([Parameter(Mandatory = $true)][AllowEmptyString()][string]$Value)
+  param(
+    [Parameter(Mandatory = $true)][AllowEmptyString()][string]$Value,
+    [Parameter(Mandatory = $true)][string]$RelativePath
+  )
 
   if ([string]::IsNullOrWhiteSpace($Value)) {
     return $false
   }
 
-  $candidate = Get-BrandScanText -Text $Value
+  $candidate = Get-TemplateVisibleScanText -Text $Value
   if (!$forbiddenLiteralBrand.IsMatch($candidate)) {
     return $false
   }
 
-  # Internal URL schemes, resource paths, DOM keys and source identifiers are
-  # technical compatibility tokens, not rendered product copy. Standalone
-  # Chrome/Chromium and natural-language literals remain subject to the gate.
-  if ($candidate -match '^(?i:Chrome|Chromium)$') {
+  # Lower/upper-case exact tokens are protocol, search-provider or enum values
+  # in the audited sources. Title-case product names remain forbidden, except
+  # for the pinned Glic metrics label proven to be telemetry-only.
+  if ($candidate -ceq 'chrome' -or $candidate -ceq 'CHROME' -or
+      $candidate -ceq 'chromium' -or $candidate -ceq 'CHROMIUM') {
+    return $false
+  }
+  if ($candidate -ceq 'Chrome' -and
+      $RelativePath -eq 'chrome/browser/resources/settings/glic_page/glic_subpage.ts') {
+    return $false
+  }
+  if ($candidate -cmatch '^(Chrome|Chromium)$') {
     return $true
   }
+
+  # Internal resource paths, DOM keys and source identifiers are technical
+  # compatibility tokens, not rendered product copy. Natural-language literals
+  # containing Chrome/Chromium remain subject to the gate.
   if ($candidate -notmatch '\s' -and
       $candidate -match '(?i)(?:^|[-_./:])(?:chrome|chromium)(?:[-_./:]|$)') {
     return $false
@@ -201,6 +243,33 @@ function Test-HumanReadableScriptLiteral {
 
 $sparseValue = @(& git -C $sourceRootResolved config --bool core.sparseCheckout 2>$null)
 $isSparseCheckout = ($LASTEXITCODE -eq 0 -and ($sparseValue -join '').Trim() -eq 'true')
+
+function Get-AuditedTrackedFiles {
+  param([Parameter(Mandatory = $true)][string[]]$Pathspecs)
+
+  if (!$isSparseCheckout) {
+    $files = @(& git -C $sourceRootResolved ls-files -- $Pathspecs)
+    if ($LASTEXITCODE -ne 0) {
+      throw 'Unable to enumerate tracked public source files.'
+    }
+    return $files
+  }
+
+  # A sparse checkout still has the complete Chromium index. Enumerating plain
+  # ls-files would walk hundreds of thousands of paths that are intentionally
+  # absent from the working tree. H marks tracked paths that are materialized;
+  # S marks skip-worktree entries outside the reviewed sparse audit surface.
+  $tagged = @(& git -C $sourceRootResolved ls-files -t -- $Pathspecs)
+  if ($LASTEXITCODE -ne 0) {
+    throw 'Unable to enumerate materialized sparse public source files.'
+  }
+
+  return @(
+    $tagged |
+      Where-Object { $_.Length -gt 2 -and $_.StartsWith('H ') } |
+      ForEach-Object { $_.Substring(2) }
+  )
+}
 
 $requiredFullSourceRoots = @(
   'chrome/app',
@@ -253,10 +322,7 @@ $gritPathspecs = @(
   ':(glob)ui/**/*.grdp',
   ':(glob)ui/**/*.xtb'
 )
-$gritFiles = @(& git -C $sourceRootResolved ls-files -- $gritPathspecs)
-if ($LASTEXITCODE -ne 0) {
-  throw 'Unable to enumerate first-party GRIT/XTB resources during complete public-branding verification.'
-}
+$gritFiles = @(Get-AuditedTrackedFiles -Pathspecs $gritPathspecs)
 
 foreach ($relative in @($gritFiles | Sort-Object -Unique)) {
   if ([string]::IsNullOrWhiteSpace($relative) -or
@@ -347,10 +413,7 @@ $webUiPathspecs = @(
   ':(glob)ui/webui/resources/**/*.json',
   ':(glob)ui/webui/resources/**/*.svg'
 )
-$webUiFiles = @(& git -C $sourceRootResolved ls-files -- $webUiPathspecs)
-if ($LASTEXITCODE -ne 0) {
-  throw 'Unable to enumerate public WebUI resources during complete public-branding verification.'
-}
+$webUiFiles = @(Get-AuditedTrackedFiles -Pathspecs $webUiPathspecs)
 
 # Use quote-specific character classes instead of a backreference plus a
 # per-character negative lookahead. This keeps the same literal coverage while
@@ -375,18 +438,28 @@ foreach ($relative in @($webUiFiles | Sort-Object -Unique)) {
   $extension = [IO.Path]::GetExtension($relative).ToLowerInvariant()
 
   if ($extension -in @('.html', '.htm', '.svg')) {
-    foreach ($match in $markupTextPattern.Matches($withoutBlockComments)) {
+    # CSS and JavaScript bodies are implementation source, not rendered text.
+    # Replace non-newline characters so diagnostic line numbers remain stable.
+    $markupScanText = [regex]::Replace(
+      $withoutBlockComments,
+      '(?is)<(?:style|script)\b[^>]*>.*?</(?:style|script)>',
+      {
+        param($match)
+        return [regex]::Replace($match.Value, '[^\r\n]', '')
+      }
+    )
+    foreach ($match in $markupTextPattern.Matches($markupScanText)) {
       $value = [System.Net.WebUtility]::HtmlDecode($match.Groups['value'].Value)
-      $scanText = Get-BrandScanText -Text $value
+      $scanText = Get-TemplateVisibleScanText -Text $value
       if ($forbiddenVisibleBrand.IsMatch($scanText)) {
-        Add-Violation -Path $relative -Surface 'webui-markup-text' -Identifier '<text>' -Line (Get-LineNumber -Text $withoutBlockComments -Offset $match.Index) -Text $value
+        Add-Violation -Path $relative -Surface 'webui-markup-text' -Identifier '<text>' -Line (Get-LineNumber -Text $markupScanText -Offset $match.Index) -Text $value
       }
     }
-    foreach ($match in $markupAttributePattern.Matches($withoutBlockComments)) {
+    foreach ($match in $markupAttributePattern.Matches($markupScanText)) {
       $value = [System.Net.WebUtility]::HtmlDecode($match.Groups['value'].Value)
-      $scanText = Get-BrandScanText -Text $value
+      $scanText = Get-TemplateVisibleScanText -Text $value
       if ($forbiddenVisibleBrand.IsMatch($scanText)) {
-        Add-Violation -Path $relative -Surface 'webui-markup-attribute' -Identifier '<attribute>' -Line (Get-LineNumber -Text $withoutBlockComments -Offset $match.Index) -Text $value
+        Add-Violation -Path $relative -Surface 'webui-markup-attribute' -Identifier '<attribute>' -Line (Get-LineNumber -Text $markupScanText -Offset $match.Index) -Text $value
       }
     }
     continue
@@ -397,7 +470,7 @@ foreach ($relative in @($webUiFiles | Sort-Object -Unique)) {
   }) -join "`n"
   foreach ($literal in $scriptLiteralPattern.Matches($scriptScanText)) {
     $value = $literal.Groups['value'].Value
-    if (Test-HumanReadableScriptLiteral -Value $value) {
+    if (Test-HumanReadableScriptLiteral -Value $value -RelativePath $relative) {
       Add-Violation -Path $relative -Surface 'webui-literal' -Identifier '<literal>' -Line (Get-LineNumber -Text $scriptScanText -Offset $literal.Index) -Text $value
     }
   }
@@ -417,7 +490,7 @@ $evidence = [ordered]@{
   policy = [ordered]@{
     legalAttributionIsExplicit = $true
     translatorExamplesAreRuntimeExcluded = $true
-    preservedThirdPartyProperNames = @('Chromebook', 'Chromebox', 'Chromebase', 'Chromebit', 'Chromecast', 'ChromeOS', 'ChromeVox', 'ChromeDriver')
+    preservedThirdPartyProperNames = @('Chromebook', 'Chromebox', 'Chromebase', 'Chromebit', 'Chromecast', 'ChromeOS', 'ChromiumOS', 'ChromeVox', 'ChromeDriver')
   }
   scanned = [ordered]@{
     gritFiles = $scannedGritFiles

@@ -1,0 +1,255 @@
+name: Ghosium 0.0.3 Quality Gate
+
+on:
+  push:
+    branches:
+      - release/0.0.3
+  workflow_dispatch:
+
+concurrency:
+  group: ghosium-0.0.3-quality-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  contract:
+    name: Verify 0.0.3 product contracts
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout exact commit
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Verify version, privacy and package contracts
+        shell: python
+        run: |
+          import json
+          from pathlib import Path
+
+          version = Path('VERSION').read_text(encoding='utf-8').strip()
+          if version != '0.0.3':
+              raise SystemExit(f'Expected VERSION 0.0.3, got {version!r}')
+          manifest = json.loads(Path('extension/manifest.json').read_text(encoding='utf-8'))
+          if manifest.get('version') != version or manifest.get('manifest_version') != 3:
+              raise SystemExit('Windows extension version/manifest contract failed.')
+          stable = json.loads(Path('updates-web/windows/stable.json').read_text(encoding='utf-8'))
+          if stable.get('version') != version or stable.get('enabled') is not False or stable.get('sha256') or stable.get('size') != 0:
+              raise SystemExit('0.0.3 stable updater must remain fail-closed before canonical publication.')
+
+          launcher = Path('compat-preview/launcher/main.cpp').read_text(encoding='utf-8')
+          for token in ('SHGetFolderPathW', 'kCompanyDirectory[] = L"Brendigo"', 'kProfileDirectory[] = L"Ghosium"', '--ghosium-portable-profile=', '--no-sandbox', '--ignore-certificate-errors'):
+              if token not in launcher:
+                  raise SystemExit(f'Windows launcher hardening token missing: {token}')
+          portable = Path('installer/ghosium-portable.nsi').read_text(encoding='utf-8')
+          for token in ('--ghosium-portable-profile', 'PORTABLE_READY_MARKER', 'Rename "$PortableStage" "$PortableRuntime"', 'portable_rename_race'):
+              if token not in portable:
+                  raise SystemExit(f'Portable stability contract missing: {token}')
+          if '!define GHOSIUM_PORTABLE_PROFILE_SWITCH "--user-data-dir"' in portable:
+              raise SystemExit('Portable must not bypass the hardened launcher profile contract.')
+
+          android_build = Path('android/app/build.gradle').read_text(encoding='utf-8')
+          for token in ("versionName '0.0.3'", 'versionCode 3', 'compileSdk 36', 'targetSdk 36', 'minSdk 29', "'OldTargetApi'"):
+              if token not in android_build:
+                  raise SystemExit(f'Android build contract missing: {token}')
+          android_manifest = Path('android/app/src/main/AndroidManifest.xml').read_text(encoding='utf-8')
+          for token in ('android:allowBackup="false"', 'android:dataExtractionRules="@xml/data_extraction_rules"', 'android:fullBackupContent="@xml/backup_rules"'):
+              if token not in android_manifest:
+                  raise SystemExit(f'Android backup/privacy contract missing: {token}')
+          android_source = Path('android/app/src/main/java/com/brendigo/ghosium/MainActivity.java').read_text(encoding='utf-8')
+          for token in ('setAcceptThirdPartyCookies(webView, false)', 'MIXED_CONTENT_NEVER_ALLOW', 'handler.cancel()', 'onRenderProcessGone', 'setAllowFileAccess(false)', 'setAllowContentAccess(false)'):
+              if token not in android_source:
+                  raise SystemExit(f'Android privacy/stability contract missing: {token}')
+          whole_android = '\n'.join(p.read_text(encoding='utf-8', errors='ignore') for p in Path('android').rglob('*') if p.is_file())
+          for forbidden in ('firebase-analytics', 'google-analytics', 'appcenter', 'sentry-android'):
+              if forbidden in whole_android.lower():
+                  raise SystemExit(f'Android telemetry dependency is forbidden: {forbidden}')
+          print('Ghosium 0.0.3 product contracts: OK')
+
+  android:
+    name: Build, lint and test Android
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout exact commit
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Select JDK 17
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -d "$JAVA_HOME_17_X64"
+          echo "JAVA_HOME=$JAVA_HOME_17_X64" >> "$GITHUB_ENV"
+          echo "$JAVA_HOME_17_X64/bin" >> "$GITHUB_PATH"
+      - name: Install pinned Android SDK packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          sdkmanager_bin="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          test -x "$sdkmanager_bin"
+          set +o pipefail
+          yes | "$sdkmanager_bin" 'platforms;android-36' 'build-tools;36.0.0' >/dev/null
+          sdk_status=${PIPESTATUS[1]}
+          set -o pipefail
+          if [ "$sdk_status" -ne 0 ]; then
+            echo "sdkmanager failed with exit code $sdk_status" >&2
+            exit "$sdk_status"
+          fi
+          test -f "$ANDROID_HOME/platforms/android-36/android.jar"
+          test -x "$ANDROID_HOME/build-tools/36.0.0/apksigner"
+      - name: Download and verify Gradle 8.13
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --show-error --silent --location --retry 5 --proto '=https' --proto-redir '=https' \
+            https://services.gradle.org/distributions/gradle-8.13-bin.zip -o "$RUNNER_TEMP/gradle.zip"
+          echo '20f1b1176237254a6fc204d8434196fa11a4cfb387567519c61556e8710aed78  '$RUNNER_TEMP'/gradle.zip' | sha256sum -c -
+          unzip -q "$RUNNER_TEMP/gradle.zip" -d "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP/gradle-8.13/bin" >> "$GITHUB_PATH"
+      - name: Unit test, lint and assemble debug APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          set +e
+          gradle --no-daemon -p android testDebugUnitTest lintDebug assembleDebug
+          gradle_status=$?
+          set -e
+          if [ "$gradle_status" -ne 0 ]; then
+            lint_report='android/app/build/intermediates/lint_intermediate_text_report/debug/lintReportDebug/lint-results-debug.txt'
+            if [ -f "$lint_report" ]; then
+              echo '----- Android lint report -----'
+              cat "$lint_report"
+              echo '----- End Android lint report -----'
+            fi
+            exit "$gradle_status"
+          fi
+          apk='android/app/build/outputs/apk/debug/app-debug.apk'
+          test -s "$apk"
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose --print-certs "$apk"
+          "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$apk" | grep -F "package: name='com.brendigo.ghosium.debug' versionCode='3' versionName='0.0.3-debug'"
+      - name: Upload Android QA APK
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: ghosium-0.0.3-android-qa
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 7
+
+  windows:
+    name: Compile and exercise Windows Setup and Portable
+    runs-on: windows-2025
+    timeout-minutes: 35
+    steps:
+      - name: Checkout exact commit
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Build hardened launcher and deterministic test engine
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          New-Item -ItemType Directory -Force -Path 'launcher','qa-stage/runtime','qa-stage/extension','qa-artifacts' | Out-Null
+          Copy-Item 'compat-preview/launcher/main.cpp','compat-preview/launcher/ghosium.rc' 'launcher' -Force
+          Copy-Item 'LICENSE','THIRD_PARTY_NOTICES.md','PRIVACY.md','SECURITY.md' 'qa-stage' -Force
+          foreach ($file in @('manifest.json','rules.json','newtab.html','newtab.css')) {
+            Set-Content -Path "qa-stage/extension/$file" -Value '{}' -Encoding utf8
+          }
+          & ./compat-preview/vendor/build-native-launcher.ps1 -Version '0.0.3' -OutputPath 'qa-stage/Ghosium-Browser.exe'
+          if ($LASTEXITCODE -ne 0) { throw 'Launcher build failed.' }
+
+          @'
+          #include <windows.h>
+          #include <filesystem>
+          #include <fstream>
+          #include <string>
+
+          int wmain(int argc, wchar_t** argv) {
+            wchar_t module[32768]{};
+            const DWORD length = GetModuleFileNameW(nullptr, module, 32768);
+            if (length == 0 || length >= 32768) return 91;
+            std::filesystem::path outputPath = std::filesystem::path(std::wstring(module, length)).parent_path() / L"engine-args.txt";
+            std::wofstream output{outputPath};
+            if (!output.good()) return 92;
+            for (int index = 1; index < argc; ++index) {
+              output << argv[index] << L'\n';
+            }
+            return 0;
+          }
+          '@ | Set-Content 'qa-engine.cpp' -Encoding utf8
+
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          if (!(Test-Path $vswhere -PathType Leaf)) { throw 'vswhere.exe was not found.' }
+          $vsPath = (& $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath | Select-Object -First 1)
+          if (!$vsPath) { throw 'Visual Studio C++ toolchain was not found.' }
+          $devCmd = Join-Path $vsPath 'Common7\Tools\VsDevCmd.bat'
+          $enginePath = Join-Path (Resolve-Path 'qa-stage/runtime').Path 'Ghosium-Engine.exe'
+          $compile = "call `"$devCmd`" -arch=x64 -host_arch=x64 && cl.exe /nologo /std:c++20 /O2 /W4 /EHsc /MT qa-engine.cpp /Fe:`"$enginePath`" /link /SUBSYSTEM:CONSOLE /DYNAMICBASE /NXCOMPAT"
+          & cmd.exe /d /s /c $compile
+          if ($LASTEXITCODE -ne 0 -or !(Test-Path $enginePath -PathType Leaf)) { throw 'Native deterministic test engine build failed.' }
+
+          $self = Start-Process -FilePath (Resolve-Path 'qa-stage/Ghosium-Browser.exe') -ArgumentList '--ghosium-self-test' -Wait -PassThru
+          if ($self.ExitCode -ne 0) { throw "Launcher self-test failed: $($self.ExitCode)" }
+      - name: Compile Setup and Portable with warnings as errors
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $resolved = @(& ./scripts/resolve-nsis.ps1)
+          if ($resolved.Count -eq 0) { throw 'NSIS resolver returned no compiler.' }
+          $makensis = [string]$resolved[-1]
+          $stage = (Resolve-Path 'qa-stage').Path
+          $artifacts = (Resolve-Path 'qa-artifacts').Path
+          $icon = (Resolve-Path 'ghosium.ico').Path
+          foreach ($script in @('installer/ghosium.nsi','installer/ghosium-portable.nsi')) {
+            $scriptPath = (Resolve-Path $script).Path
+            & $makensis '/DGHOSIUM_VERSION=0.0.3' "/DGHOSIUM_STAGE=$stage" "/DGHOSIUM_ARTIFACTS=$artifacts" "/DGHOSIUM_ICON=$icon" $scriptPath
+            if ($LASTEXITCODE -ne 0) { throw "NSIS compile failed: $script" }
+          }
+          foreach ($artifact in @('Ghosium-Browser-Setup.exe','Ghosium-Browser-Portable.exe')) {
+            if (!(Test-Path "qa-artifacts/$artifact" -PathType Leaf)) { throw "Missing $artifact" }
+          }
+      - name: Verify portable profile isolation, cache reuse and button-safe launcher arguments
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $runDir = Join-Path $env:RUNNER_TEMP 'ghosium-portable-003-qa'
+          Remove-Item $runDir -Recurse -Force -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Force -Path $runDir | Out-Null
+          $portable = Join-Path $runDir 'Ghosium-Browser-Portable.exe'
+          Copy-Item 'qa-artifacts/Ghosium-Browser-Portable.exe' $portable
+
+          function Invoke-PortableQa([string]$Path) {
+            $process = Start-Process -FilePath $Path -ArgumentList '--ghosium-wait' -PassThru
+            if (!$process.WaitForExit(60000)) {
+              & "$env:SystemRoot\System32\taskkill.exe" /PID $process.Id /T /F | Out-Null
+              throw "Portable launch timed out after 60 seconds (PID $($process.Id))."
+            }
+            return $process.ExitCode
+          }
+
+          $firstCode = Invoke-PortableQa $portable
+          if ($firstCode -ne 0) { throw "Portable first launch failed: $firstCode" }
+          $runtime = Join-Path $runDir '.ghosium-portable-runtime/0.0.3'
+          $marker = Join-Path $runtime '.ghosium-runtime-ready'
+          $argsFile = Join-Path $runtime 'runtime/engine-args.txt'
+          if (!(Test-Path $marker) -or !(Test-Path $argsFile)) { throw 'Portable runtime evidence missing.' }
+          $args = @(Get-Content $argsFile)
+          $expectedProfile = '--user-data-dir=' + (Join-Path $runDir 'Ghosium-Portable-Data')
+          if ($args -notcontains $expectedProfile) {
+            throw "Portable profile isolation failed. Expected engine argument: $expectedProfile`nActual: $($args -join '; ')"
+          }
+          $engine = Get-Item (Join-Path $runtime 'runtime/Ghosium-Engine.exe')
+          $sentinelTime = [DateTime]::SpecifyKind([DateTime]'2001-02-03T04:05:06', [DateTimeKind]::Utc)
+          $engine.LastWriteTimeUtc = $sentinelTime
+
+          $secondCode = Invoke-PortableQa $portable
+          if ($secondCode -ne 0) { throw "Portable cached launch failed: $secondCode" }
+          $after = (Get-Item (Join-Path $runtime 'runtime/Ghosium-Engine.exe')).LastWriteTimeUtc
+          if ($after -ne $sentinelTime) { throw 'Portable runtime was unnecessarily re-extracted on the second launch.' }
+          if (!(Test-Path (Join-Path $runDir 'Ghosium-Portable-Data') -PathType Container)) { throw 'Portable data directory missing.' }
+          Write-Host 'Windows 0.0.3 launcher/profile/cache QA: OK'

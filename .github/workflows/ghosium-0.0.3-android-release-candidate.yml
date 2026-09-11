@@ -1,0 +1,72 @@
+name: Ghosium 0.0.3 Android Release Candidate
+
+on:
+  push:
+    branches:
+      - release/0.0.3
+    paths:
+      - 'android/**'
+      - 'VERSION'
+      - '.github/workflows/ghosium-0.0.3-android-release-candidate.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  release-candidate:
+    name: Lint, minify and assemble Android release candidate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Checkout exact commit
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Select JDK 17 and install pinned Android SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -d "$JAVA_HOME_17_X64"
+          echo "JAVA_HOME=$JAVA_HOME_17_X64" >> "$GITHUB_ENV"
+          echo "$JAVA_HOME_17_X64/bin" >> "$GITHUB_PATH"
+          sdkmanager_bin="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          test -x "$sdkmanager_bin"
+          set +o pipefail
+          yes | "$sdkmanager_bin" 'platforms;android-36' 'build-tools;36.0.0' >/dev/null
+          sdk_status=${PIPESTATUS[1]}
+          set -o pipefail
+          if [ "$sdk_status" -ne 0 ]; then exit "$sdk_status"; fi
+          test -f "$ANDROID_HOME/platforms/android-36/android.jar"
+
+      - name: Download and verify Gradle 8.13
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --show-error --silent --location --retry 5 --proto '=https' --proto-redir '=https' \
+            https://services.gradle.org/distributions/gradle-8.13-bin.zip -o "$RUNNER_TEMP/gradle.zip"
+          echo '20f1b1176237254a6fc204d8434196fa11a4cfb387567519c61556e8710aed78  '$RUNNER_TEMP'/gradle.zip' | sha256sum -c -
+          unzip -q "$RUNNER_TEMP/gradle.zip" -d "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP/gradle-8.13/bin" >> "$GITHUB_PATH"
+
+      - name: Verify release code path without production private key
+        shell: bash
+        run: |
+          set -euo pipefail
+          gradle --no-daemon -p android testDebugUnitTest lintRelease assembleRelease
+          apk="$(find android/app/build/outputs/apk/release -maxdepth 1 -type f -name 'app-release*.apk' -print -quit)"
+          test -n "$apk"
+          test -s "$apk"
+          "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$apk" | grep -F "package: name='com.brendigo.ghosium' versionCode='3' versionName='0.0.3'"
+          mkdir -p artifacts/android-candidate
+          cp "$apk" artifacts/android-candidate/Ghosium-Browser-Android-unsigned-candidate.apk
+
+      - name: Upload unsigned release candidate for QA evidence only
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: ghosium-0.0.3-android-unsigned-release-candidate
+          path: artifacts/android-candidate/Ghosium-Browser-Android-unsigned-candidate.apk
+          if-no-files-found: error
+          retention-days: 7

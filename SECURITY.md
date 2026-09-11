@@ -4,48 +4,42 @@
 
 Only the newest stable Ghosium Browser release is supported with security fixes. Older releases should be upgraded.
 
-## Security baseline
+## Windows security baseline
 
-Ghosium inherits a large security surface from its pinned upstream open-source browser engine. Each release therefore pins an exact `ENGINE_SOURCE_REVISION`; updating that revision and rerunning the complete source/CI pipeline is part of Ghosium security maintenance.
+Ghosium inherits a large security surface from its exact pinned upstream browser engine. Each Windows release therefore pins `ENGINE_SOURCE_REVISION`, applies reviewed transforms and reruns the full source/runtime/release pipeline.
 
-Ghosium does not disable the browser sandbox, GPU sandbox, certificate validation, site/process isolation or update verification to improve performance or reduce memory use.
+The product does not disable browser/renderer/GPU sandboxing, site/process isolation, Safe Browsing, TLS/certificate validation, extension trust or update verification for performance.
 
-## Source-built protections
+Production Windows publication requires successful source compilation, runtime smoke tests, measured performance evidence, canonical Setup + Portable provenance, install/update/uninstall validation, valid Authenticode signatures, update-manifest binding and SHA-256 evidence.
 
-The controlled Windows source build and verification chain preserves:
+## Android security baseline
 
-- compiler/toolchain memory-safety and control-flow mitigations;
-- browser, renderer and GPU sandbox boundaries;
-- site/process isolation and TLS/certificate validation;
-- extension permission and package-trust checks;
-- fail-closed update size, SHA-256, Authenticode publisher and PE metadata validation;
-- Ghosium/Brendigo executable identity and canonical same-Setup maintenance;
-- pinned-source verification before product transforms are applied.
+Android 0.0.3 targets API 36 with minimum API 29 and uses Android System WebView. Ghosium configures WebView to block mixed content and third-party cookies, disables direct file/content access, keeps Safe Browsing enabled where supported and cancels SSL errors. Renderer-process termination is handled through a controlled recovery path rather than leaving the activity in an invalid state.
 
-Search-provider customization does not weaken these boundaries. Ghosium keeps Chromium's reviewed Google Search fallback and does not inject a first-party search engine into source.
+Non-HTTP(S) external schemes are not launched silently; the user sees a confirmation first. File selection is delegated to Android's system document picker.
 
-## Release verification
+Browser-local Android data is explicitly excluded from cloud backup and device-to-device transfer.
 
-Hosted CI verifies source transforms, public surfaces, JSON/PHP syntax where applicable, Store trust, updater behavior, installer contracts, localization, release metadata and security invariants.
+## Android release signing
 
-The controlled full-source Windows release additionally requires:
+The production APK must be signed with the stable Brendigo Android release identity supplied through GitHub Actions secrets. Private key material must never be committed to the repository. Production verifies the APK with `apksigner`, records the signer certificate SHA-256, confirms package/version metadata and binds SHA-256 + byte size + source commit in `GHOSIUM-ANDROID-RELEASE.json`.
 
-- source-builder preflight and exact pinned source/tool revisions;
-- successful native browser/runtime compilation;
-- source-built runtime smoke;
-- measured performance evidence;
-- canonical Setup assembly from verified source-built runtime;
-- install/update/uninstall round-trip validation;
-- valid production Authenticode signing on `main`;
-- exact update-manifest and SHA-256 provenance;
-- immutable release publication.
+If Android signing secrets are unavailable or verification fails, the 0.0.3 production orchestrator stops before dispatching the Windows production release.
 
-Hosted contracts alone are not proof that a production binary was built or signed.
+## Release completeness
+
+A 0.0.3 release is complete only when the exact release contains:
+
+```text
+Ghosium-Browser-Setup.exe
+Ghosium-Browser-Portable.exe
+Ghosium-Browser-Android.apk
+```
+
+and all platform-specific signing/provenance gates have succeeded.
 
 ## Reporting
 
-Use the repository's private vulnerability reporting / Security Advisory flow when available. Avoid publishing exploit details before a fix exists.
-
-Useful reports include the Ghosium version, Windows version, minimal reproduction steps, expected/observed behavior and whether the issue appears specific to Ghosium-owned code.
+Use the repository private vulnerability reporting / Security Advisory flow when available. Reports should include the Ghosium version, platform/OS version, minimal reproduction steps, expected/observed behavior and whether the issue appears specific to Ghosium-owned code.
 
 Public security page: https://ghosium.com/security

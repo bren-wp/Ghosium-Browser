@@ -1,0 +1,225 @@
+name: Ghosium 0.0.3 Production Release
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - '.release/ghosium-v0.0.3.request'
+
+concurrency:
+  group: ghosium-0.0.3-production
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  android-production:
+    name: Build and verify production Android APK
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      GHOSIUM_ANDROID_KEYSTORE_BASE64: ${{ secrets.GHOSIUM_ANDROID_KEYSTORE_BASE64 }}
+      GHOSIUM_ANDROID_KEYSTORE_PASSWORD: ${{ secrets.GHOSIUM_ANDROID_KEYSTORE_PASSWORD }}
+      GHOSIUM_ANDROID_KEY_ALIAS: ${{ secrets.GHOSIUM_ANDROID_KEY_ALIAS }}
+      GHOSIUM_ANDROID_KEY_PASSWORD: ${{ secrets.GHOSIUM_ANDROID_KEY_PASSWORD }}
+    steps:
+      - name: Checkout exact release commit
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Validate exact 0.0.3 release request
+        shell: python
+        run: |
+          from pathlib import Path
+          version = Path('VERSION').read_text(encoding='utf-8').strip()
+          marker = Path('.release/ghosium-v0.0.3.request').read_text(encoding='utf-8').strip()
+          if version != '0.0.3' or marker != 'ghosium-v0.0.3':
+              raise SystemExit(f'Invalid production release request: version={version!r}, marker={marker!r}')
+
+      - name: Select JDK 17 and install pinned Android SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -d "$JAVA_HOME_17_X64"
+          echo "JAVA_HOME=$JAVA_HOME_17_X64" >> "$GITHUB_ENV"
+          echo "$JAVA_HOME_17_X64/bin" >> "$GITHUB_PATH"
+          sdkmanager_bin="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          test -x "$sdkmanager_bin"
+          set +o pipefail
+          yes | "$sdkmanager_bin" 'platforms;android-36' 'build-tools;36.0.0' >/dev/null
+          sdk_status=${PIPESTATUS[1]}
+          set -o pipefail
+          if [ "$sdk_status" -ne 0 ]; then exit "$sdk_status"; fi
+          test -f "$ANDROID_HOME/platforms/android-36/android.jar"
+          test -x "$ANDROID_HOME/build-tools/36.0.0/apksigner"
+
+      - name: Download and verify Gradle 8.13
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --show-error --silent --location --retry 5 --proto '=https' --proto-redir '=https' \
+            https://services.gradle.org/distributions/gradle-8.13-bin.zip -o "$RUNNER_TEMP/gradle.zip"
+          echo '20f1b1176237254a6fc204d8434196fa11a4cfb387567519c61556e8710aed78  '$RUNNER_TEMP'/gradle.zip' | sha256sum -c -
+          unzip -q "$RUNNER_TEMP/gradle.zip" -d "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP/gradle-8.13/bin" >> "$GITHUB_PATH"
+
+      - name: Require stable production Android signing identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          for name in GHOSIUM_ANDROID_KEYSTORE_BASE64 GHOSIUM_ANDROID_KEYSTORE_PASSWORD GHOSIUM_ANDROID_KEY_ALIAS; do
+            if [ -z "${!name:-}" ]; then
+              echo "Required production signing secret is missing: $name" >&2
+              exit 1
+            fi
+          done
+          if [ -z "${GHOSIUM_ANDROID_KEY_PASSWORD:-}" ]; then
+            echo "GHOSIUM_ANDROID_KEY_PASSWORD=$GHOSIUM_ANDROID_KEYSTORE_PASSWORD" >> "$GITHUB_ENV"
+          fi
+          keystore="$RUNNER_TEMP/ghosium-production.jks"
+          printf '%s' "$GHOSIUM_ANDROID_KEYSTORE_BASE64" | base64 --decode > "$keystore"
+          chmod 600 "$keystore"
+          test -s "$keystore"
+          echo "GHOSIUM_ANDROID_KEYSTORE_PATH=$keystore" >> "$GITHUB_ENV"
+          keytool -list -keystore "$keystore" -storepass "$GHOSIUM_ANDROID_KEYSTORE_PASSWORD" -alias "$GHOSIUM_ANDROID_KEY_ALIAS" >/dev/null
+
+      - name: Test, lint, minify and assemble signed Android release
+        shell: bash
+        run: |
+          set -euo pipefail
+          gradle --no-daemon -p android testDebugUnitTest lintRelease assembleRelease
+          source_apk='android/app/build/outputs/apk/release/app-release.apk'
+          test -s "$source_apk"
+          mkdir -p artifacts/android
+          cp "$source_apk" artifacts/android/Ghosium-Browser-Android.apk
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose --print-certs artifacts/android/Ghosium-Browser-Android.apk | tee "$RUNNER_TEMP/apksigner.txt"
+          "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging artifacts/android/Ghosium-Browser-Android.apk | grep -F "package: name='com.brendigo.ghosium' versionCode='3' versionName='0.0.3'"
+
+      - name: Generate Android release provenance
+        shell: python
+        run: |
+          import hashlib
+          import json
+          import os
+          import re
+          from pathlib import Path
+
+          apk = Path('artifacts/android/Ghosium-Browser-Android.apk')
+          signer = Path(os.environ['RUNNER_TEMP'], 'apksigner.txt').read_text(encoding='utf-8')
+          match = re.search(r'certificate SHA-256 digest:\s*([0-9a-fA-F]+)', signer)
+          if not match:
+              raise SystemExit('Could not extract Android signing certificate SHA-256 digest.')
+          evidence = {
+              'schemaVersion': 1,
+              'product': 'Ghosium Browser',
+              'platform': 'android',
+              'version': '0.0.3',
+              'package': 'com.brendigo.ghosium',
+              'file': apk.name,
+              'bytes': apk.stat().st_size,
+              'sha256': hashlib.sha256(apk.read_bytes()).hexdigest(),
+              'signingCertificateSha256': match.group(1).lower(),
+              'sourceCommit': os.environ['GITHUB_SHA'],
+          }
+          Path('artifacts/android/GHOSIUM-ANDROID-RELEASE.json').write_text(json.dumps(evidence, indent=2) + '\n', encoding='utf-8')
+          print(json.dumps(evidence, indent=2))
+
+      - name: Upload verified Android production artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: ghosium-android-production-0.0.3
+          path: artifacts/android/
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 0
+
+  dispatch-windows-production:
+    name: Run canonical signed Windows production build
+    needs: android-production
+    runs-on: ubuntu-24.04
+    timeout-minutes: 480
+    permissions:
+      actions: write
+      contents: read
+    outputs:
+      run_id: ${{ steps.windows.outputs.run_id }}
+    steps:
+      - name: Dispatch and verify exact main full-source run
+        id: windows
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag='ghosium-v0.0.3'
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Release $tag already exists; immutable production orchestration refuses to overwrite it." >&2
+            exit 1
+          fi
+          started="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          gh workflow run full-source-windows-build.yml --ref main --repo "$GITHUB_REPOSITORY"
+          run_id=''
+          for attempt in $(seq 1 30); do
+            run_id="$(gh api "/repos/$GITHUB_REPOSITORY/actions/workflows/full-source-windows-build.yml/runs?branch=main&event=workflow_dispatch&per_page=30" \
+              --jq ".workflow_runs | map(select(.head_sha == \"$GITHUB_SHA\" and .created_at >= \"$started\")) | sort_by(.created_at) | last | .id // empty")"
+            if [ -n "$run_id" ]; then break; fi
+            sleep 5
+          done
+          if [ -z "$run_id" ]; then
+            echo 'Could not identify the exact dispatched Windows full-source run.' >&2
+            exit 1
+          fi
+          echo "run_id=$run_id" >> "$GITHUB_OUTPUT"
+          echo "Watching exact Windows production run $run_id for $GITHUB_SHA"
+          gh run watch "$run_id" --repo "$GITHUB_REPOSITORY" --exit-status
+
+  finalize-release:
+    name: Attach verified Android APK and verify complete 0.0.3 release
+    needs:
+      - android-production
+      - dispatch-windows-production
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      actions: read
+      contents: write
+    steps:
+      - name: Download verified Android production artifact
+        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
+        with:
+          name: ghosium-android-production-0.0.3
+          path: artifacts/android
+
+      - name: Upload Android APK to immutable 0.0.3 release and verify all required assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag='ghosium-v0.0.3'
+          test -s artifacts/android/Ghosium-Browser-Android.apk
+          test -s artifacts/android/GHOSIUM-ANDROID-RELEASE.json
+          release_json="$(gh api "/repos/$GITHUB_REPOSITORY/releases/tags/$tag")"
+          test "$(jq -r '.draft' <<<"$release_json")" = 'false'
+          test "$(jq -r '.prerelease' <<<"$release_json")" = 'false'
+          target="$(jq -r '.target_commitish' <<<"$release_json")"
+          if [ "$target" != "$GITHUB_SHA" ]; then
+            echo "Release target mismatch: expected $GITHUB_SHA, got $target" >&2
+            exit 1
+          fi
+          gh release upload "$tag" \
+            artifacts/android/Ghosium-Browser-Android.apk \
+            artifacts/android/GHOSIUM-ANDROID-RELEASE.json \
+            --repo "$GITHUB_REPOSITORY"
+          release_json="$(gh api "/repos/$GITHUB_REPOSITORY/releases/tags/$tag")"
+          for required in Ghosium-Browser-Setup.exe Ghosium-Browser-Portable.exe Ghosium-Browser-Android.apk GHOSIUM-ANDROID-RELEASE.json; do
+            if ! jq -e --arg name "$required" '.assets | any(.name == $name)' <<<"$release_json" >/dev/null; then
+              echo "Final release asset is missing: $required" >&2
+              exit 1
+            fi
+          done
+          echo 'Ghosium Browser 0.0.3 release is complete: Windows Setup, Windows Portable and Android APK verified.'

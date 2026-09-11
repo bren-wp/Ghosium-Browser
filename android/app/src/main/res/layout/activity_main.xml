@@ -1,0 +1,156 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical">
+
+    <com.google.android.material.appbar.MaterialToolbar
+        android:id="@+id/toolbar"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="@color/ghosium_surface"
+        android:minHeight="60dp"
+        app:navigationIcon="@drawable/ic_ghosium"
+        app:navigationIconTint="@null"
+        app:subtitleTextColor="@color/ghosium_text_secondary"
+        app:title="@string/app_name"
+        app:titleTextColor="@color/ghosium_text" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="@color/ghosium_surface"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingStart="12dp"
+        android:paddingTop="4dp"
+        android:paddingEnd="12dp"
+        android:paddingBottom="10dp">
+
+        <com.google.android.material.textfield.TextInputLayout
+            android:id="@+id/addressLayout"
+            style="@style/Widget.Material3.TextInputLayout.FilledBox.Dense"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:hint="@string/address_hint"
+            app:boxBackgroundColor="@color/ghosium_surface_high"
+            app:boxCornerRadiusBottomEnd="18dp"
+            app:boxCornerRadiusBottomStart="18dp"
+            app:boxCornerRadiusTopEnd="18dp"
+            app:boxCornerRadiusTopStart="18dp"
+            app:boxStrokeColor="@color/ghosium_primary"
+            app:endIconMode="clear_text">
+
+            <com.google.android.material.textfield.TextInputEditText
+                android:id="@+id/addressInput"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:imeOptions="actionGo"
+                android:inputType="textUri"
+                android:maxLines="1"
+                android:selectAllOnFocus="true"
+                android:textColor="@color/ghosium_text"
+                android:textColorHint="@color/ghosium_text_secondary" />
+        </com.google.android.material.textfield.TextInputLayout>
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/goButton"
+            style="@style/Widget.Material3.Button.TonalButton"
+            android:layout_width="wrap_content"
+            android:layout_height="48dp"
+            android:layout_marginStart="8dp"
+            android:minWidth="56dp"
+            android:text="@string/go"
+            android:textAllCaps="false"
+            app:cornerRadius="16dp" />
+    </LinearLayout>
+
+    <com.google.android.material.progressindicator.LinearProgressIndicator
+        android:id="@+id/progress"
+        android:layout_width="match_parent"
+        android:layout_height="3dp"
+        android:indeterminate="false"
+        android:max="100"
+        android:visibility="gone"
+        app:indicatorColor="@color/ghosium_primary"
+        app:trackColor="@color/ghosium_surface_high" />
+
+    <FrameLayout
+        android:id="@+id/webContainer"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:background="@color/ghosium_background" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="68dp"
+        android:background="@color/ghosium_surface"
+        android:gravity="center"
+        android:orientation="horizontal"
+        android:paddingStart="8dp"
+        android:paddingEnd="8dp">
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/backButton"
+            style="@style/Widget.Material3.Button.TonalButton"
+            android:layout_width="0dp"
+            android:layout_height="52dp"
+            android:layout_margin="4dp"
+            android:layout_weight="1"
+            android:contentDescription="@string/back"
+            android:minWidth="48dp"
+            android:text=""
+            app:cornerRadius="16dp"
+            app:icon="@drawable/ic_back"
+            app:iconGravity="textStart"
+            app:iconPadding="0dp" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/forwardButton"
+            style="@style/Widget.Material3.Button.TonalButton"
+            android:layout_width="0dp"
+            android:layout_height="52dp"
+            android:layout_margin="4dp"
+            android:layout_weight="1"
+            android:contentDescription="@string/forward"
+            android:minWidth="48dp"
+            android:text=""
+            app:cornerRadius="16dp"
+            app:icon="@drawable/ic_forward"
+            app:iconGravity="textStart"
+            app:iconPadding="0dp" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/homeButton"
+            style="@style/Widget.Material3.Button.TonalButton"
+            android:layout_width="0dp"
+            android:layout_height="52dp"
+            android:layout_margin="4dp"
+            android:layout_weight="1"
+            android:contentDescription="@string/home"
+            android:minWidth="48dp"
+            android:text=""
+            app:cornerRadius="16dp"
+            app:icon="@drawable/ic_home"
+            app:iconGravity="textStart"
+            app:iconPadding="0dp" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/reloadButton"
+            style="@style/Widget.Material3.Button.TonalButton"
+            android:layout_width="0dp"
+            android:layout_height="52dp"
+            android:layout_margin="4dp"
+            android:layout_weight="1"
+            android:contentDescription="@string/reload"
+            android:minWidth="48dp"
+            android:text=""
+            app:cornerRadius="16dp"
+            app:icon="@drawable/ic_reload"
+            app:iconGravity="textStart"
+            app:iconPadding="0dp" />
+    </LinearLayout>
+</LinearLayout>

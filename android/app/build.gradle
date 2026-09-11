@@ -1,0 +1,83 @@
+plugins {
+    id 'com.android.application'
+}
+
+def signingStore = System.getenv('GHOSIUM_ANDROID_KEYSTORE_PATH')
+def signingPassword = System.getenv('GHOSIUM_ANDROID_KEYSTORE_PASSWORD')
+def signingAlias = System.getenv('GHOSIUM_ANDROID_KEY_ALIAS')
+def signingKeyPassword = System.getenv('GHOSIUM_ANDROID_KEY_PASSWORD') ?: signingPassword
+def hasReleaseSigning = signingStore && signingPassword && signingAlias && signingKeyPassword
+
+android {
+    namespace 'com.brendigo.ghosium'
+    compileSdk 36
+
+    defaultConfig {
+        applicationId 'com.brendigo.ghosium'
+        minSdk 29
+        targetSdk 36
+        versionCode 3
+        versionName '0.0.3'
+        testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
+    }
+
+    if (hasReleaseSigning) {
+        signingConfigs {
+            release {
+                storeFile file(signingStore)
+                storePassword signingPassword
+                keyAlias signingAlias
+                keyPassword signingKeyPassword
+                enableV1Signing true
+                enableV2Signing true
+                enableV3Signing true
+                enableV4Signing true
+            }
+        }
+    }
+
+    buildTypes {
+        debug {
+            applicationIdSuffix '.debug'
+            versionNameSuffix '-debug'
+            debuggable true
+        }
+        release {
+            minifyEnabled true
+            shrinkResources true
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+            if (hasReleaseSigning) {
+                signingConfig signingConfigs.release
+            }
+        }
+    }
+
+    buildFeatures {
+        buildConfig true
+        viewBinding true
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    lint {
+        abortOnError true
+        checkDependencies true
+        warningsAsErrors true
+        disable 'GradleDependency', 'OldTargetApi'
+    }
+
+    packaging {
+        resources {
+            excludes += ['/META-INF/{AL2.0,LGPL2.1}']
+        }
+    }
+}
+
+dependencies {
+    implementation 'androidx.appcompat:appcompat:1.7.1'
+    implementation 'com.google.android.material:material:1.14.0'
+    testImplementation 'junit:junit:4.13.2'
+}

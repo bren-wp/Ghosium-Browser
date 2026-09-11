@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Ghosium Browser</string>
+    <string name="address_hint">Search or enter address</string>
+    <string name="go">Go</string>
+    <string name="back">Back</string>
+    <string name="forward">Forward</string>
+    <string name="home">Home</string>
+    <string name="reload">Reload</string>
+    <string name="new_tab">New tab</string>
+    <string name="share_page">Share page</string>
+    <string name="find_in_page">Find in page</string>
+    <string name="find_hint">Text to find</string>
+    <string name="find_action">Find</string>
+    <string name="desktop_site">Desktop site</string>
+    <string name="open_external">Open in another app</string>
+    <string name="clear_data">Clear browsing data</string>
+    <string name="clear_data_message">Clear cookies, website storage, cache, form data and this browsing history on this device?</string>
+    <string name="clear_action">Clear</string>
+    <string name="data_cleared">Local browsing data cleared</string>
+    <string name="privacy">Privacy policy</string>
+    <string name="about">About</string>
+    <string name="about_title">Ghosium Browser</string>
+    <string name="about_message">Version %1$s\n\nBuilt by Brendigo. No Ghosium analytics or telemetry. Third-party cookies are blocked by default.</string>
+    <string name="open_external_title">Open external app?</string>
+    <string name="open_external_message">This link wants to leave Ghosium Browser:\n\n%1$s</string>
+    <string name="open_action">Open</string>
+    <string name="no_external_app">No compatible app is installed for this link.</string>
+    <string name="download_description">Downloading with Ghosium Browser</string>
+    <string name="download_started">Downloading %1$s</string>
+    <string name="download_failed">Download could not be started.</string>
+    <string name="download_unsupported">This download type cannot be handed to Android securely.</string>
+    <string name="page_load_failed">The page could not be loaded.</string>
+    <string name="ssl_error">Secure connection validation failed. The page was blocked.</string>
+    <string name="renderer_recovered_crash">The web renderer stopped unexpectedly. Ghosium recovered the tab.</string>
+    <string name="renderer_recovered">The web renderer was reclaimed by Android. Ghosium restored the tab.</string>
+    <string name="file_picker_failed">The Android file picker could not be opened.</string>
+</resources>

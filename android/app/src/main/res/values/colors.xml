@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="ghosium_background">#0D0F12</color>
+    <color name="ghosium_surface">#15191E</color>
+    <color name="ghosium_surface_high">#20262D</color>
+    <color name="ghosium_primary">#62E7D5</color>
+    <color name="ghosium_secondary">#49D5F2</color>
+    <color name="ghosium_text">#F5F8FA</color>
+    <color name="ghosium_text_secondary">#A8B3BD</color>
+</resources>

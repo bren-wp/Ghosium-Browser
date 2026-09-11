@@ -1,44 +1,70 @@
-# Ghosium 0.0.2 Release Procedure
+# Ghosium 0.0.3 Release Procedure
 
-The active development product version is `0.0.2`.
+The active product version is `0.0.3`.
 
-## Current release state
+## Release state
 
-**Ghosium Browser 0.0.2 is a hardening candidate and is not published as the canonical production release.**
+Ghosium Browser 0.0.3 is a release candidate until every exact-commit candidate, signing, provenance and publication gate below succeeds. The checked-in Windows stable update baseline remains fail-closed before publication.
 
-Earlier releases and candidates are intentionally distinct from the canonical 0.0.2 full-source production release. Their evidence cannot substitute for the gates below.
+## Canonical scope
 
-The checked-in stable update baseline remains fail-closed.
+The production release contains one exact source identity across Windows and Android. Required end-user assets are:
 
-## Canonical production scope
+```text
+Ghosium-Browser-Setup.exe
+Ghosium-Browser-Portable.exe
+Ghosium-Browser-Android.apk
+```
 
-The canonical 0.0.2 production path carries the current Ghosium branding, native upstream New Tab integration, privacy/stability hardening, `ghost://` WebUI namespace, 38-locale contract, canonical Windows Setup/Portable packaging and fail-closed update/signing/provenance controls. The updater additionally requires unique secure temporary staging, and the release toolchain rejects arbitrary user-writable NSIS PATH resolution.
+The Windows packages come only from the canonical full-source build. The Android package comes only from the production Android signing path. QA/stub/unsigned candidate binaries must never be renamed or promoted as production artifacts.
 
-## Canonical candidate sequence
+## Phase 1 — version baseline
 
-1. Merge the reviewed 0.0.2 production baseline only after its normal PR contracts pass.
-2. Create `ghosium/release/0.0.2` from the exact approved production baseline with exactly `.release/ghosium-v0.0.2.request` containing `ghosium-v0.0.2` when the release-marker contract requires candidate promotion.
-3. Require the controlled full-source Windows candidate workflow to succeed for the exact release-branch SHA.
-4. Require compile, runtime, benchmark, Setup/Portable, provenance and SHA-256 evidence.
-5. Require current `main` to remain source-equivalent to the verified candidate apart from reviewed release-control state.
-6. Run the production `main` workflow required by the canonical release architecture.
-7. Require production signing and immutable canonical `ghosium-v0.0.2` GitHub publication.
+1. Review the 0.0.3 code, Android application, workflows and documentation on the version-advance branch.
+2. Require normal PR contracts plus cross-platform QA to pass for the exact head SHA.
+3. Require the Android release-candidate workflow to prove unit tests, release lint, minification and release assembly without using production private-key material.
+4. Merge the version baseline into `main` only after those gates are green.
+
+The version-baseline PR must not contain the production release marker.
+
+## Phase 2 — exact candidate and marker promotion
+
+1. Create `ghosium/release/0.0.3` from the exact approved `main` baseline.
+2. Add exactly `.release/ghosium-v0.0.3.request` containing exactly `ghosium-v0.0.3`.
+3. Run the full-source Windows candidate workflow against that exact release-branch SHA.
+4. Require successful compile, runtime, benchmark, Setup/Portable, source/provenance and SHA-256 evidence.
+5. Open a marker-only PR from `ghosium/release/0.0.3` to `main`.
+6. Require the release-marker promotion contract to bind that exact candidate evidence to the marker PR.
+7. Merge the marker-only PR only after the promotion contract succeeds.
+
+## Phase 3 — production
+
+The marker push to `main` triggers `.github/workflows/ghosium-0.0.3-production-release.yml`.
+
+Production order is fail-closed:
+
+1. validate `VERSION` and the exact release marker;
+2. require the stable Android production signing secrets;
+3. unit-test, lint, minify, assemble and sign the Android APK;
+4. verify Android package/version and signature with Android build tools;
+5. record Android SHA-256, byte size, source commit and signing-certificate SHA-256;
+6. dispatch the canonical full-source Windows production workflow for the exact `main` SHA;
+7. require Windows compile/runtime/performance/Setup/Portable/signing/provenance and release publication to succeed;
+8. attach the already verified Android APK and Android provenance evidence to the same immutable GitHub release;
+9. verify the release is not draft/prerelease and contains all three required end-user artifacts.
 
 ## Mandatory security gates
 
 Safe Browsing, TLS/certificate validation, browser/renderer/GPU sandboxing, site/process isolation, extension verification, update hash/signature/publisher verification and third-party legal attribution must remain intact.
 
-Updater staging must use the Windows secure temporary directory plus a unique per-update session directory before any Setup download. Browser benchmarks must never terminate pre-existing user browser sessions by image name.
+Windows benchmarks must not terminate pre-existing user browser sessions. Android must keep TLS errors fail-closed, mixed content blocked, third-party cookies blocked, direct WebView file/content access disabled and production private-key material outside the repository.
 
-## Canonical production artifacts
+## Signing requirements
 
-```text
-Ghosium-Browser-Setup.exe
-Ghosium-Browser-Portable.exe
-```
+Windows production requires the controlled source builder with its configured Authenticode certificate/private key and timestamping configuration. Android production requires the stable Brendigo Android keystore supplied only through GitHub Actions secrets as documented in `BUILDING.md`.
 
-Canonical evidence additionally includes builder readiness, exact source-build provenance, runtime verification, `GHOSIUM-PERFORMANCE.json`, source-stage provenance, canonical Setup smoke evidence, signed update-manifest evidence and `SHA256SUMS.txt`.
+A missing signing identity is a release blocker; signing checks must not be weakened or bypassed.
 
 ## Release decision
 
-Canonical Ghosium Browser 0.0.2 publication is allowed only after the exact full-source candidate and production signing/provenance workflow succeeds. Publication in this project is GitHub-only unless a later separately reviewed change explicitly establishes another release destination.
+Canonical 0.0.3 publication is allowed only after exact candidate evidence, marker promotion, Android production signing and canonical Windows production signing/provenance all succeed. Publication is GitHub-only unless a separately reviewed change establishes another release destination.

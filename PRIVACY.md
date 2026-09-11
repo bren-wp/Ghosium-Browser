@@ -2,36 +2,49 @@
 
 ## Scope
 
-This document describes privacy behavior controlled by Ghosium Browser and Ghosium-controlled product services. Google Search is an external service and is not operated by Ghosium or Brendigo.
+This document covers privacy behavior controlled by Ghosium Browser on Windows and Android and by Ghosium-controlled product services. Google Search and websites opened by the user are external services.
 
-## Ghosium Browser
+## Product-wide defaults
 
-Ghosium does not operate a browser-account backend, advertising identifier system or application analytics SDK.
+Ghosium does not operate a browser-account backend, advertising identifier system or application analytics SDK. The product does not include Firebase Analytics, Google Analytics, App Center or Sentry Android telemetry.
 
-The source-built browser disables selected browser-owned background/reporting features, including browser Sync/account onboarding surfaces, crash-reporting integrations controlled by the product build, legacy background browser mode and other unowned promotional/background features covered by the source contracts.
+Google Search is the default external web search service. Search queries are submitted directly to Google; Ghosium does not proxy, store or index them through a first-party search server.
 
-The bundled Ghosium Privacy component uses declarative request rules to block selected third-party trackers and remove common campaign/click identifiers from top-level navigations.
+## Windows
 
-## Local profile
+The source-built Windows product blocks third-party cookies by default and disables selected browser-owned background/reporting, search-suggestion, speculative preload and remote New Tab promotional paths covered by repository contracts. Local browser profiles remain on the device unless a website or extension intentionally sends its own data elsewhere.
 
-Installed mode stores profile data under the Ghosium/Brendigo local application-data profile root defined by the Windows identity contract. History, cookies, bookmarks, site data and preferences are local browser data unless a website or installed extension sends its own data elsewhere.
+Installed profile root:
 
-## Google Search
+```text
+%LOCALAPPDATA%\Brendigo\Ghosium\User Data
+```
 
-Google Search is the default web search service. Queries submitted through the Ghosium New Tab search form are sent directly to `https://www.google.com/search`. Ghosium does not proxy, index, store or process those search queries on a first-party search server.
+Portable profile data stays beside the Portable executable and is not redirected into the normal installed profile.
 
-Google receives ordinary network requests for searches sent to its service and applies its own terms, privacy practices and service behavior. Users can change their search engine through supported browser controls; enterprise policy and extension overrides retain their native precedence.
+## Android
 
-## Ghosium Store
+The Android application uses Android System WebView with Ghosium-owned navigation UI. Its defaults:
 
-The Store source has no analytics, advertising SDK, remote font dependency or third-party asset dependency. The initial catalog is stored in local JSON and package delivery remains subject to the repository trust controls.
+- third-party cookies disabled;
+- mixed HTTP content blocked;
+- direct WebView file/content access disabled;
+- Safe Browsing enabled where supported;
+- TLS/certificate errors cancelled rather than bypassed;
+- external non-HTTP(S) schemes require user confirmation;
+- no application analytics/advertising SDK;
+- browser-local app data excluded from Android cloud backup and device-to-device transfer.
+
+The app stores ordinary WebView browsing state locally on the device. Choosing **Clear browsing data** clears WebView cache/history and removes cookies and WebStorage data managed by the app/WebView.
+
+Downloads are delegated to Android's system Download Manager after a user/site-initiated download. File upload uses the Android system document picker so the user selects which file URI to expose to the page.
 
 ## Websites and search results
 
-Ghosium is a browser, not an anonymity network. A website intentionally opened by the user receives ordinary network traffic and can apply its own cookies/fingerprinting subject to browser controls and Ghosium filtering. Search results are ordinary user-requested web destinations.
+Ghosium is a browser, not an anonymity network. A website intentionally opened by the user receives normal network traffic and can apply its own privacy practices subject to browser controls and Ghosium filtering.
 
-## Product links
+## Ghosium Store and updates
 
-Ghosium-controlled non-search product UI points to approved Ghosium-owned domains. The New Tab search action intentionally submits queries to Google Search as the configured external search service. This does not block the user from browsing the wider web.
+The Store source has no analytics, advertising SDK or remote font dependency. Windows updates are bound to first-party Ghosium endpoints and fail closed on package identity, hash or signing mismatches.
 
 Current public privacy policy: https://ghosium.com/legal/privacy-policy

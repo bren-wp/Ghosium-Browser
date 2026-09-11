@@ -1,0 +1,61 @@
+name: Ghosium 0.0.3 Candidate Trigger
+
+on:
+  push:
+    branches:
+      - ghosium/release/0.0.3
+    paths:
+      - '.release/ghosium-v0.0.3.request'
+  workflow_dispatch:
+
+concurrency:
+  group: ghosium-0.0.3-candidate-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  dispatch-candidate:
+    name: Validate marker and dispatch exact full-source candidate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout exact candidate commit
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Validate exact candidate branch, version and marker
+        shell: python
+        run: |
+          import os
+          from pathlib import Path
+
+          expected_ref = 'refs/heads/ghosium/release/0.0.3'
+          if os.environ.get('GITHUB_REF') != expected_ref:
+              raise SystemExit(f'Candidate trigger requires {expected_ref}; got {os.environ.get("GITHUB_REF")!r}')
+
+          version = Path('VERSION').read_text(encoding='utf-8').strip()
+          marker_path = Path('.release/ghosium-v0.0.3.request')
+          if version != '0.0.3':
+              raise SystemExit(f'Expected VERSION 0.0.3; got {version!r}')
+          if not marker_path.is_file():
+              raise SystemExit('Required 0.0.3 release marker is missing.')
+          marker = marker_path.read_text(encoding='utf-8').strip()
+          if marker != 'ghosium-v0.0.3':
+              raise SystemExit(f'Invalid 0.0.3 release marker: {marker!r}')
+          print(f'Exact Ghosium 0.0.3 candidate request validated for {os.environ.get("GITHUB_SHA")}')
+
+      - name: Dispatch canonical full-source candidate on release branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh workflow run full-source-windows-build.yml \
+            --ref ghosium/release/0.0.3 \
+            --repo "$GITHUB_REPOSITORY"
+          echo "Dispatched full-source candidate for $GITHUB_SHA"
