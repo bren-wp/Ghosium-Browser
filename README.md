@@ -27,6 +27,17 @@ Version 0.0.3 combines the pinned full-source Windows engine build with a native
 
 The Windows product is compiled from the exact pinned upstream engine revision in `ENGINE_SOURCE_REVISION`. Ghosium source transforms apply product identity, `ghost://` internal routes, New Tab behavior, privacy defaults, update integration and native performance defaults while preserving sandboxing, site/process isolation, Safe Browsing and TLS/certificate validation.
 
+The documented Ghosium internal route contract is:
+
+- `ghost://newtab/`
+- `ghost://history/`
+- `ghost://bookmarks/`
+- `ghost://downloads/`
+- `ghost://settings/`
+- `ghost://profiles/`
+- `ghost://extensions/`
+- `ghost://passwords/`
+
 0.0.3 also hardens the compatibility/Portable layer:
 
 - installed profile root is `%LOCALAPPDATA%\Brendigo\Ghosium\User Data`;
