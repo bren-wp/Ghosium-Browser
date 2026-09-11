@@ -6,7 +6,7 @@
 
 **Ghosium Browser by Brendigo** is a privacy-focused browser product for **Windows x64** and **Android 10+**. The active product version is **0.0.3**.
 
-Version 0.0.3 combines the pinned full-source Windows Chromium build with a native Android browser shell. Publication is fail-closed: the exact release commit must pass repository contracts, Windows source-build/runtime/package/signing gates and Android unit/lint/minified-release/signing verification before the release is considered complete.
+Version 0.0.3 combines the pinned full-source Windows engine build with a native Android browser shell. Publication is fail-closed: the exact release commit must pass repository contracts, Windows source-build/runtime/package/signing gates and Android unit/lint/minified-release/signing verification before the release is considered complete.
 
 ## Product identity
 
@@ -25,7 +25,7 @@ Version 0.0.3 combines the pinned full-source Windows Chromium build with a nati
 
 ## Windows 0.0.3
 
-The Windows product is compiled from the exact Chromium revision in `ENGINE_SOURCE_REVISION`. Ghosium source transforms apply product identity, `ghost://` internal routes, New Tab behavior, privacy defaults, update integration and native performance defaults while preserving sandboxing, site/process isolation, Safe Browsing and TLS/certificate validation.
+The Windows product is compiled from the exact pinned upstream engine revision in `ENGINE_SOURCE_REVISION`. Ghosium source transforms apply product identity, `ghost://` internal routes, New Tab behavior, privacy defaults, update integration and native performance defaults while preserving sandboxing, site/process isolation, Safe Browsing and TLS/certificate validation.
 
 0.0.3 also hardens the compatibility/Portable layer:
 
@@ -58,9 +58,11 @@ The Windows packages must be produced by the canonical full-source workflow and 
 
 - Windows full-source build: `.github/workflows/full-source-windows-build.yml`
 - Cross-platform 0.0.3 QA: `.github/workflows/ghosium-0.0.3-quality.yml`
+- Android release-candidate QA: `.github/workflows/ghosium-0.0.3-android-release-candidate.yml`
 - Production 0.0.3 orchestration: `.github/workflows/ghosium-0.0.3-production-release.yml`
 - Windows build documentation: `BUILDING.md`
 - Android documentation: `android/README.md`
+- Release procedure: `docs/RELEASE.md`
 - Architecture: `ARCHITECTURE.md`
 - Privacy: `PRIVACY.md`
 - Security: `SECURITY.md`
@@ -69,4 +71,6 @@ The checked-in Windows update manifest remains fail-closed until canonical publi
 
 ## License and third-party rights
 
-Brendigo-authored Ghosium material is governed by the repository `LICENSE`. Public repository visibility does not itself grant rights beyond that license. Chromium, Android WebView, AndroidX, Material Components and all other third-party/open-source components remain governed by their own licenses and notices; required attribution is preserved in `THIRD_PARTY_NOTICES.md` and applicable bundled material.
+Brendigo-authored Ghosium material is governed by the **Brendigo Proprietary Commercial Software License Agreement** in `LICENSE`. Public repository visibility does not by itself grant an open-source license to Brendigo-authored proprietary material.
+
+Chromium and every other third-party or open-source component remain governed by their own licenses. Android WebView, AndroidX, Material Components and other third-party components likewise remain governed by their applicable licenses and notices. Required attribution is preserved in `THIRD_PARTY_NOTICES.md` and applicable bundled material.
