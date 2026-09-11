@@ -71,12 +71,15 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          for name in GHOSIUM_ANDROID_KEYSTORE_BASE64 GHOSIUM_ANDROID_KEYSTORE_PASSWORD GHOSIUM_ANDROID_KEY_ALIAS GHOSIUM_ANDROID_KEY_PASSWORD; do
+          for name in GHOSIUM_ANDROID_KEYSTORE_BASE64 GHOSIUM_ANDROID_KEYSTORE_PASSWORD GHOSIUM_ANDROID_KEY_ALIAS; do
             if [ -z "${!name:-}" ]; then
               echo "Required production signing secret is missing: $name" >&2
               exit 1
             fi
           done
+          if [ -z "${GHOSIUM_ANDROID_KEY_PASSWORD:-}" ]; then
+            echo "GHOSIUM_ANDROID_KEY_PASSWORD=$GHOSIUM_ANDROID_KEYSTORE_PASSWORD" >> "$GITHUB_ENV"
+          fi
           keystore="$RUNNER_TEMP/ghosium-production.jks"
           printf '%s' "$GHOSIUM_ANDROID_KEYSTORE_BASE64" | base64 --decode > "$keystore"
           chmod 600 "$keystore"
@@ -99,12 +102,14 @@ jobs:
       - name: Generate Android release provenance
         shell: python
         run: |
-          import hashlib, json, re, subprocess
+          import hashlib
+          import json
+          import os
+          import re
           from pathlib import Path
+
           apk = Path('artifacts/android/Ghosium-Browser-Android.apk')
-          signer = subprocess.check_output([
-              str(Path.home() / 'unused')
-          ], text=True) if False else Path(__import__('os').environ['RUNNER_TEMP']).joinpath('apksigner.txt').read_text(encoding='utf-8')
+          signer = Path(os.environ['RUNNER_TEMP'], 'apksigner.txt').read_text(encoding='utf-8')
           match = re.search(r'certificate SHA-256 digest:\s*([0-9a-fA-F]+)', signer)
           if not match:
               raise SystemExit('Could not extract Android signing certificate SHA-256 digest.')
@@ -118,7 +123,7 @@ jobs:
               'bytes': apk.stat().st_size,
               'sha256': hashlib.sha256(apk.read_bytes()).hexdigest(),
               'signingCertificateSha256': match.group(1).lower(),
-              'sourceCommit': __import__('os').environ['GITHUB_SHA'],
+              'sourceCommit': os.environ['GITHUB_SHA'],
           }
           Path('artifacts/android/GHOSIUM-ANDROID-RELEASE.json').write_text(json.dumps(evidence, indent=2) + '\n', encoding='utf-8')
           print(json.dumps(evidence, indent=2))
@@ -155,10 +160,8 @@ jobs:
             echo "Release $tag already exists; immutable production orchestration refuses to overwrite it." >&2
             exit 1
           fi
-
           started="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
           gh workflow run full-source-windows-build.yml --ref main --repo "$GITHUB_REPOSITORY"
-
           run_id=''
           for attempt in $(seq 1 30); do
             run_id="$(gh api "/repos/$GITHUB_REPOSITORY/actions/workflows/full-source-windows-build.yml/runs?branch=main&event=workflow_dispatch&per_page=30" \
@@ -200,7 +203,6 @@ jobs:
           tag='ghosium-v0.0.3'
           test -s artifacts/android/Ghosium-Browser-Android.apk
           test -s artifacts/android/GHOSIUM-ANDROID-RELEASE.json
-
           release_json="$(gh api "/repos/$GITHUB_REPOSITORY/releases/tags/$tag")"
           test "$(jq -r '.draft' <<<"$release_json")" = 'false'
           test "$(jq -r '.prerelease' <<<"$release_json")" = 'false'
@@ -209,12 +211,10 @@ jobs:
             echo "Release target mismatch: expected $GITHUB_SHA, got $target" >&2
             exit 1
           fi
-
           gh release upload "$tag" \
             artifacts/android/Ghosium-Browser-Android.apk \
             artifacts/android/GHOSIUM-ANDROID-RELEASE.json \
             --repo "$GITHUB_REPOSITORY"
-
           release_json="$(gh api "/repos/$GITHUB_REPOSITORY/releases/tags/$tag")"
           for required in Ghosium-Browser-Setup.exe Ghosium-Browser-Portable.exe Ghosium-Browser-Android.apk GHOSIUM-ANDROID-RELEASE.json; do
             if ! jq -e --arg name "$required" '.assets | any(.name == $name)' <<<"$release_json" >/dev/null; then
