@@ -58,7 +58,7 @@
 
         <com.google.android.material.button.MaterialButton
             android:id="@+id/goButton"
-            style="@style/Widget.Material3.Button.FilledTonalButton"
+            style="@style/Widget.Material3.Button.TonalButton"
             android:layout_width="wrap_content"
             android:layout_height="48dp"
             android:layout_marginStart="8dp"
@@ -96,7 +96,7 @@
 
         <com.google.android.material.button.MaterialButton
             android:id="@+id/backButton"
-            style="@style/Widget.Material3.Button.FilledTonalButton"
+            style="@style/Widget.Material3.Button.TonalButton"
             android:layout_width="0dp"
             android:layout_height="52dp"
             android:layout_margin="4dp"
@@ -111,7 +111,7 @@
 
         <com.google.android.material.button.MaterialButton
             android:id="@+id/forwardButton"
-            style="@style/Widget.Material3.Button.FilledTonalButton"
+            style="@style/Widget.Material3.Button.TonalButton"
             android:layout_width="0dp"
             android:layout_height="52dp"
             android:layout_margin="4dp"
@@ -126,7 +126,7 @@
 
         <com.google.android.material.button.MaterialButton
             android:id="@+id/homeButton"
-            style="@style/Widget.Material3.Button.FilledTonalButton"
+            style="@style/Widget.Material3.Button.TonalButton"
             android:layout_width="0dp"
             android:layout_height="52dp"
             android:layout_margin="4dp"
@@ -141,7 +141,7 @@
 
         <com.google.android.material.button.MaterialButton
             android:id="@+id/reloadButton"
-            style="@style/Widget.Material3.Button.FilledTonalButton"
+            style="@style/Widget.Material3.Button.TonalButton"
             android:layout_width="0dp"
             android:layout_height="52dp"
             android:layout_margin="4dp"
