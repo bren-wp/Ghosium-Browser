@@ -81,6 +81,11 @@ Function PreparePortableRuntime
   File /r "${GHOSIUM_STAGE}\*.*"
   IfErrors portable_prepare_error
 
+  ; File extraction changes NSIS' process working directory to the staging
+  ; directory. Move back to the executable directory before any rename/delete
+  ; operation so Windows does not hold the staging directory as the process CWD.
+  SetOutPath "$EXEDIR"
+
   IfFileExists "$PortableStage\${PRODUCT_EXE}" 0 portable_prepare_error
   IfFileExists "$PortableStage\LICENSE" 0 portable_prepare_error
   IfFileExists "$PortableStage\THIRD_PARTY_NOTICES.md" 0 portable_prepare_error
@@ -116,10 +121,12 @@ portable_rename_race:
   StrCmp $PortableReady "1" portable_concurrent_ready portable_prepare_error
 
 portable_concurrent_ready:
+  SetOutPath "$EXEDIR"
   RMDir /r "$PortableStage"
   Goto portable_prepare_done
 
 portable_prepare_error:
+  SetOutPath "$EXEDIR"
   RMDir /r "$PortableStage"
   ; Portable is a silent package. Never block unattended/CI launches with a
   ; modal dialog; callers receive a stable diagnostic exit code instead.
