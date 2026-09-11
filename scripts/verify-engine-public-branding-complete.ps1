@@ -438,18 +438,28 @@ foreach ($relative in @($webUiFiles | Sort-Object -Unique)) {
   $extension = [IO.Path]::GetExtension($relative).ToLowerInvariant()
 
   if ($extension -in @('.html', '.htm', '.svg')) {
-    foreach ($match in $markupTextPattern.Matches($withoutBlockComments)) {
+    # CSS and JavaScript bodies are implementation source, not rendered text.
+    # Replace non-newline characters so diagnostic line numbers remain stable.
+    $markupScanText = [regex]::Replace(
+      $withoutBlockComments,
+      '(?is)<(?:style|script)\b[^>]*>.*?</(?:style|script)>',
+      {
+        param($match)
+        return [regex]::Replace($match.Value, '[^\r\n]', '')
+      }
+    )
+    foreach ($match in $markupTextPattern.Matches($markupScanText)) {
       $value = [System.Net.WebUtility]::HtmlDecode($match.Groups['value'].Value)
       $scanText = Get-TemplateVisibleScanText -Text $value
       if ($forbiddenVisibleBrand.IsMatch($scanText)) {
-        Add-Violation -Path $relative -Surface 'webui-markup-text' -Identifier '<text>' -Line (Get-LineNumber -Text $withoutBlockComments -Offset $match.Index) -Text $value
+        Add-Violation -Path $relative -Surface 'webui-markup-text' -Identifier '<text>' -Line (Get-LineNumber -Text $markupScanText -Offset $match.Index) -Text $value
       }
     }
-    foreach ($match in $markupAttributePattern.Matches($withoutBlockComments)) {
+    foreach ($match in $markupAttributePattern.Matches($markupScanText)) {
       $value = [System.Net.WebUtility]::HtmlDecode($match.Groups['value'].Value)
       $scanText = Get-TemplateVisibleScanText -Text $value
       if ($forbiddenVisibleBrand.IsMatch($scanText)) {
-        Add-Violation -Path $relative -Surface 'webui-markup-attribute' -Identifier '<attribute>' -Line (Get-LineNumber -Text $withoutBlockComments -Offset $match.Index) -Text $value
+        Add-Violation -Path $relative -Surface 'webui-markup-attribute' -Identifier '<attribute>' -Line (Get-LineNumber -Text $markupScanText -Offset $match.Index) -Text $value
       }
     }
     continue
