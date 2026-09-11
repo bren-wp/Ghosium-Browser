@@ -1,22 +1,40 @@
-# Ghosium Browser for Android
+# Ghosium Browser for Android 0.0.3
 
-Ghosium Android 0.0.3 is the native Android companion to the Windows browser. It uses the Android System WebView rendering engine inside a Brendigo-owned Material interface and does not add Ghosium analytics or telemetry.
+## Baseline
 
-## Browser behavior
+- Package: `com.brendigo.ghosium`
+- Version code: `3`
+- Version name: `0.0.3`
+- Minimum SDK: 29 (Android 10)
+- Compile SDK: 36
+- Target SDK: 36
+- Java: 17
+- Build system: Android Gradle Plugin 8.13.2 / Gradle 8.13
 
-- Search/address field with HTTPS-first hostname resolution and Google Search for plain queries.
-- Back, Forward, Home and Reload controls with Android accessibility labels and 48dp+ touch targets.
-- New Tab is a local Ghosium asset served through an HTTPS-shaped, network-isolated appassets origin.
-- Third-party cookies are blocked by default; mixed active content and invalid TLS certificates are blocked.
-- File/content URL access is disabled; browser-owned local assets are allow-listed explicitly.
-- External app schemes require user confirmation and are dispatched as browsable intents.
-- Renderer termination is handled and the active URL is recovered into a fresh WebView rather than crashing the Activity.
-- Downloads use Android DownloadManager and the public Downloads collection on Android 10+.
-- File upload, full-screen media, desktop-site mode, find-in-page, sharing and local browsing-data clearing are implemented.
-- English and Croatian native UI strings are included; unsupported device locales fall back to English.
+## Browser UI and lifecycle
 
-## Build
+The application uses Android System WebView inside a Ghosium-owned native activity. It implements address/search navigation, Back/Forward/Home/Reload, local New Tab, downloads, file chooser, fullscreen media, Desktop Site, Find in Page, Share, clear browsing data, deep-link handling, state restoration and renderer recovery.
 
-The project requires JDK 17, Android SDK 36 / Build Tools 36.0.0, Android Gradle Plugin 8.13.2 and Gradle 8.13. The CI build verifies the exact Gradle distribution SHA-256 before executing it.
+English is the base Android resource language and Croatian is provided in `values-hr`.
 
-A production release can be signed without committing credentials by setting `GHOSIUM_ANDROID_KEYSTORE_PATH`, `GHOSIUM_ANDROID_KEYSTORE_PASSWORD`, `GHOSIUM_ANDROID_KEY_ALIAS` and `GHOSIUM_ANDROID_KEY_PASSWORD`. The 0.0.3 GitHub-hosted preview release creates a one-run preview certificate when production signing credentials are not available and publishes its certificate digest in release evidence.
+## Privacy and security
+
+- third-party WebView cookies disabled;
+- mixed content never allowed;
+- direct WebView file access disabled;
+- direct WebView content access disabled;
+- Safe Browsing enabled where supported;
+- SSL errors are cancelled;
+- external non-HTTP(S) schemes require confirmation;
+- no analytics/advertising SDK;
+- Android cloud backup and device transfer excluded for browser data.
+
+## QA
+
+The 0.0.3 quality workflow installs stable API 36/build-tools 36.0.0, verifies Gradle 8.13 by SHA-256 and runs unit tests + lint with warnings-as-errors + debug/release assembly. Debug APK signing is verified only as QA identity; it is not the production signing identity.
+
+## Production signing
+
+Production signing is supplied at runtime through GitHub Actions secrets. The keystore/private key is never checked into the repository. The production workflow verifies the APK with `apksigner`, confirms package/version via `aapt`, records APK SHA-256/size and signer certificate SHA-256, then publishes `Ghosium-Browser-Android.apk` only after those checks pass.
+
+Required secret names are documented in the repository `BUILDING.md`.

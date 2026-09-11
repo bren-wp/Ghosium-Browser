@@ -1,20 +1,40 @@
 # Changelog
 
+## 0.0.3 — Windows + Android release candidate
+
+### Windows
+
+- Unified the installed profile contract at `%LOCALAPPDATA%\Brendigo\Ghosium\User Data`.
+- Fixed Portable profile isolation so the hardened launcher, rather than a filtered public `--user-data-dir` override, owns the profile path.
+- Reworked Portable packaging around a versioned runtime cache with staging, atomic promotion and a ready marker.
+- Avoided re-extracting the full Portable runtime on every launch.
+- Added recovery for interrupted/stale Portable preparation and concurrent extraction races.
+- Hardened launcher noninteractive behavior so QA/headless failures return an exit code instead of blocking on a modal dialog.
+- Added C++20 launcher compilation/self-test and Setup/Portable package execution coverage to the 0.0.3 quality gate.
+- Fixed canonical NSIS invocation to use absolute script paths, eliminating the historical duplicated `installer/installer/assets` path workaround.
+
+### Android
+
+- Added the native Ghosium Android application (`com.brendigo.ghosium`) for Android 10+/API 29+.
+- Added Ghosium Material UI with address/search input, Back, Forward, Home and Reload controls.
+- Added local New Tab, EN/HR resources, downloads, file chooser, fullscreen media, Desktop Site, Find in Page, Share and clear-browsing-data controls.
+- Added renderer-process recovery and activity state restoration.
+- Blocked third-party cookies and mixed content, disabled WebView file/content access, kept Safe Browsing enabled and made TLS errors fail closed.
+- Added explicit confirmation before handing non-HTTP(S) schemes to external applications.
+- Fixed host/port URL resolution such as `localhost:8443` and kept URL encoding compatible with API 29.
+- Disabled Android cloud backup and device-to-device transfer for browser-local data.
+- Added unit tests, lint-as-error enforcement and release/minification verification.
+
+### Release engineering and documentation
+
+- Synchronized Ghosium Privacy Store metadata with product version 0.0.3.
+- Added a production orchestrator that requires a stable signed Android APK before dispatching the canonical signed Windows full-source release.
+- Added Android release provenance and final three-asset release verification.
+- Updated README, architecture, build, privacy, security, performance, contribution and engine documentation for 0.0.3.
+
+> Publication is complete only when the immutable `ghosium-v0.0.3` release contains verified Setup, Portable and Android APK assets for the exact release commit.
+
 ## 0.0.2 — hardening candidate
 
-- Advanced the active development baseline to **0.0.2** without changing the exact pinned Chromium source revision.
-- Isolated native updater downloads into unique per-session directories under the secure Windows temporary directory.
-- Preserved exact updater host/path/port restrictions, redirect rejection, bounded downloads, SHA-256 verification, same-publisher Authenticode validation and signed PE product/company/version binding.
-- Hardened NSIS toolchain discovery so arbitrary user-writable `PATH` entries cannot become trusted release compilers.
-- Restricted NSIS fallback downloads to HTTPS-only redirects with bounded transfer time and retained exact SHA-256 pinning.
-- Added safe reuse of an already downloaded NSIS archive only after exact size and SHA-256 verification.
-- Reworked Ghosium performance benchmarking to refuse pre-existing user sessions and terminate only benchmark-owned launcher process trees.
-- Reworked cross-browser comparison cleanup so already-running browsers are skipped instead of force-terminated.
-- Replaced repeated whole-system process enumeration in hot benchmark sampling paths with targeted browser process lookup.
-- Preserved native Memory Saver and background-app shutdown behavior.
-- Preserved stronger privacy defaults for third-party cookies, search suggestions, speculative preloading, remote alternate-error pages and online spelling upload.
-- Preserved Safe Browsing, TLS/certificate validation, sandboxing, site/process isolation, extension trust and update hash/signature/publisher verification.
-- Kept the checked-in stable update manifest fail-closed until canonical release evidence and signing gates succeed.
-- Kept canonical Setup + Portable packaging, exact-source provenance, runtime/performance evidence and production signing as mandatory publication gates.
-
-> Publication status: **0.0.2 is a hardening candidate.** It must not be represented as the canonical GitHub production release until the full release workflow succeeds and immutable release assets are present.
+- Hardened the Windows source-build, updater, installer, benchmark and production-signing contracts.
+- Preserved stronger privacy defaults and canonical Setup + Portable provenance requirements.

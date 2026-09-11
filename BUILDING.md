@@ -1,63 +1,74 @@
-# Building Ghosium Browser
+# Building Ghosium Browser 0.0.3
 
-## Current baseline
+## Release baseline
 
-The active product version is `0.0.2`. This is the only active version documented for the current Ghosium development line.
+The active product version is `0.0.3`. Windows and Android artifacts in one production release must come from the exact same Git commit.
 
-Ghosium Browser's canonical production path is built from the exact Chromium source revision in `ENGINE_SOURCE_REVISION` with the exact `DEPOT_TOOLS_REVISION`. Production builds must not use floating branches, moving tags, precompiled browser snapshots or unreviewed local source edits.
+## Windows canonical build
 
-Previously published or candidate releases remain separate release classes and do not establish canonical 0.0.2 full-source production evidence.
+Windows x64 is built from the exact Chromium source revision in `ENGINE_SOURCE_REVISION` with the exact `DEPOT_TOOLS_REVISION`. Production must not use floating engine branches, precompiled browser snapshots or unreviewed source edits.
 
-## Canonical build chain
+`.github/workflows/full-source-windows-build.yml` performs source-builder/toolchain preflight, patch-anchor verification, pinned Chromium bootstrap, Ghosium source transformation, deterministic GN configuration, full browser compilation, runtime/security verification, performance evidence, canonical Setup/Portable packaging, install-update-uninstall smoke testing, production Authenticode signing, update-manifest binding, provenance and SHA-256 generation.
 
-The controlled Windows x64 full-source build performs:
+Production `main` builds require the controlled self-hosted Windows source builder and the configured Brendigo code-signing certificate/private key. Signing requirements must not be downgraded to make a release pass.
 
-1. source-builder/toolchain preflight;
-2. exact pinned-source anchor verification;
-3. complete Ghosium branding and Windows identity transform;
-4. native New Tab and privacy hardening;
-5. public-surface/account/promo removal and localization;
-6. `ghost://` internal WebUI routing verification;
-7. native performance-default verification;
-8. deterministic GN generation;
-9. full browser and technical installer compilation;
-10. compiled runtime/security verification;
-11. source-built benchmark evidence;
-12. canonical Setup and Portable packaging;
-13. install/update/uninstall smoke tests;
-14. production signing, update-manifest binding, provenance and SHA-256 gates on `main`.
+## Android build
 
-The canonical workflow is `.github/workflows/full-source-windows-build.yml`.
+Android source is in `android/`.
+
+Pinned release baseline:
+
+```text
+applicationId  com.brendigo.ghosium
+minSdk         29
+compileSdk     36
+targetSdk      36
+versionCode    3
+versionName    0.0.3
+JDK            17
+Gradle         8.13
+```
+
+GitHub-hosted builds install `platforms;android-36` and `build-tools;36.0.0`. Gradle 8.13 is downloaded over HTTPS and accepted only after SHA-256 `20f1b1176237254a6fc204d8434196fa11a4cfb387567519c61556e8710aed78` matches.
+
+Typical local verification with equivalent tools:
+
+```text
+gradle --no-daemon -p android testDebugUnitTest lintDebug lintRelease assembleDebug assembleRelease
+```
+
+The project treats lint warnings as errors except the narrowly documented dependency-version check and `OldTargetApi`. API 37 was not promoted into 0.0.3 because the stable GitHub-hosted SDK channel used by the release pipeline did not expose `platforms;android-37`; the product remains on stable API 36 rather than depending on a preview SDK.
+
+## Android production signing
+
+Production uses a stable Android signing identity supplied only through GitHub Actions secrets. Private key material must never be committed.
+
+Required secrets:
+
+```text
+GHOSIUM_ANDROID_KEYSTORE_BASE64
+GHOSIUM_ANDROID_KEYSTORE_PASSWORD
+GHOSIUM_ANDROID_KEY_ALIAS
+GHOSIUM_ANDROID_KEY_PASSWORD
+```
+
+The production workflow decodes the keystore only into the ephemeral runner, verifies the alias, builds the minified release APK, verifies it with Android `apksigner`, confirms package/version with `aapt`, records the signer certificate SHA-256 and deletes the runner with the job.
+
+## Production orchestration
+
+`.github/workflows/ghosium-0.0.3-production-release.yml` is triggered by the exact main-branch marker `.release/ghosium-v0.0.3.request`.
+
+Release order is intentionally fail-closed:
+
+1. validate version + marker;
+2. build/test/lint/minify/sign/verify Android 0.0.3;
+3. upload Android provenance artifact;
+4. verify that `ghosium-v0.0.3` does not already exist;
+5. dispatch the canonical full-source Windows production workflow on the exact `main` SHA;
+6. require the complete Windows build/signing/publish workflow to succeed;
+7. attach the previously verified Android APK to that immutable release;
+8. verify Setup, Portable and Android APK assets all exist.
 
 ## Security boundary
 
-The 0.0.2 build must preserve browser/renderer/GPU sandboxing, site/process isolation, Safe Browsing, TLS/certificate validation, extension trust and update verification. Security-reducing flags are not accepted as performance optimizations.
-
-The Windows updater stages downloads in a unique session directory under the secure Windows temporary directory before enforcing exact endpoint, no-redirect, size, SHA-256, Authenticode publisher and signed PE product/company/version checks. NSIS resolution rejects arbitrary user-writable PATH executables; the portable fallback remains exact-version and SHA-256 pinned with HTTPS-only redirects.
-
-## Privacy and performance defaults
-
-The 0.0.2 Windows source configuration includes `enable_background_mode = false` and native Memory Saver. The source transform also blocks third-party cookies by default, disables search suggestions, network prediction/preloading, remote alternate-error pages, remote NTP Doodles and NTP prefetch/prerender triggers for new/default profiles.
-
-Performance measurement tooling refuses to overwrite an existing Ghosium user session and scopes forced cleanup to process trees rooted in launchers created by the benchmark. Cross-browser comparisons skip already-running browsers rather than killing user-owned processes.
-
-Ghosium 0.0.2 supports 38 locales; English (`en-US`) is default and Croatian (`hr`) is required.
-
-Performance claims for canonical production must remain tied to verified `GHOSIUM-PERFORMANCE.json` evidence from the full-source workflow.
-
-## Public artifacts
-
-Canonical full-source production contract:
-
-```text
-Ghosium-Browser.exe
-Ghosium-Proxy.exe
-Ghosium-Browser-Setup.exe
-Ghosium-Browser-Portable.exe
-```
-
-Internal Chromium/GN target names may remain where required by the build graph. They are implementation details, not public product branding.
-
-## Release rule
-
-Ghosium Browser 0.0.2 may be published as canonical production only after the exact intended source tree, full-source evidence, runtime/performance evidence, canonical Setup/Portable provenance and required signing validation have passed. GitHub publication must not be inferred from a development branch or from an earlier release.
+No build optimization may disable browser sandboxing, GPU sandboxing, site/process isolation, Safe Browsing, TLS/certificate validation, extension trust or package/update signature verification. Android likewise keeps Safe Browsing and TLS verification, blocks mixed content and does not bypass certificate errors.

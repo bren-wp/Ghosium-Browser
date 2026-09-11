@@ -1,122 +1,54 @@
-# Ghosium Browser Architecture
+# Ghosium Browser 0.0.3 Architecture
 
-## Scope
+## Product scope
 
-Ghosium Browser 0.1.6 is designed as a direct source-built Windows x64 browser product. The production architecture no longer uses a separate wrapper launcher or a second Portable packaging path.
+Ghosium 0.0.3 has two first-class client targets sharing one release identity:
 
-## Runtime and distribution
+- Windows x64 source-built browser, Setup and Portable distribution;
+- Android 10+ native browser shell using the platform WebView.
 
-Public Windows product identity is intentionally small:
+Both targets are versioned `0.0.3` and are published from the same Git commit.
 
-```text
-Ghosium-Browser.exe
-Ghosium-Proxy.exe
-Ghosium-Browser-Setup.exe
-```
+## Windows source boundary
 
-`Ghosium-Browser.exe` is the primary native browser executable produced by the transformed source build. `Ghosium-Proxy.exe` is the compatible helper used where the Windows browser integration requires it. `Ghosium-Browser-Setup.exe` is the single installation/maintenance package.
+The repository does not vendor the complete Chromium source tree. It stores the exact upstream source/tool revisions, Ghosium branding and product metadata, reviewed source transformations, deterministic Windows build configuration, installer/release tooling and independent verification contracts.
 
-The Setup package performs install, update and uninstall. There is no separately distributed updater or uninstaller executable.
+The controlled source builder fetches the exact pinned engine, applies Ghosium transforms, verifies the resulting source, compiles the browser, smoke-tests the runtime, measures performance and packages canonical Setup and Portable artifacts.
 
-## Source transformation boundary
+Ghosium-owned desktop UI uses Ghosium/Brendigo identity and `ghost://` / `ghost-untrusted://` internal namespaces. Technical Chromium/GN identifiers may remain only where required by the upstream build graph or legal attribution.
 
-The repository does not vendor the complete engine source tree. Instead it stores:
+## Windows profile and Portable boundary
 
-- an exact source revision;
-- an exact build-tool revision;
-- Ghosium product metadata and artwork;
-- reviewed source transformations;
-- independent verification scripts;
-- deterministic Windows build arguments;
-- release and runtime contracts.
-
-The controlled source builder fetches the exact pinned source, applies the Ghosium transformations, verifies the resulting tree, compiles it, tests the runtime and then packages the canonical Setup.
-
-Technical identifiers required by the upstream build API can remain inside engineering tooling until a coordinated replacement is proven by compile/runtime testing. They are not accepted on Ghosium-owned public surfaces.
-
-## Public UI boundary
-
-Ghosium-owned UI uses Ghosium/Brendigo identity and the `ghost://` namespace. Unowned cloud/account/AI/mobile promotional features are removed or made unreachable rather than falsely relabeled.
-
-Primary routes include:
-
-```text
-ghost://newtab/
-ghost://history/
-ghost://bookmarks/
-ghost://downloads/
-ghost://settings/
-ghost://profiles/
-ghost://extensions/
-ghost://passwords/
-```
-
-## Local profile boundary
-
-The canonical per-user profile root is:
+Installed profile root:
 
 ```text
 %LOCALAPPDATA%\Brendigo\Ghosium\User Data
 ```
 
-Profiles remain local-first. Browser-level external account onboarding, external Sync promotions and related cloud-profile surfaces are not part of the Ghosium product contract.
+Portable data root is located beside the Portable executable and is injected through the launcher's private `--ghosium-portable-profile=` contract. User-supplied protected arguments cannot override the profile, bundled privacy extension or configured locale.
 
-Normal sign-in to websites remains ordinary web functionality and is not disabled by the local-profile product policy.
+Portable runtime files are extracted into a versioned local cache. A staging directory is promoted only after extraction succeeds; a ready marker distinguishes complete caches from interrupted ones. Existing complete caches are reused.
 
-## Languages
+## Android boundary
 
-Ghosium defines one product locale list in `engine/branding/product.json`. Version 0.1.6 supports 38 locales. English (`en-US`) is the primary/default locale and Croatian (`hr`) is required.
+Android package: `com.brendigo.ghosium`.
 
-Interactive Setup presents the same locale set. A fresh installation initializes the browser's native application locale from the Setup selection. Existing browser locale preferences are not overwritten by maintenance updates or reinstalls.
+`MainActivity` owns the native browser chrome and lifecycle. Web content is rendered by Android System WebView; Ghosium does not bundle a second embedded browser engine in the APK. The app provides local New Tab content through the app-assets HTTPS origin, navigation controls, downloads, file selection, fullscreen, Desktop Site, find/share controls and browser-data cleanup.
 
-## Search and first-party web services
+Android privacy/security configuration blocks third-party cookies, forbids mixed content, disables WebView file/content access, keeps Safe Browsing enabled, cancels TLS certificate errors, confirms external URI schemes and recovers from renderer termination. Browser-local app data is excluded from cloud backup and device transfer.
 
-Ghosium does not operate or bundle a first-party web search service. The browser default and New Tab search use Google Search as an external service and submit queries directly to Google.
+## Update and release trust boundary
 
-The independently deployable Ghosium-controlled shared-hosting services are limited to:
+Windows native update validation enforces the exact first-party HTTPS endpoint, package size/SHA-256, Authenticode publisher and signed PE metadata before Setup execution.
 
-```text
-store-web/       store.ghosium.com
-updates-web/     updates.ghosium.com
-```
+Android 0.0.3 does not introduce an unsigned self-updater. The release APK is signed with the stable Brendigo Android identity, verified with `apksigner`, and its package/version/hash/signer fingerprint are recorded as release evidence.
 
-These web applications are not linked into the browser executable and can be deployed independently.
-
-## Update trust boundary
-
-The browser-native update flow validates:
-
-1. Ghosium-owned HTTPS endpoint and exact download path;
-2. manifest schema/product/platform/channel;
-3. strictly newer product version;
-4. exact package byte size;
-5. SHA-256;
-6. Authenticode validity and expected publisher relationship;
-7. signed PE product/company/version metadata;
-8. canonical same-Setup update mode.
-
-A failed check stops the update before execution.
+The 0.0.3 orchestrator will not start Windows production release work until Android production signing/build verification has succeeded. The release is considered complete only after the same GitHub release contains Setup, Portable and Android APK.
 
 ## Performance model
 
-Performance work uses native source/build mechanisms rather than security-reducing command-line shortcuts.
-
-For 0.1.6:
-
-- native Memory Saver defaults to enabled unless the user explicitly chose another state;
-- native medium aggressiveness and tab-freezing semantics are preserved;
-- legacy background-app keep-alive is disabled at build configuration level;
-- renderer/site isolation and sandboxing remain mandatory;
-- the product does not impose a renderer-process cap merely to make RAM numbers look lower.
-
-A source-level optimization is not considered a performance improvement until the compiled binary is benchmarked using the repository methodology.
-
-## Release boundary
-
-Hosted CI proves source-transform, localization, installer, updater and security contracts. It does **not** prove that the final browser binary compiled successfully.
-
-Production status requires the controlled full-source Windows workflow to complete compile, runtime smoke, canonical Setup assembly, signing, install/update/uninstall round trip, provenance and hashes for the exact release commit.
+Windows performance evidence comes from the controlled source-built 1/5/10-tab benchmark. Android avoids unnecessary WebView recreation, preserves/restores WebView state and uses renderer recovery rather than crashing the activity. Neither platform permits security-reducing flags as a performance shortcut.
 
 ## Legal boundary
 
-Brendigo-authored Ghosium material is governed by the Ghosium product license. Third-party components remain governed by their own terms. Required attribution and notices are kept in dedicated legal/license payloads rather than used as product identity.
+Brendigo-authored Ghosium material follows the repository product license. Chromium, Android WebView, AndroidX, Material Components and other third-party components remain under their respective licenses and trademark terms.
