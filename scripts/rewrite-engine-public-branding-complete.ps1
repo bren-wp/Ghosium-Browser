@@ -249,6 +249,7 @@ foreach ($relative in @($tracked | Sort-Object -Unique)) {
         $rewrittenBody = Rewrite-VisibleXmlText -Body $body
       }
       if ($rewrittenBody -ne $body) {
+        $rewrittenBody = [regex]::Replace($rewrittenBody, '[ \t]+(?=\r?\n|$)', '')
         $script:changedMessages++
       }
       return $match.Groups[1].Value + $rewrittenBody + $match.Groups[2].Value
@@ -266,6 +267,7 @@ foreach ($relative in @($tracked | Sort-Object -Unique)) {
       $body = $match.Groups['body'].Value
       $rewrittenBody = Rewrite-VisibleXmlText -Body $body
       if ($rewrittenBody -ne $body) {
+        $rewrittenBody = [regex]::Replace($rewrittenBody, '[ \t]+(?=\r?\n|$)', '')
         $script:changedTranslations++
       }
       return $match.Groups[1].Value + $rewrittenBody + $match.Groups[2].Value
