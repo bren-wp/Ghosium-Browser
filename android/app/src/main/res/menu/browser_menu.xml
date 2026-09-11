@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android" xmlns:app="http://schemas.android.com/apk/res-auto">
+    <item android:id="@+id/action_new_tab" android:title="@string/new_tab" app:showAsAction="never" />
+    <item android:id="@+id/action_share" android:title="@string/share_page" app:showAsAction="never" />
+    <item android:id="@+id/action_find" android:title="@string/find_in_page" app:showAsAction="never" />
+    <item android:id="@+id/action_desktop" android:checkable="true" android:title="@string/desktop_site" app:showAsAction="never" />
+    <item android:id="@+id/action_open_external" android:title="@string/open_external" app:showAsAction="never" />
+    <item android:id="@+id/action_clear_data" android:title="@string/clear_data" app:showAsAction="never" />
+    <item android:id="@+id/action_privacy" android:title="@string/privacy" app:showAsAction="never" />
+    <item android:id="@+id/action_about" android:title="@string/about" app:showAsAction="never" />
+</menu>

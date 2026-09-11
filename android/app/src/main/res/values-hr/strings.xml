@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Ghosium Browser</string>
+    <string name="address_hint">Pretraži ili unesi adresu</string>
+    <string name="go">Idi</string>
+    <string name="back">Natrag</string>
+    <string name="forward">Naprijed</string>
+    <string name="home">Početna</string>
+    <string name="reload">Osvježi</string>
+    <string name="new_tab">Nova kartica</string>
+    <string name="share_page">Podijeli stranicu</string>
+    <string name="find_in_page">Pronađi na stranici</string>
+    <string name="find_hint">Tekst za pronalaženje</string>
+    <string name="find_action">Pronađi</string>
+    <string name="desktop_site">Verzija za računalo</string>
+    <string name="open_external">Otvori u drugoj aplikaciji</string>
+    <string name="clear_data">Obriši podatke pregledavanja</string>
+    <string name="clear_data_message">Obrisati kolačiće, pohranu web-stranica, predmemoriju, podatke obrazaca i povijest pregledavanja na ovom uređaju?</string>
+    <string name="clear_action">Obriši</string>
+    <string name="data_cleared">Lokalni podaci pregledavanja su obrisani</string>
+    <string name="privacy">Pravila privatnosti</string>
+    <string name="about">O aplikaciji</string>
+    <string name="about_title">Ghosium Browser</string>
+    <string name="about_message">Verzija %1$s\n\nIzradio Brendigo. Bez Ghosium analitike ili telemetrije. Kolačići trećih strana zadano su blokirani.</string>
+    <string name="open_external_title">Otvoriti vanjsku aplikaciju?</string>
+    <string name="open_external_message">Ova poveznica želi napustiti Ghosium Browser:\n\n%1$s</string>
+    <string name="open_action">Otvori</string>
+    <string name="no_external_app">Nije instalirana kompatibilna aplikacija za ovu poveznicu.</string>
+    <string name="download_description">Preuzimanje putem Ghosium Browsera</string>
+    <string name="download_started">Preuzimanje: %1$s</string>
+    <string name="download_failed">Preuzimanje nije moguće pokrenuti.</string>
+    <string name="download_unsupported">Ovu vrstu preuzimanja nije moguće sigurno predati Androidu.</string>
+    <string name="page_load_failed">Stranicu nije moguće učitati.</string>
+    <string name="ssl_error">Provjera sigurne veze nije uspjela. Stranica je blokirana.</string>
+    <string name="renderer_recovered_crash">Web-prikaz se neočekivano zaustavio. Ghosium je oporavio karticu.</string>
+    <string name="renderer_recovered">Android je oslobodio web-prikaz. Ghosium je obnovio karticu.</string>
+    <string name="file_picker_failed">Androidov odabir datoteka nije moguće otvoriti.</string>
+</resources>

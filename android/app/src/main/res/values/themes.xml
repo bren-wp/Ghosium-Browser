@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.Ghosium" parent="Theme.Material3.Dark.NoActionBar">
+        <item name="colorPrimary">@color/ghosium_primary</item>
+        <item name="colorSecondary">@color/ghosium_secondary</item>
+        <item name="colorSurface">@color/ghosium_surface</item>
+        <item name="colorSurfaceContainer">@color/ghosium_surface_high</item>
+        <item name="android:colorAccent">@color/ghosium_primary</item>
+        <item name="android:fontFamily">sans</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:windowLightNavigationBar">false</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowActionModeOverlay">true</item>
+    </style>
+</resources>
