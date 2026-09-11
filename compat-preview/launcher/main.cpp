@@ -145,7 +145,12 @@ std::wstring WindowsErrorText(DWORD code) {
   return text + L" (" + std::to_wstring(code) + L")";
 }
 
-void ShowError(const std::wstring& message) {
+void ReportError(const std::wstring& message, bool noninteractive) {
+  if (noninteractive) {
+    const std::wstring line = L"Ghosium Browser: " + message + L"\r\n";
+    OutputDebugStringW(line.c_str());
+    return;
+  }
   MessageBoxW(nullptr, message.c_str(), kProductName,
               MB_OK | MB_ICONERROR | MB_SETFOREGROUND);
 }
@@ -222,19 +227,14 @@ void ApplyLauncherMitigations() {
 int APIENTRY wWinMain(HINSTANCE, HINSTANCE, LPWSTR, int) {
   ApplyLauncherMitigations();
 
-  const fs::path root = ExecutableDirectory();
-  if (root.empty() || !CoreFilesExist(root)) {
-    ShowError(L"Ghosium Browser files are incomplete. Reinstall or download a fresh official package.");
-    return 2;
-  }
-
   int argc = 0;
   LPWSTR* argv = CommandLineToArgvW(GetCommandLineW(), &argc);
   if (argv == nullptr) {
-    ShowError(L"Ghosium Browser could not read the launch command.");
+    ReportError(L"Ghosium Browser could not read the launch command.", false);
     return 3;
   }
 
+  bool self_test = false;
   bool wait_for_engine = false;
   bool headless_mode = false;
   fs::path portable_profile;
@@ -244,10 +244,8 @@ int APIENTRY wWinMain(HINSTANCE, HINSTANCE, LPWSTR, int) {
     const std::wstring argument = argv[index];
     const std::wstring lowered = ToLower(argument);
     if (lowered == kSelfTestSwitch) {
-      LocalFree(argv);
-      return 0;
-    }
-    if (lowered == kWaitSwitch) {
+      self_test = true;
+    } else if (lowered == kWaitSwitch) {
       wait_for_engine = true;
     } else if (lowered == L"--dump-dom" ||
                StartsWithInsensitive(lowered, L"--headless")) {
@@ -262,6 +260,19 @@ int APIENTRY wWinMain(HINSTANCE, HINSTANCE, LPWSTR, int) {
     }
   }
 
+  const bool noninteractive = self_test || wait_for_engine || headless_mode;
+  const fs::path root = ExecutableDirectory();
+  if (root.empty() || !CoreFilesExist(root)) {
+    LocalFree(argv);
+    ReportError(L"Ghosium Browser files are incomplete. Reinstall or download a fresh official package.", noninteractive);
+    return 2;
+  }
+
+  if (self_test) {
+    LocalFree(argv);
+    return 0;
+  }
+
   const fs::path runtime_directory = root / L"runtime";
   const fs::path engine_executable = runtime_directory / kEngineExecutable;
   const fs::path privacy_extension = root / L"extension";
@@ -271,7 +282,7 @@ int APIENTRY wWinMain(HINSTANCE, HINSTANCE, LPWSTR, int) {
                                    : NormalizeProfilePath(portable_profile);
   if (profile_directory.empty()) {
     LocalFree(argv);
-    ShowError(L"Ghosium Browser could not resolve a safe local profile directory.");
+    ReportError(L"Ghosium Browser could not resolve a safe local profile directory.", noninteractive);
     return 4;
   }
 
@@ -279,7 +290,7 @@ int APIENTRY wWinMain(HINSTANCE, HINSTANCE, LPWSTR, int) {
   fs::create_directories(profile_directory, directory_error);
   if (directory_error) {
     LocalFree(argv);
-    ShowError(L"Ghosium Browser could not prepare the selected local profile. Check folder permissions and try again.");
+    ReportError(L"Ghosium Browser could not prepare the selected local profile. Check folder permissions and try again.", noninteractive);
     return 4;
   }
 
@@ -356,7 +367,7 @@ int APIENTRY wWinMain(HINSTANCE, HINSTANCE, LPWSTR, int) {
 
   if (!created) {
     const DWORD error = GetLastError();
-    ShowError(L"Ghosium Browser could not start. " + WindowsErrorText(error));
+    ReportError(L"Ghosium Browser could not start. " + WindowsErrorText(error), noninteractive);
     return 5;
   }
 
