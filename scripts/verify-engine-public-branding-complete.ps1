@@ -39,7 +39,7 @@ $preservedThirdPartyNamePattern = [regex]::new(
   '(?i)\bChrome(?:book|box|base|bit|cast|OS|Vox|Driver)\p{L}*\b'
 )
 $forbiddenVisibleBrand = [regex]::new(
-  '(?i)(?:Google\s+Chrome|Google\s+Chromium|Chromium Browser|Chrome Web Store|\bChromium(?=\p{Ll}|\b)|\bChrome(?=\p{Ll}|\b))'
+  '(?i)(?:Google\s+Chrome|Google\s+Chromium|Chromium Browser|Chrome Web Store|\bChromium(?=\p{Ll}|\b)|\bChrome(?!://)(?=\p{Ll}|\b))'
 )
 $forbiddenLiteralBrand = [regex]::new(
   '(?i)(?:Google\s+Chrome|Google\s+Chromium|Chromium Browser|Chrome Web Store|\bChromium\b|\bChrome\b)'
