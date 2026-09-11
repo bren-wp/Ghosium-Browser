@@ -52,9 +52,13 @@ jobs:
               raise SystemExit('Portable must not bypass the hardened launcher profile contract.')
 
           android_build = Path('android/app/build.gradle').read_text(encoding='utf-8')
-          for token in ("versionName '0.0.3'", 'versionCode 3', 'compileSdk 36', 'targetSdk 36', 'minSdk 29'):
+          for token in ("versionName '0.0.3'", 'versionCode 3', 'compileSdk 37', 'targetSdk 37', 'minSdk 29'):
               if token not in android_build:
                   raise SystemExit(f'Android build contract missing: {token}')
+          android_manifest = Path('android/app/src/main/AndroidManifest.xml').read_text(encoding='utf-8')
+          for token in ('android:allowBackup="false"', 'android:dataExtractionRules="@xml/data_extraction_rules"', 'android:fullBackupContent="@xml/backup_rules"'):
+              if token not in android_manifest:
+                  raise SystemExit(f'Android backup/privacy contract missing: {token}')
           android_source = Path('android/app/src/main/java/com/brendigo/ghosium/MainActivity.java').read_text(encoding='utf-8')
           for token in ('setAcceptThirdPartyCookies(webView, false)', 'MIXED_CONTENT_NEVER_ALLOW', 'handler.cancel()', 'onRenderProcessGone', 'setAllowFileAccess(false)', 'setAllowContentAccess(false)'):
               if token not in android_source:
@@ -89,14 +93,14 @@ jobs:
           sdkmanager_bin="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
           test -x "$sdkmanager_bin"
           set +o pipefail
-          yes | "$sdkmanager_bin" 'platforms;android-36' 'build-tools;36.0.0' >/dev/null
+          yes | "$sdkmanager_bin" 'platforms;android-37' 'build-tools;36.0.0' >/dev/null
           sdk_status=${PIPESTATUS[1]}
           set -o pipefail
           if [ "$sdk_status" -ne 0 ]; then
             echo "sdkmanager failed with exit code $sdk_status" >&2
             exit "$sdk_status"
           fi
-          test -f "$ANDROID_HOME/platforms/android-36/android.jar"
+          test -f "$ANDROID_HOME/platforms/android-37/android.jar"
           test -x "$ANDROID_HOME/build-tools/36.0.0/apksigner"
       - name: Download and verify Gradle 8.13
         shell: bash
@@ -219,8 +223,17 @@ jobs:
           $portable = Join-Path $runDir 'Ghosium-Browser-Portable.exe'
           Copy-Item 'qa-artifacts/Ghosium-Browser-Portable.exe' $portable
 
-          $first = Start-Process -FilePath $portable -ArgumentList '--ghosium-wait' -Wait -PassThru
-          if ($first.ExitCode -ne 0) { throw "Portable first launch failed: $($first.ExitCode)" }
+          function Invoke-PortableQa([string]$Path) {
+            $process = Start-Process -FilePath $Path -ArgumentList '--ghosium-wait' -PassThru
+            if (!$process.WaitForExit(60000)) {
+              & "$env:SystemRoot\System32\taskkill.exe" /PID $process.Id /T /F | Out-Null
+              throw "Portable launch timed out after 60 seconds (PID $($process.Id))."
+            }
+            return $process.ExitCode
+          }
+
+          $firstCode = Invoke-PortableQa $portable
+          if ($firstCode -ne 0) { throw "Portable first launch failed: $firstCode" }
           $runtime = Join-Path $runDir '.ghosium-portable-runtime/0.0.3'
           $marker = Join-Path $runtime '.ghosium-runtime-ready'
           $argsFile = Join-Path $runtime 'runtime/engine-args.txt'
@@ -234,8 +247,8 @@ jobs:
           $sentinelTime = [DateTime]::SpecifyKind([DateTime]'2001-02-03T04:05:06', [DateTimeKind]::Utc)
           $engine.LastWriteTimeUtc = $sentinelTime
 
-          $second = Start-Process -FilePath $portable -ArgumentList '--ghosium-wait' -Wait -PassThru
-          if ($second.ExitCode -ne 0) { throw "Portable cached launch failed: $($second.ExitCode)" }
+          $secondCode = Invoke-PortableQa $portable
+          if ($secondCode -ne 0) { throw "Portable cached launch failed: $secondCode" }
           $after = (Get-Item (Join-Path $runtime 'runtime/Ghosium-Engine.exe')).LastWriteTimeUtc
           if ($after -ne $sentinelTime) { throw 'Portable runtime was unnecessarily re-extracted on the second launch.' }
           if (!(Test-Path (Join-Path $runDir 'Ghosium-Portable-Data') -PathType Container)) { throw 'Portable data directory missing.' }

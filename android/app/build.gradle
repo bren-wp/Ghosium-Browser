@@ -10,12 +10,12 @@ def hasReleaseSigning = signingStore && signingPassword && signingAlias && signi
 
 android {
     namespace 'com.brendigo.ghosium'
-    compileSdk 36
+    compileSdk 37
 
     defaultConfig {
         applicationId 'com.brendigo.ghosium'
         minSdk 29
-        targetSdk 36
+        targetSdk 37
         versionCode 3
         versionName '0.0.3'
         testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
