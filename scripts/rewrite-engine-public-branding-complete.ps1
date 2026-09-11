@@ -251,7 +251,7 @@ foreach ($relative in @($tracked | Sort-Object -Unique)) {
       if ($rewrittenBody -ne $body) {
         $script:changedMessages++
       }
-      return $match.Groups[1].Value + $rewrittenBody + $match.Groups[4].Value
+      return $match.Groups[1].Value + $rewrittenBody + $match.Groups[2].Value
     })
   } elseif ($extension -eq '.xtb') {
     $pattern = '(?s)(<translation\s+id="(?<id>[0-9]+)"[^>]*>)(?<body>.*?)(</translation>)'
@@ -268,7 +268,7 @@ foreach ($relative in @($tracked | Sort-Object -Unique)) {
       if ($rewrittenBody -ne $body) {
         $script:changedTranslations++
       }
-      return $match.Groups[1].Value + $rewrittenBody + $match.Groups[4].Value
+      return $match.Groups[1].Value + $rewrittenBody + $match.Groups[2].Value
     })
   }
 
