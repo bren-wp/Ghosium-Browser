@@ -88,7 +88,16 @@ jobs:
           set -euo pipefail
           sdkmanager_bin="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
           test -x "$sdkmanager_bin"
+          set +o pipefail
           yes | "$sdkmanager_bin" 'platforms;android-36' 'build-tools;36.0.0' >/dev/null
+          sdk_status=${PIPESTATUS[1]}
+          set -o pipefail
+          if [ "$sdk_status" -ne 0 ]; then
+            echo "sdkmanager failed with exit code $sdk_status" >&2
+            exit "$sdk_status"
+          fi
+          test -f "$ANDROID_HOME/platforms/android-36/android.jar"
+          test -x "$ANDROID_HOME/build-tools/36.0.0/apksigner"
       - name: Download and verify Gradle 8.13
         shell: bash
         run: |
@@ -150,7 +159,9 @@ jobs:
               }
           }
           '@
-          Add-Type -TypeDefinition $stub -Language CSharp -OutputAssembly (Resolve-Path 'qa-stage/runtime').Path\Ghosium-Engine.exe -OutputType ConsoleApplication
+          $enginePath = Join-Path (Resolve-Path 'qa-stage/runtime').Path 'Ghosium-Engine.exe'
+          Add-Type -TypeDefinition $stub -Language CSharp -OutputAssembly $enginePath -OutputType ConsoleApplication
+          if (!(Test-Path $enginePath -PathType Leaf)) { throw 'Deterministic test engine was not produced.' }
           $self = Start-Process -FilePath (Resolve-Path 'qa-stage/Ghosium-Browser.exe') -ArgumentList '--ghosium-self-test' -Wait -PassThru
           if ($self.ExitCode -ne 0) { throw "Launcher self-test failed: $($self.ExitCode)" }
       - name: Compile Setup and Portable with warnings as errors
