@@ -23,6 +23,7 @@ Unicode true
 !define PORTABLE_RUNTIME_DIR ".ghosium-portable-runtime"
 !define PORTABLE_DATA_DIR "Ghosium-Portable-Data"
 !define PORTABLE_READY_MARKER ".ghosium-runtime-ready"
+!define PORTABLE_READY_VALUE "Ghosium Portable Runtime|${GHOSIUM_VERSION}"
 
 Name "${PRODUCT_NAME} ${GHOSIUM_VERSION} Portable"
 OutFile "${GHOSIUM_ARTIFACTS}\Ghosium-Browser-Portable.exe"
@@ -59,7 +60,7 @@ Function VerifyPortableRuntime
   IfErrors portable_verify_done
   FileRead $R8 $R9
   FileClose $R8
-  StrCmp $R9 "Ghosium Portable Runtime|${GHOSIUM_VERSION}$\r$\n" 0 portable_verify_done
+  StrCmp $R9 "${PORTABLE_READY_VALUE}" 0 portable_verify_done
   StrCpy $PortableReady "1"
 portable_verify_done:
 FunctionEnd
@@ -84,10 +85,13 @@ Function PreparePortableRuntime
   IfFileExists "$PortableStage\LICENSE" 0 portable_prepare_error
   IfFileExists "$PortableStage\THIRD_PARTY_NOTICES.md" 0 portable_prepare_error
 
+  ; The ready marker is deliberately written last and contains no line ending.
+  ; This makes verification independent of text-mode CRLF handling while the
+  ; versioned runtime directory still prevents stale caches from being reused.
   ClearErrors
   FileOpen $R8 "$PortableStage\${PORTABLE_READY_MARKER}" w
   IfErrors portable_prepare_error
-  FileWrite $R8 "Ghosium Portable Runtime|${GHOSIUM_VERSION}$\r$\n"
+  FileWrite $R8 "${PORTABLE_READY_VALUE}"
   FileClose $R8
 
   ; Another Ghosium Portable process may have completed the same version while
@@ -117,7 +121,8 @@ portable_concurrent_ready:
 
 portable_prepare_error:
   RMDir /r "$PortableStage"
-  MessageBox MB_ICONSTOP|MB_OK "Ghosium Portable could not prepare its verified runtime. Move the package to a writable local folder or download a fresh official package."
+  ; Portable is a silent package. Never block unattended/CI launches with a
+  ; modal dialog; callers receive a stable diagnostic exit code instead.
   SetErrorLevel 21
   Quit
 
@@ -151,17 +156,14 @@ portable_launch:
   Quit
 
 portable_path_error:
-  MessageBox MB_ICONSTOP|MB_OK "Ghosium Portable cannot write beside this executable. Move it to a writable local folder and try again."
   SetErrorLevel 20
   Quit
 
 portable_runtime_error:
-  MessageBox MB_ICONSTOP|MB_OK "Ghosium Portable could not verify its local runtime. Download a fresh official package."
   SetErrorLevel 21
   Quit
 
 portable_launch_error:
-  MessageBox MB_ICONSTOP|MB_OK "Ghosium Portable could not start the browser. Check folder permissions and try again."
   SetErrorLevel 22
   Quit
 FunctionEnd
