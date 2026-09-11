@@ -1,4 +1,1 @@
-release=0.0.2
-channel=production
-requested_from=main
-requested_after_merge=0c42adc865e0497a66c6a3ba69941fee68cb7af8
+ghosium-v0.0.2
