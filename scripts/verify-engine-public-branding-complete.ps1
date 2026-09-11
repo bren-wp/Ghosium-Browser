@@ -202,6 +202,33 @@ function Test-HumanReadableScriptLiteral {
 $sparseValue = @(& git -C $sourceRootResolved config --bool core.sparseCheckout 2>$null)
 $isSparseCheckout = ($LASTEXITCODE -eq 0 -and ($sparseValue -join '').Trim() -eq 'true')
 
+function Get-AuditedTrackedFiles {
+  param([Parameter(Mandatory = $true)][string[]]$Pathspecs)
+
+  if (!$isSparseCheckout) {
+    $files = @(& git -C $sourceRootResolved ls-files -- $Pathspecs)
+    if ($LASTEXITCODE -ne 0) {
+      throw 'Unable to enumerate tracked public source files.'
+    }
+    return $files
+  }
+
+  # A sparse checkout still has the complete Chromium index. Enumerating plain
+  # ls-files would walk hundreds of thousands of paths that are intentionally
+  # absent from the working tree. H marks tracked paths that are materialized;
+  # S marks skip-worktree entries outside the reviewed sparse audit surface.
+  $tagged = @(& git -C $sourceRootResolved ls-files -t -- $Pathspecs)
+  if ($LASTEXITCODE -ne 0) {
+    throw 'Unable to enumerate materialized sparse public source files.'
+  }
+
+  return @(
+    $tagged |
+      Where-Object { $_.Length -gt 2 -and $_.StartsWith('H ') } |
+      ForEach-Object { $_.Substring(2) }
+  )
+}
+
 $requiredFullSourceRoots = @(
   'chrome/app',
   'chrome/browser/resources',
@@ -253,10 +280,7 @@ $gritPathspecs = @(
   ':(glob)ui/**/*.grdp',
   ':(glob)ui/**/*.xtb'
 )
-$gritFiles = @(& git -C $sourceRootResolved ls-files -- $gritPathspecs)
-if ($LASTEXITCODE -ne 0) {
-  throw 'Unable to enumerate first-party GRIT/XTB resources during complete public-branding verification.'
-}
+$gritFiles = @(Get-AuditedTrackedFiles -Pathspecs $gritPathspecs)
 
 foreach ($relative in @($gritFiles | Sort-Object -Unique)) {
   if ([string]::IsNullOrWhiteSpace($relative) -or
@@ -347,10 +371,7 @@ $webUiPathspecs = @(
   ':(glob)ui/webui/resources/**/*.json',
   ':(glob)ui/webui/resources/**/*.svg'
 )
-$webUiFiles = @(& git -C $sourceRootResolved ls-files -- $webUiPathspecs)
-if ($LASTEXITCODE -ne 0) {
-  throw 'Unable to enumerate public WebUI resources during complete public-branding verification.'
-}
+$webUiFiles = @(Get-AuditedTrackedFiles -Pathspecs $webUiPathspecs)
 
 # Use quote-specific character classes instead of a backreference plus a
 # per-character negative lookahead. This keeps the same literal coverage while
