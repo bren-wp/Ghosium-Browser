@@ -36,7 +36,7 @@ if ([int]$policy.schemaVersion -ne 1) {
 # This is deliberately not a generic Chrome allowlist: standalone Chrome or
 # Chromium browser branding in runtime copy remains forbidden.
 $preservedThirdPartyNamePattern = [regex]::new(
-  '(?i)\b(?:Chrome(?:book|box|base|bit|cast|OS|Vox|Driver)\p{L}*|ChromiumOS\p{L}*)\b'
+  '(?i)\b(?:Chrome(?:book|box|base|bit|cast|OS|Vox|Driver)\p{L}*|ChromeVoks\p{L}*|ChromiumOS\p{L}*)\b'
 )
 $forbiddenVisibleBrand = [regex]::new(
   '(?i)(?:Google\s+Chrome|Google\s+Chromium|Chromium Browser|Chrome Web Store|\bChromium(?=\p{Ll}|\b)|\bChrome(?!://)(?=\p{Ll}|\b))'
@@ -124,7 +124,10 @@ function Test-LegalTranslation {
 function Get-BrandScanText {
   param([Parameter(Mandatory = $true)][AllowEmptyString()][string]$Text)
 
-  return $preservedThirdPartyNamePattern.Replace($Text, '')
+  $scanText = $preservedThirdPartyNamePattern.Replace($Text, '')
+  $scanText = [regex]::Replace($scanText, '(?i)\bchrome-extension://[^\s<>]*', '')
+  $scanText = [regex]::Replace($scanText, '(?i)\bghost://chrome-urls\b', '')
+  return $scanText
 }
 
 function Get-VisibleXmlText {
