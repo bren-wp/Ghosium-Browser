@@ -1,0 +1,54 @@
+name: Cancel obsolete Ghosium release runs
+
+on:
+  push:
+    branches:
+      - ops/cancel-obsolete-release-runs
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  cleanup:
+    name: Cancel superseded release runs
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Cancel only known obsolete 0.0.3 and superseded correction runs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          current_correction_sha='0b2a5ca3571a37d218a90a4e177108963a9aa5a0'
+          obsolete_main_sha_1='4c7e8dcceeaeb334bab21892f0d3ba88b04f406a'
+          obsolete_main_sha_2='7c08e015a03092c156874a7607f711e1c1167f47'
+
+          for status in queued in_progress; do
+            gh api --paginate \
+              -H 'Accept: application/vnd.github+json' \
+              -H 'X-GitHub-Api-Version: 2022-11-28' \
+              "/repos/${GITHUB_REPOSITORY}/actions/runs?status=${status}&per_page=100" \
+              --jq '.workflow_runs[] | [.id, .head_branch, .head_sha, .name] | @tsv' |
+            while IFS=$'\t' read -r run_id head_branch head_sha workflow_name; do
+              cancel_run=false
+
+              if [[ "$head_branch" == 'ghosium/0.0.3-public-branding-release' ]]; then
+                cancel_run=true
+              elif [[ "$head_branch" == 'release/0.0.2-correction' && "$head_sha" != "$current_correction_sha" ]]; then
+                cancel_run=true
+              elif [[ "$head_branch" == 'main' && ( "$head_sha" == "$obsolete_main_sha_1" || "$head_sha" == "$obsolete_main_sha_2" ) ]]; then
+                cancel_run=true
+              fi
+
+              if [[ "$cancel_run" == true ]]; then
+                echo "Cancelling obsolete run ${run_id}: ${workflow_name} (${head_branch}@${head_sha})"
+                gh api --method POST \
+                  -H 'Accept: application/vnd.github+json' \
+                  -H 'X-GitHub-Api-Version: 2022-11-28' \
+                  "/repos/${GITHUB_REPOSITORY}/actions/runs/${run_id}/cancel" || true
+              fi
+            done
+          done
