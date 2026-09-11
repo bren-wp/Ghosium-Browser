@@ -1,0 +1,51 @@
+name: Finalize Ghosium 0.0.2 Release Metadata
+
+on:
+  push:
+    branches:
+      - ops/cancel-obsolete-release-runs
+    paths:
+      - '.ops/finalize-ghosium-0.0.2-release.request'
+
+permissions:
+  contents: write
+
+jobs:
+  finalize:
+    name: Match Ghosium 0.0.1 release presentation
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RELEASE_TAG: ghosium-v0.0.2-preview.1
+    steps:
+      - name: Verify release assets and finalize metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          release_json="$(gh api --method GET "/repos/${GITHUB_REPOSITORY}/releases/tags/${RELEASE_TAG}")"
+          release_id="$(jq -r '.id' <<<"$release_json")"
+          [[ "$release_id" =~ ^[0-9]+$ ]] || { echo 'Release ID is invalid.' >&2; exit 1; }
+          [[ "$(jq -r '.tag_name' <<<"$release_json")" == "$RELEASE_TAG" ]] || { echo 'Release tag mismatch.' >&2; exit 1; }
+          [[ "$(jq -r '.draft' <<<"$release_json")" == 'false' ]] || { echo 'Release must not be a draft.' >&2; exit 1; }
+
+          for asset in \
+            Ghosium-Browser-Setup.exe \
+            GHOSIUM-PREVIEW-BUILD.json \
+            GHOSIUM-PREVIEW-SETUP-SMOKE.json \
+            SHA256SUMS.txt \
+            BUILD-STATUS.txt; do
+            count="$(jq --arg name "$asset" '[.assets[] | select(.name == $name and .state == "uploaded")] | length' <<<"$release_json")"
+            [[ "$count" == '1' ]] || { echo "Required release asset $asset is missing or duplicated." >&2; exit 1; }
+          done
+
+          gh api --method PATCH "/repos/${GITHUB_REPOSITORY}/releases/${release_id}" \
+            -f name='Ghosium 0.0.2' \
+            -F draft=false \
+            -F prerelease=false >/dev/null
+
+          final_json="$(gh api --method GET "/repos/${GITHUB_REPOSITORY}/releases/tags/${RELEASE_TAG}")"
+          [[ "$(jq -r '.name' <<<"$final_json")" == 'Ghosium 0.0.2' ]] || { echo 'Final release name mismatch.' >&2; exit 1; }
+          [[ "$(jq -r '.draft' <<<"$final_json")" == 'false' ]] || { echo 'Final release unexpectedly became a draft.' >&2; exit 1; }
+          [[ "$(jq -r '.prerelease' <<<"$final_json")" == 'false' ]] || { echo 'Final release presentation did not match 0.0.1.' >&2; exit 1; }
+          echo "Finalized ${RELEASE_TAG} as Ghosium 0.0.2 with verified assets."
