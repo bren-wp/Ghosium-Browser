@@ -79,10 +79,17 @@ jobs:
                       and version == '0.0.1'
                       and head_ref == 'ghosium/0.0.1-clean-baseline'
                   )
-                  if current <= previous and not clean_baseline_reset:
+                  release_target_correction = (
+                      base_version == '0.0.3'
+                      and version == '0.0.2'
+                      and head_ref == 'release/0.0.2-correction'
+                  )
+                  if current <= previous and not (clean_baseline_reset or release_target_correction):
                       raise SystemExit(f'Ghosium VERSION must advance from {base_version}; got {version}.')
                   if clean_baseline_reset:
                       print('Authorized one-time clean baseline reset: 0.1.11 -> 0.0.1')
+                  if release_target_correction:
+                      print('Authorized one-time release target correction: 0.0.3 -> 0.0.2')
 
           print(f'Ghosium product version contract OK: {version}')
 
